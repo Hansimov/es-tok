@@ -80,6 +80,14 @@ Check if plugin is loaded:
 curl --cacert $HOME/elasticsearch-docker/certs/ca/ca.crt -u elastic:$ELASTIC_PASSWORD -X GET "https://localhost:19200/_cat/plugins?v"
 ```
 
+## Test commands
+
+```sh
+./gradlew testTokenizer
+./gradlew testAnalyzer
+```
+
+
 ## References
 
 ### Elastic Plugin
