@@ -85,6 +85,7 @@ curl --cacert $HOME/elasticsearch-docker/certs/ca/ca.crt -u elastic:$ELASTIC_PAS
 ```sh
 ./gradlew testTokenizer
 ./gradlew testAnalyzer
+./gradlew testAnalyzeAPI
 ```
 
 

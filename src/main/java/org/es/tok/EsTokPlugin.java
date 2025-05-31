@@ -19,26 +19,31 @@ import org.elasticsearch.rest.RestController;
 import org.elasticsearch.rest.RestHandler;
 import org.es.tok.analysis.AhoCorasickAnalyzerProvider;
 import org.es.tok.analysis.AhoCorasickTokenizerFactory;
+import org.es.tok.analysis.EsTokAnalyzerProvider;
 import org.es.tok.rest.RestVocabularyAction;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-import static java.util.Collections.singletonMap;
-
 public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin {
-    public static final String VERSION = "0.1.0";
+    public static final String VERSION = "0.2.0";
 
     @Override
     public Map<String, AnalysisProvider<TokenizerFactory>> getTokenizers() {
-        return singletonMap("aho_corasick", AhoCorasickTokenizerFactory::new);
+        Map<String, AnalysisProvider<TokenizerFactory>> tokenizers = new HashMap<>();
+        tokenizers.put("aho_corasick", AhoCorasickTokenizerFactory::new);
+        return tokenizers;
     }
 
     @Override
     public Map<String, AnalysisProvider<AnalyzerProvider<? extends Analyzer>>> getAnalyzers() {
-        return singletonMap("aho_corasick", AhoCorasickAnalyzerProvider::new);
+        Map<String, AnalysisProvider<AnalyzerProvider<? extends Analyzer>>> analyzers = new HashMap<>();
+        analyzers.put("aho_corasick", AhoCorasickAnalyzerProvider::new);
+        analyzers.put("es-tok", EsTokAnalyzerProvider::new); // Main analyzer for API usage
+        return analyzers;
     }
 
     @Override

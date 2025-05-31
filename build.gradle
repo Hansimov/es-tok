@@ -17,7 +17,7 @@ apply plugin: 'elasticsearch.esplugin'
 apply plugin: 'elasticsearch.yaml-rest-test'
 
 group = 'org.es'
-version = '0.1.0'
+version = '0.2.0'
 
 repositories {
     mavenCentral()
@@ -41,6 +41,7 @@ dependencies {
 }
 
 // Test tasks
+
 task testTokenizer(type: JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'org.es.tok.TestTokenizer'
@@ -51,3 +52,7 @@ task testAnalyzer(type: JavaExec) {
     mainClass = 'org.es.tok.TestAnalyzer'
 }
 
+task testAnalyzeAPI(type: JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.es.tok.TestAnalyzeAPI'
+}
