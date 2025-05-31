@@ -1,0 +1,6 @@
+rootProject.name = 'es-tok'
+try {
+    enableFeaturePreview('TYPESAFE_PROJECT_ACCESSORS')
+} catch (MissingMethodException ignored) {
+    println '> skipping TYPESAFE_PROJECT_ACCESSORS (Gradle too old)'
+}

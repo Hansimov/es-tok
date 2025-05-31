@@ -1,0 +1,35 @@
+buildscript {
+    ext {
+        elasticVersion = '8.17.3'
+    }
+    repositories {
+        mavenCentral()
+        maven { url 'https://artifacts.elastic.co/maven' }
+    }
+    dependencies {
+        classpath "org.elasticsearch.gradle:build-tools:${elasticVersion}"
+    }
+}
+
+apply plugin: 'java'
+apply plugin: 'elasticsearch.esplugin'
+
+group = 'org.es'
+version = '0.1.0'
+
+repositories {
+    mavenCentral()
+    maven { url 'https://artifacts.elastic.co/maven' }
+}
+
+dependencies {
+    compileOnly "org.elasticsearch:elasticsearch:${elasticVersion}"
+    implementation "org.elasticsearch.plugin:elasticsearch-plugin-api:${elasticVersion}"
+}
+
+esplugin {
+    name        = 'es-tok'
+    description = 'Minimal ES plugin exposing get_version API'
+    classname   = 'org.es.version.GetVersionPlugin'
+    version     = project.version
+}
