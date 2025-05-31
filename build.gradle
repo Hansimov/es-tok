@@ -1,6 +1,8 @@
 buildscript {
     ext {
         elasticVersion = '8.17.3'
+        luceneVersion = '9.12.0'
+        log4jVersion = '2.17.1'
     }
     repositories {
         mavenCentral()
@@ -11,8 +13,8 @@ buildscript {
     }
 }
 
-apply plugin: 'java'
 apply plugin: 'elasticsearch.esplugin'
+apply plugin: 'elasticsearch.yaml-rest-test'
 
 group = 'org.es'
 version = '0.1.0'
@@ -22,14 +24,14 @@ repositories {
     maven { url 'https://artifacts.elastic.co/maven' }
 }
 
-dependencies {
-    compileOnly "org.elasticsearch:elasticsearch:${elasticVersion}"
-    implementation "org.elasticsearch.plugin:elasticsearch-plugin-api:${elasticVersion}"
+esplugin {
+    name = 'es-tok'
+    description = 'Elasticsearch plugin with Aho-Corasick tokenization and vocabulary management'
+    classname = 'org.es.tok.EsTokPlugin'
 }
 
-esplugin {
-    name        = 'es-tok'
-    description = 'Minimal ES plugin exposing get_version API'
-    classname   = 'org.es.version.GetVersionPlugin'
-    version     = project.version
+dependencies {
+    implementation "org.ahocorasick:ahocorasick:0.6.3"
+    
+    yamlRestTestRuntimeOnly "org.apache.logging.log4j:log4j-core:${log4jVersion}"
 }
