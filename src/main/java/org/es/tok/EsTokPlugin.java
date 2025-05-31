@@ -21,6 +21,7 @@ import org.es.tok.analysis.AhoCorasickAnalyzerProvider;
 import org.es.tok.analysis.AhoCorasickTokenizerFactory;
 import org.es.tok.analysis.EsTokAnalyzerProvider;
 import org.es.tok.rest.RestVocabularyAction;
+import org.es.tok.rest.RestEsTokAnalyzeAction;
 
 import java.util.HashMap;
 import java.util.List;
@@ -42,7 +43,7 @@ public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin 
     public Map<String, AnalysisProvider<AnalyzerProvider<? extends Analyzer>>> getAnalyzers() {
         Map<String, AnalysisProvider<AnalyzerProvider<? extends Analyzer>>> analyzers = new HashMap<>();
         analyzers.put("aho_corasick", AhoCorasickAnalyzerProvider::new);
-        analyzers.put("es-tok", EsTokAnalyzerProvider::new); // Main analyzer for API usage
+        analyzers.put("es-tok", EsTokAnalyzerProvider::new);
         return analyzers;
     }
 
@@ -57,6 +58,8 @@ public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin 
             final IndexNameExpressionResolver indexNameExpressionResolver,
             final Supplier<DiscoveryNodes> nodesInCluster,
             final Predicate<NodeFeature> clusterSupportsFeature) {
-        return List.of(new RestVocabularyAction());
+        return List.of(
+                new RestVocabularyAction(),
+                new RestEsTokAnalyzeAction());
     }
 }

@@ -56,3 +56,8 @@ task testAnalyzeAPI(type: JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'org.es.tok.TestAnalyzeAPI'
 }
+
+task testCustomAnalyzeAPI(type: JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.es.tok.TestCustomAnalyzeAPI'
+}
