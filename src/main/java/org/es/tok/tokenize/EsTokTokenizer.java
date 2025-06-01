@@ -86,24 +86,21 @@ public class EsTokTokenizer extends Tokenizer {
     private List<TokenStrategy.TokenInfo> processText(String text) {
         List<TokenStrategy.TokenInfo> allTokens = new ArrayList<>();
 
-        // Apply categorization strategy if enabled
         if (enableCateg && CategStrategy != null) {
             allTokens.addAll(CategStrategy.tokenize(text));
         }
 
-        // Apply vocabulary strategy if enabled
         if (enableVocab && VocabStrategy != null) {
             List<TokenStrategy.TokenInfo> vocabTokens = VocabStrategy.tokenize(text);
             allTokens.addAll(vocabTokens);
         }
 
-        // Sort tokens by start offset, then by type priority (vocab tokens first)
+        // Sort by start_offset, then by type (`vocab` first)
         allTokens.sort((a, b) -> {
             int offsetCompare = Integer.compare(a.getStartOffset(), b.getStartOffset());
             if (offsetCompare != 0)
                 return offsetCompare;
 
-            // Prioritize vocab tokens over categorization tokens at same position
             if ("vocab".equals(a.getType()) && !"vocab".equals(b.getType()))
                 return -1;
             if (!"vocab".equals(a.getType()) && "vocab".equals(b.getType()))

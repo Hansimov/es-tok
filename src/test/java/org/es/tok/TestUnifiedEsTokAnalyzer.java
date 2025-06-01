@@ -15,23 +15,23 @@ public class TestUnifiedEsTokAnalyzer {
     public static void main(String[] args) throws IOException {
         System.out.println("=== Unified ES-TOK Analyzer Test ===\n");
 
-        String text = "你好我的世界123Test-end!@#";
-        List<String> vocabs = Arrays.asList("你好", "我的世界", "test", "end");
+        String text = "123你好我的世界⻊⻌⽱⿑ Hello World Test-end!@#ЗИЙЛМНЙατυφχψω幩槪𠆆𠇜";
+        List<String> vocabs = Arrays.asList("你好", "你好我的", "我的世界", "hello world", "test", "end", "МНЙ", "υφχ");
 
         // Test 1: Vocabulary only
-        System.out.println("=== Test 1: Vocabulary Only ===");
+        System.out.println("=== Test 1: [vocab] ===");
         testAnalyzer(text, true, false, vocabs, false);
 
         // Test 2: Categorization only
-        System.out.println("=== Test 2: Categorization Only ===");
+        System.out.println("=== Test 2: [categ] ===");
         testAnalyzer(text, false, true, vocabs, false);
 
         // Test 3: Both enabled
-        System.out.println("=== Test 3: Both Vocabulary and Categorization ===");
+        System.out.println("=== Test 3: [vocab, categ] ===");
         testAnalyzer(text, true, true, vocabs, false);
 
         // Test 4: Case sensitivity
-        System.out.println("=== Test 4: Case Sensitive Vocabulary ===");
+        System.out.println("=== Test 4: [vocab, case_sensitive] ===");
         testAnalyzer(text, true, false, vocabs, true);
     }
 
