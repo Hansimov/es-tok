@@ -38,6 +38,8 @@ public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin 
     public Map<String, AnalysisProvider<TokenizerFactory>> getTokenizers() {
         Map<String, AnalysisProvider<TokenizerFactory>> tokenizers = new HashMap<>();
         tokenizers.put("vocab", VocabTokenizerFactory::new);
+        tokenizers.put("catogory", CategoryTokenizerFactory::new);
+        tokenizers.put("category_vocab", CategoryVocabTokenizerFactory::new);
         return tokenizers;
     }
 

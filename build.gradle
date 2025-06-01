@@ -61,3 +61,8 @@ task testCustomAnalyzeAPI(type: JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'org.es.tok.TestCustomAnalyzeAPI'
 }
+
+task testCategoryTokenizer(type: JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.es.tok.TestCategoryVocabTokenizer'
+}
