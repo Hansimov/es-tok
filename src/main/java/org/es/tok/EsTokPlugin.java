@@ -20,8 +20,8 @@ import org.elasticsearch.rest.RestHandler;
 import org.es.tok.analysis.VocabAnalyzerProvider;
 import org.es.tok.analysis.VocabTokenizerFactory;
 import org.es.tok.analysis.EsTokAnalyzerProvider;
-import org.es.tok.analysis.CategoryTokenizerFactory;
-import org.es.tok.analysis.CategoryVocabTokenizerFactory;
+import org.es.tok.analysis.CategTokenizerFactory;
+import org.es.tok.analysis.CategVocabTokenizerFactory;
 import org.es.tok.rest.RestVocabularyAction;
 import org.es.tok.rest.RestEsTokAnalyzeAction;
 
@@ -38,8 +38,8 @@ public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin 
     public Map<String, AnalysisProvider<TokenizerFactory>> getTokenizers() {
         Map<String, AnalysisProvider<TokenizerFactory>> tokenizers = new HashMap<>();
         tokenizers.put("vocab", VocabTokenizerFactory::new);
-        tokenizers.put("catogory", CategoryTokenizerFactory::new);
-        tokenizers.put("category_vocab", CategoryVocabTokenizerFactory::new);
+        tokenizers.put("cateeg", CategTokenizerFactory::new);
+        tokenizers.put("categ_vocab", CategVocabTokenizerFactory::new);
         return tokenizers;
     }
 

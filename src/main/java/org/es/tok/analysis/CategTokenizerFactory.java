@@ -5,17 +5,17 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.analysis.AbstractTokenizerFactory;
-import org.es.tok.lucene.CategoryTokenizer;
+import org.es.tok.lucene.CategTokenizer;
 
-public class CategoryTokenizerFactory extends AbstractTokenizerFactory {
+public class CategTokenizerFactory extends AbstractTokenizerFactory {
 
-    public CategoryTokenizerFactory(IndexSettings indexSettings, Environment environment, String name,
+    public CategTokenizerFactory(IndexSettings indexSettings, Environment environment, String name,
             Settings settings) {
         super(indexSettings, settings, name);
     }
 
     @Override
     public Tokenizer create() {
-        return new CategoryTokenizer();
+        return new CategTokenizer();
     }
 }

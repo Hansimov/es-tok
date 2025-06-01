@@ -1,6 +1,6 @@
 package org.es.tok;
 
-import org.es.tok.lucene.CategoryVocabTokenizer;
+import org.es.tok.lucene.CategVocabTokenizer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-public class TestCategoryVocabTokenizer {
+public class TestCategVocabTokenizer {
 
     public static class TokenResult {
         public final String text;
@@ -37,7 +37,7 @@ public class TestCategoryVocabTokenizer {
         List<TokenResult> results = new ArrayList<>();
 
         try {
-            CategoryVocabTokenizer tokenizer = new CategoryVocabTokenizer(
+            CategVocabTokenizer tokenizer = new CategVocabTokenizer(
                     vocabulary, caseSensitive, enableVocabularyMatching);
             tokenizer.setReader(new StringReader(text));
 

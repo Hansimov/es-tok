@@ -13,7 +13,7 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class CategoryVocabTokenizer extends Tokenizer {
+public class CategVocabTokenizer extends Tokenizer {
     private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
     private final OffsetAttribute offsetAtt = addAttribute(OffsetAttribute.class);
     private final PositionIncrementAttribute posIncrAtt = addAttribute(PositionIncrementAttribute.class);
@@ -100,11 +100,11 @@ public class CategoryVocabTokenizer extends Tokenizer {
     private Iterator<CombinedToken> tokenIterator;
     private boolean isInitialized = false;
 
-    public CategoryVocabTokenizer(List<String> vocabulary, boolean caseSensitive) {
+    public CategVocabTokenizer(List<String> vocabulary, boolean caseSensitive) {
         this(vocabulary, caseSensitive, true);
     }
 
-    public CategoryVocabTokenizer(List<String> vocabulary, boolean caseSensitive,
+    public CategVocabTokenizer(List<String> vocabulary, boolean caseSensitive,
             boolean enableVocabularyMatching) {
         this.enableVocabularyMatching = enableVocabularyMatching;
 
