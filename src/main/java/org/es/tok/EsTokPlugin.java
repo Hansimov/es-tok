@@ -17,9 +17,11 @@ import org.elasticsearch.plugins.AnalysisPlugin;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.rest.RestController;
 import org.elasticsearch.rest.RestHandler;
-import org.es.tok.analysis.AhoCorasickAnalyzerProvider;
-import org.es.tok.analysis.AhoCorasickTokenizerFactory;
+import org.es.tok.analysis.VocabAnalyzerProvider;
+import org.es.tok.analysis.VocabTokenizerFactory;
 import org.es.tok.analysis.EsTokAnalyzerProvider;
+import org.es.tok.analysis.CategoryTokenizerFactory;
+import org.es.tok.analysis.CategoryVocabTokenizerFactory;
 import org.es.tok.rest.RestVocabularyAction;
 import org.es.tok.rest.RestEsTokAnalyzeAction;
 
@@ -35,14 +37,14 @@ public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin 
     @Override
     public Map<String, AnalysisProvider<TokenizerFactory>> getTokenizers() {
         Map<String, AnalysisProvider<TokenizerFactory>> tokenizers = new HashMap<>();
-        tokenizers.put("aho_corasick", AhoCorasickTokenizerFactory::new);
+        tokenizers.put("vocab", VocabTokenizerFactory::new);
         return tokenizers;
     }
 
     @Override
     public Map<String, AnalysisProvider<AnalyzerProvider<? extends Analyzer>>> getAnalyzers() {
         Map<String, AnalysisProvider<AnalyzerProvider<? extends Analyzer>>> analyzers = new HashMap<>();
-        analyzers.put("aho_corasick", AhoCorasickAnalyzerProvider::new);
+        analyzers.put("vocab", VocabAnalyzerProvider::new);
         analyzers.put("es-tok", EsTokAnalyzerProvider::new);
         return analyzers;
     }

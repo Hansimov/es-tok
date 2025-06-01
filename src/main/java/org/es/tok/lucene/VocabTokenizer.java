@@ -12,7 +12,7 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 
-public class AhoCorasickTokenizer extends Tokenizer {
+public class VocabTokenizer extends Tokenizer {
     private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
     private final OffsetAttribute offsetAtt = addAttribute(OffsetAttribute.class);
     private final PositionIncrementAttribute posIncrAtt = addAttribute(PositionIncrementAttribute.class);
@@ -22,7 +22,7 @@ public class AhoCorasickTokenizer extends Tokenizer {
     private Iterator<Emit> emitIterator;
     private boolean isInitialized = false;
 
-    public AhoCorasickTokenizer(List<String> vocabulary, boolean caseSensitive) {
+    public VocabTokenizer(List<String> vocabulary, boolean caseSensitive) {
         Trie.TrieBuilder builder = Trie.builder();
 
         if (!caseSensitive) {

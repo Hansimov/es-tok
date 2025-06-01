@@ -1,9 +1,8 @@
 package org.es.tok;
 
-import org.es.tok.lucene.AhoCorasickTokenizer;
+import org.es.tok.lucene.VocabTokenizer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
-import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 
 import java.io.IOException;
 import java.io.StringReader;
@@ -52,12 +51,11 @@ public class TestTokenizer {
             String text = testTexts[i];
             System.out.println("> [" + (i + 1) + "]: \"" + text + "\"");
 
-            AhoCorasickTokenizer tokenizer = new AhoCorasickTokenizer(vocabulary, caseSensitive);
+            VocabTokenizer tokenizer = new VocabTokenizer(vocabulary, caseSensitive);
             tokenizer.setReader(new StringReader(text));
 
             CharTermAttribute termAtt = tokenizer.addAttribute(CharTermAttribute.class);
             OffsetAttribute offsetAtt = tokenizer.addAttribute(OffsetAttribute.class);
-            PositionIncrementAttribute posIncrAtt = tokenizer.addAttribute(PositionIncrementAttribute.class);
 
             tokenizer.reset();
 

@@ -11,19 +11,19 @@ import java.util.List;
 
 public class TestAnalyzer {
 
-    // Simplified AhoCorasickAnalyzer for testing without Elasticsearch dependencies
-    static class TestAhoCorasickAnalyzer extends Analyzer {
+    // Simplified VocabAnalyzer for testing without Elasticsearch dependencies
+    static class TestVocabAnalyzer extends Analyzer {
         private final List<String> vocabulary;
         private final boolean caseSensitive;
 
-        public TestAhoCorasickAnalyzer(List<String> vocabulary, boolean caseSensitive) {
+        public TestVocabAnalyzer(List<String> vocabulary, boolean caseSensitive) {
             this.vocabulary = vocabulary;
             this.caseSensitive = caseSensitive;
         }
 
         @Override
         protected TokenStreamComponents createComponents(String fieldName) {
-            var tokenizer = new org.es.tok.lucene.AhoCorasickTokenizer(vocabulary, caseSensitive);
+            var tokenizer = new org.es.tok.lucene.VocabTokenizer(vocabulary, caseSensitive);
 
             if (!caseSensitive) {
                 var lowerCaseFilter = new org.apache.lucene.analysis.LowerCaseFilter(tokenizer);
@@ -59,7 +59,7 @@ public class TestAnalyzer {
 
     private static void testAnalyzer(List<String> vocabulary, String[] testTexts, boolean caseSensitive)
             throws IOException {
-        TestAhoCorasickAnalyzer analyzer = new TestAhoCorasickAnalyzer(vocabulary, caseSensitive);
+        TestVocabAnalyzer analyzer = new TestVocabAnalyzer(vocabulary, caseSensitive);
 
         System.out.println("* vocabs: " + vocabulary);
         System.out.println("* ignore_case: " + !caseSensitive);

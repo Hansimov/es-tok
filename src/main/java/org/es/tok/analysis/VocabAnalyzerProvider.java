@@ -6,41 +6,41 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.analysis.AbstractIndexAnalyzerProvider;
-import org.es.tok.lucene.AhoCorasickTokenizer;
+import org.es.tok.lucene.VocabTokenizer;
 
 import java.util.List;
 
-public class AhoCorasickAnalyzerProvider extends AbstractIndexAnalyzerProvider<AhoCorasickAnalyzer> {
-    private final AhoCorasickAnalyzer analyzer;
+public class VocabAnalyzerProvider extends AbstractIndexAnalyzerProvider<VocabAnalyzer> {
+    private final VocabAnalyzer analyzer;
 
-    public AhoCorasickAnalyzerProvider(IndexSettings indexSettings, Environment environment, String name,
+    public VocabAnalyzerProvider(IndexSettings indexSettings, Environment environment, String name,
             Settings settings) {
         super(name, settings);
 
         List<String> vocabulary = settings.getAsList("vocabulary");
         boolean caseSensitive = settings.getAsBoolean("case_sensitive", false);
 
-        this.analyzer = new AhoCorasickAnalyzer(vocabulary, caseSensitive);
+        this.analyzer = new VocabAnalyzer(vocabulary, caseSensitive);
     }
 
     @Override
-    public AhoCorasickAnalyzer get() {
+    public VocabAnalyzer get() {
         return this.analyzer;
     }
 }
 
-class AhoCorasickAnalyzer extends Analyzer {
+class VocabAnalyzer extends Analyzer {
     private final List<String> vocabulary;
     private final boolean caseSensitive;
 
-    public AhoCorasickAnalyzer(List<String> vocabulary, boolean caseSensitive) {
+    public VocabAnalyzer(List<String> vocabulary, boolean caseSensitive) {
         this.vocabulary = vocabulary;
         this.caseSensitive = caseSensitive;
     }
 
     @Override
     protected TokenStreamComponents createComponents(String fieldName) {
-        var tokenizer = new AhoCorasickTokenizer(vocabulary, caseSensitive);
+        var tokenizer = new VocabTokenizer(vocabulary, caseSensitive);
 
         if (!caseSensitive) {
             var lowerCaseFilter = new LowerCaseFilter(tokenizer);

@@ -5,15 +5,15 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.analysis.AbstractTokenizerFactory;
-import org.es.tok.lucene.AhoCorasickTokenizer;
+import org.es.tok.lucene.VocabTokenizer;
 
 import java.util.List;
 
-public class AhoCorasickTokenizerFactory extends AbstractTokenizerFactory {
+public class VocabTokenizerFactory extends AbstractTokenizerFactory {
     private final List<String> vocabulary;
     private final boolean caseSensitive;
 
-    public AhoCorasickTokenizerFactory(IndexSettings indexSettings, Environment environment, String name,
+    public VocabTokenizerFactory(IndexSettings indexSettings, Environment environment, String name,
             Settings settings) {
         super(indexSettings, settings, name);
         this.vocabulary = settings.getAsList("vocabulary");
@@ -22,6 +22,6 @@ public class AhoCorasickTokenizerFactory extends AbstractTokenizerFactory {
 
     @Override
     public Tokenizer create() {
-        return new AhoCorasickTokenizer(vocabulary, caseSensitive);
+        return new VocabTokenizer(vocabulary, caseSensitive);
     }
 }

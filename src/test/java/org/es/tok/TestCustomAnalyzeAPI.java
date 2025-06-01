@@ -1,9 +1,6 @@
 package org.es.tok;
 
-import org.es.tok.rest.RestEsTokAnalyzeAction;
-
 public class TestCustomAnalyzeAPI {
-
     public static void main(String[] args) {
         System.out.println("=== Custom ES-TOK Analyze API Test ===\n");
         System.out.println(

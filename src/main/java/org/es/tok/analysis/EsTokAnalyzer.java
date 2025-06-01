@@ -2,7 +2,7 @@ package org.es.tok.analysis;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.LowerCaseFilter;
-import org.es.tok.lucene.AhoCorasickTokenizer;
+import org.es.tok.lucene.VocabTokenizer;
 
 import java.util.List;
 
@@ -17,7 +17,7 @@ public class EsTokAnalyzer extends Analyzer {
 
     @Override
     protected TokenStreamComponents createComponents(String fieldName) {
-        var tokenizer = new AhoCorasickTokenizer(vocabulary, caseSensitive);
+        var tokenizer = new VocabTokenizer(vocabulary, caseSensitive);
 
         if (!caseSensitive) {
             var lowerCaseFilter = new LowerCaseFilter(tokenizer);
