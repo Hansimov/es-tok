@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class CategStrategy implements TokenAction {
+public class CategStrategy implements TokenStrategy {
     // Character class definitions (from existing CategTokenizer)
     private static final String CH_ARAB = "\\d";
     private static final String CH_ATOZ = "a-zA-Zα-ωΑ-Ω";

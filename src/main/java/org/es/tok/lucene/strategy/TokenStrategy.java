@@ -2,7 +2,7 @@ package org.es.tok.lucene.strategy;
 
 import java.util.List;
 
-public interface TokenAction {
+public interface TokenStrategy {
     List<TokenInfo> tokenize(String text);
 
     public static class TokenInfo {

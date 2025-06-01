@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-public class VocabStrategy implements TokenAction {
+public class VocabStrategy implements TokenStrategy {
     private final Trie trie;
 
     public VocabStrategy(List<String> vocabs, boolean caseSensitive) {

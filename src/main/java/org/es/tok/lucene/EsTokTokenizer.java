@@ -6,7 +6,7 @@ import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
 import org.es.tok.lucene.strategy.CategStrategy;
-import org.es.tok.lucene.strategy.TokenAction;
+import org.es.tok.lucene.strategy.TokenStrategy;
 import org.es.tok.lucene.strategy.VocabStrategy;
 
 import java.io.IOException;
@@ -26,7 +26,7 @@ public class EsTokTokenizer extends Tokenizer {
     private final CategStrategy CategStrategy;
 
     private String inputText;
-    private Iterator<TokenAction.TokenInfo> tokenIterator;
+    private Iterator<TokenStrategy.TokenInfo> tokenIterator;
     private boolean isInitialized = false;
 
     public EsTokTokenizer(boolean enableVocab, boolean enableCateg, List<String> vocabs, boolean caseSensitive) {
@@ -50,7 +50,7 @@ public class EsTokTokenizer extends Tokenizer {
         }
 
         if (tokenIterator != null && tokenIterator.hasNext()) {
-            TokenAction.TokenInfo token = tokenIterator.next();
+            TokenStrategy.TokenInfo token = tokenIterator.next();
             clearAttributes();
 
             termAtt.copyBuffer(token.getText().toCharArray(), 0, token.getText().length());
@@ -78,13 +78,13 @@ public class EsTokTokenizer extends Tokenizer {
         }
 
         inputText = sb.toString();
-        List<TokenAction.TokenInfo> allTokens = processText(inputText);
+        List<TokenStrategy.TokenInfo> allTokens = processText(inputText);
         tokenIterator = allTokens.iterator();
         isInitialized = true;
     }
 
-    private List<TokenAction.TokenInfo> processText(String text) {
-        List<TokenAction.TokenInfo> allTokens = new ArrayList<>();
+    private List<TokenStrategy.TokenInfo> processText(String text) {
+        List<TokenStrategy.TokenInfo> allTokens = new ArrayList<>();
 
         // Apply categorization strategy if enabled
         if (enableCateg && CategStrategy != null) {
@@ -93,7 +93,7 @@ public class EsTokTokenizer extends Tokenizer {
 
         // Apply vocabulary strategy if enabled
         if (enableVocab && VocabStrategy != null) {
-            List<TokenAction.TokenInfo> vocabTokens = VocabStrategy.tokenize(text);
+            List<TokenStrategy.TokenInfo> vocabTokens = VocabStrategy.tokenize(text);
             allTokens.addAll(vocabTokens);
         }
 

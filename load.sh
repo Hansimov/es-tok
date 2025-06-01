@@ -1,6 +1,6 @@
 #!/bin/bash
 export PLUGIN_NAME="es-tok"
-export PLUGIN_VERSION=0.2.0
+export PLUGIN_VERSION=0.3.0
 export ES_DOCKER_PATH="$HOME/elasticsearch-docker"
 export ES_NODE="es01"
 export ES_PLUGIN_PATH="$ES_DOCKER_PATH/plugins/$ES_NODE/$PLUGIN_NAME"

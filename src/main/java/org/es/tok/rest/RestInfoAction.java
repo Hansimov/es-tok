@@ -17,13 +17,13 @@ public class RestInfoAction extends AbstractCatAction {
     @Override
     public List<Route> routes() {
         return List.of(
-                new Route(GET, "/_cat/estok"),
-                new Route(GET, "/_cat/estok/version"));
+                new Route(GET, "/_cat/es_tok"),
+                new Route(GET, "/_cat/es_tok/version"));
     }
 
     @Override
     public String getName() {
-        return "estok_tok_info";
+        return "es_tok_info_action";
     }
 
     @Override
@@ -55,8 +55,8 @@ public class RestInfoAction extends AbstractCatAction {
 
     @Override
     protected void documentation(StringBuilder sb) {
-        sb.append("/_cat/estok\n");
-        sb.append("/_cat/estok/version\n");
+        sb.append("/_cat/es_tok\n");
+        sb.append("/_cat/es_tok/version\n");
     }
 
     @Override
