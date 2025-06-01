@@ -1,16 +1,5 @@
 # ES-TOK Plugin
 
-<details> <summary> This repo is originally copied from es plugin template: </summary>
-
-```sh
-rsync -rv --exclude='.*' es-ivfpq/ es-tok/
-cp es-ivfpq/.gitignore es-tok/
-cp es-ivfpq/.vscode es-tok/
-rm -rf es-tok/build
-```
-
-</details>
-
 ## Installations
 
 ### Install Java 17
@@ -83,9 +72,7 @@ curl --cacert $HOME/elasticsearch-docker/certs/ca/ca.crt -u elastic:$ELASTIC_PAS
 ## Test commands
 
 ```sh
-./gradlew testTokenizer
-./gradlew testAnalyzer
-./gradlew testAnalyzeAPI
+testUnifiedAnalyzer
 ```
 
 

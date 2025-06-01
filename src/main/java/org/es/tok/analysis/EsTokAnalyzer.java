@@ -2,7 +2,7 @@ package org.es.tok.analysis;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.LowerCaseFilter;
-import org.es.tok.lucene.EsTokTokenizer;
+import org.es.tok.tokenize.EsTokTokenizer;
 
 import java.util.List;
 

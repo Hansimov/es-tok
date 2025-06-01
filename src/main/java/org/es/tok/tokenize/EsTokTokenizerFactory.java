@@ -1,11 +1,10 @@
-package org.es.tok.analysis;
+package org.es.tok.tokenize;
 
 import org.apache.lucene.analysis.Tokenizer;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.analysis.AbstractTokenizerFactory;
-import org.es.tok.lucene.EsTokTokenizer;
 
 import java.util.List;
 import java.util.Arrays;
@@ -18,7 +17,7 @@ public class EsTokTokenizerFactory extends AbstractTokenizerFactory {
 
     public EsTokTokenizerFactory(IndexSettings indexSettings, Environment environment, String name, Settings settings) {
         super(indexSettings, settings, name);
-        
+
         this.enableVocab = settings.getAsBoolean("enable_vocab", true);
         this.enableCateg = settings.getAsBoolean("enable_categ", false);
         this.vocabs = settings.getAsList("vocabs", settings.getAsList("vocabulary", Arrays.asList()));

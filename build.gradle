@@ -26,7 +26,7 @@ repositories {
 
 esplugin {
     name = 'es-tok'
-    description = 'Elasticsearch plugin with Aho-Corasick tokenization and vocabulary management'
+    description = 'ES-TOK plugin'
     classname = 'org.es.tok.EsTokPlugin'
 }
 
@@ -41,7 +41,6 @@ dependencies {
 }
 
 // Test tasks
-
 task testUnifiedAnalyzer(type: JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'org.es.tok.TestUnifiedEsTokAnalyzer'

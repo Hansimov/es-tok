@@ -18,8 +18,8 @@ import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.rest.RestController;
 import org.elasticsearch.rest.RestHandler;
 import org.es.tok.analysis.EsTokAnalyzerProvider;
-import org.es.tok.analysis.EsTokTokenizerFactory;
 import org.es.tok.rest.RestInfoAction;
+import org.es.tok.tokenize.EsTokTokenizerFactory;
 import org.es.tok.rest.RestAnalyzeAction;
 
 import java.util.HashMap;

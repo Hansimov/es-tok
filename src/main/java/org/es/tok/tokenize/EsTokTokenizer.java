@@ -1,13 +1,13 @@
-package org.es.tok.lucene;
+package org.es.tok.tokenize;
 
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
-import org.es.tok.lucene.strategy.CategStrategy;
-import org.es.tok.lucene.strategy.TokenStrategy;
-import org.es.tok.lucene.strategy.VocabStrategy;
+import org.es.tok.strategy.CategStrategy;
+import org.es.tok.strategy.TokenStrategy;
+import org.es.tok.strategy.VocabStrategy;
 
 import java.io.IOException;
 import java.util.ArrayList;

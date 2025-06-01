@@ -1,4 +1,4 @@
-package org.es.tok.lucene.strategy;
+package org.es.tok.strategy;
 
 import java.util.List;
 
