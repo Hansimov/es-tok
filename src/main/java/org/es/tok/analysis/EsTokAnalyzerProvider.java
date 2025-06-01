@@ -14,12 +14,18 @@ public class EsTokAnalyzerProvider extends AbstractIndexAnalyzerProvider<EsTokAn
     public EsTokAnalyzerProvider(IndexSettings indexSettings, Environment environment, String name, Settings settings) {
         super(name, settings);
 
-        // Default vocabulary if none provided
-        List<String> vocabulary = settings.getAsList("vocabulary", Arrays.asList());
-        List<String> vocabs = settings.getAsList("vocabs", vocabulary); // Support both 'vocabs' and 'vocabulary'
+        // Parse configuration
+        boolean enableVocab = settings.getAsBoolean("enable_vocab", true);
+        boolean enableCateg = settings.getAsBoolean("enable_categ", false);
+        List<String> vocabs = settings.getAsList("vocabs", Arrays.asList());
         boolean caseSensitive = settings.getAsBoolean("case_sensitive", false);
 
-        this.analyzer = new EsTokAnalyzer(vocabs, caseSensitive);
+        // Support legacy 'vocabulary' parameter
+        if (vocabs.isEmpty()) {
+            vocabs = settings.getAsList("vocabulary", Arrays.asList());
+        }
+
+        this.analyzer = new EsTokAnalyzer(enableVocab, enableCateg, vocabs, caseSensitive);
     }
 
     @Override

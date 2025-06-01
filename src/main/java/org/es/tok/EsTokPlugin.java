@@ -17,9 +17,11 @@ import org.elasticsearch.plugins.AnalysisPlugin;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.rest.RestController;
 import org.elasticsearch.rest.RestHandler;
+import org.es.tok.analysis.EsTokAnalyzerProvider;
+import org.es.tok.analysis.EsTokTokenizerFactory;
+// Keep legacy providers for backwards compatibility
 import org.es.tok.analysis.VocabAnalyzerProvider;
 import org.es.tok.analysis.VocabTokenizerFactory;
-import org.es.tok.analysis.EsTokAnalyzerProvider;
 import org.es.tok.analysis.CategTokenizerFactory;
 import org.es.tok.analysis.CategVocabTokenizerFactory;
 import org.es.tok.rest.RestVocabularyAction;
@@ -37,17 +39,26 @@ public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin 
     @Override
     public Map<String, AnalysisProvider<TokenizerFactory>> getTokenizers() {
         Map<String, AnalysisProvider<TokenizerFactory>> tokenizers = new HashMap<>();
+        // New unified tokenizer
+        tokenizers.put("es_tok", EsTokTokenizerFactory::new);
+
+        // Keep legacy tokenizers for backwards compatibility
         tokenizers.put("vocab", VocabTokenizerFactory::new);
-        tokenizers.put("cateeg", CategTokenizerFactory::new);
+        tokenizers.put("categ", CategTokenizerFactory::new);
         tokenizers.put("categ_vocab", CategVocabTokenizerFactory::new);
+
         return tokenizers;
     }
 
     @Override
     public Map<String, AnalysisProvider<AnalyzerProvider<? extends Analyzer>>> getAnalyzers() {
         Map<String, AnalysisProvider<AnalyzerProvider<? extends Analyzer>>> analyzers = new HashMap<>();
-        analyzers.put("vocab", VocabAnalyzerProvider::new);
+        // New unified analyzer (default)
         analyzers.put("es-tok", EsTokAnalyzerProvider::new);
+
+        // Keep legacy analyzers for backwards compatibility
+        analyzers.put("vocab", VocabAnalyzerProvider::new);
+
         return analyzers;
     }
 

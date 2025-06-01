@@ -66,3 +66,8 @@ task testCategTokenizer(type: JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'org.es.tok.TestCategVocabTokenizer'
 }
+
+task testUnifiedAnalyzer(type: JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.es.tok.TestUnifiedEsTokAnalyzer'
+}

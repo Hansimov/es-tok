@@ -26,9 +26,7 @@ public class RestEsTokAnalyzeAction extends BaseRestHandler {
     public List<Route> routes() {
         return List.of(
                 new Route(GET, "/_es_tok/analyze"),
-                new Route(POST, "/_es_tok/analyze"),
-                new Route(GET, "/{index}/_es_tok/analyze"),
-                new Route(POST, "/{index}/_es_tok/analyze"));
+                new Route(POST, "/_es_tok/analyze"));
     }
 
     @Override
@@ -37,19 +35,20 @@ public class RestEsTokAnalyzeAction extends BaseRestHandler {
     }
 
     public boolean supportsContentStream() {
-        return true;
-    }
-
-    @Override
-    public boolean allowsUnsafeBuffers() {
         return false;
     }
 
     @Override
+    public boolean allowsUnsafeBuffers() {
+        return true;
+    }
+
+    @Override
     protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client) throws IOException {
-        // Parse parameters first
+        // Parse parameters
         String text = request.param("text");
-        String analyzer = request.param("analyzer", "es-tok");
+        boolean enableVocab = request.paramAsBoolean("enable_vocab", true);
+        boolean enableCateg = request.paramAsBoolean("enable_categ", false);
         String vocabsParam = request.param("vocabs");
         boolean caseSensitive = request.paramAsBoolean("case_sensitive", false);
 
@@ -58,7 +57,7 @@ public class RestEsTokAnalyzeAction extends BaseRestHandler {
             vocabs = List.of(vocabsParam.split(","));
         }
 
-        // If we have content, parse the JSON body
+        // Parse JSON body if present
         if (request.hasContent()) {
             try (XContentParser parser = request.contentParser()) {
                 String currentFieldName = null;
@@ -68,19 +67,16 @@ public class RestEsTokAnalyzeAction extends BaseRestHandler {
                     if (token == XContentParser.Token.FIELD_NAME) {
                         currentFieldName = parser.currentName();
                     } else if (token.isValue()) {
-                        if ("text".equals(currentFieldName)) {
-                            text = parser.text();
-                        } else if ("analyzer".equals(currentFieldName)) {
-                            analyzer = parser.text();
-                        } else if ("case_sensitive".equals(currentFieldName)) {
-                            caseSensitive = parser.booleanValue();
+                        switch (currentFieldName) {
+                            case "text" -> text = parser.text();
+                            case "enable_vocab" -> enableVocab = parser.booleanValue();
+                            case "enable_categ" -> enableCateg = parser.booleanValue();
+                            case "case_sensitive" -> caseSensitive = parser.booleanValue();
                         }
-                    } else if (token == XContentParser.Token.START_ARRAY) {
-                        if ("vocabs".equals(currentFieldName)) {
-                            vocabs = new ArrayList<>();
-                            while ((token = parser.nextToken()) != XContentParser.Token.END_ARRAY) {
-                                vocabs.add(parser.text());
-                            }
+                    } else if (token == XContentParser.Token.START_ARRAY && "vocabs".equals(currentFieldName)) {
+                        vocabs = new ArrayList<>();
+                        while ((token = parser.nextToken()) != XContentParser.Token.END_ARRAY) {
+                            vocabs.add(parser.text());
                         }
                     }
                 }
@@ -89,24 +85,34 @@ public class RestEsTokAnalyzeAction extends BaseRestHandler {
 
         // Store final values for lambda
         final String finalText = text;
+        final boolean finalEnableVocab = enableVocab;
+        final boolean finalEnableCateg = enableCateg;
         final List<String> finalVocabs = vocabs;
         final boolean finalCaseSensitive = caseSensitive;
 
         return channel -> {
             try {
-                // Validate required parameters
+                // Validate parameters
                 if (finalText == null || finalText.isEmpty()) {
                     sendErrorResponse(channel, RestStatus.BAD_REQUEST, "Missing required parameter: text");
                     return;
                 }
 
-                if (finalVocabs.isEmpty()) {
-                    sendErrorResponse(channel, RestStatus.BAD_REQUEST, "Missing required parameter: vocabs");
+                if (!finalEnableVocab && !finalEnableCateg) {
+                    sendErrorResponse(channel, RestStatus.BAD_REQUEST,
+                            "At least one of enable_vocab or enable_categ must be true");
+                    return;
+                }
+
+                if (finalEnableVocab && finalVocabs.isEmpty()) {
+                    sendErrorResponse(channel, RestStatus.BAD_REQUEST,
+                            "vocabs parameter required when enable_vocab is true");
                     return;
                 }
 
                 // Perform analysis
-                List<AnalyzeToken> tokens = analyzeText(finalText, finalVocabs, finalCaseSensitive);
+                List<AnalyzeToken> tokens = analyzeText(finalText, finalEnableVocab, finalEnableCateg, finalVocabs,
+                        finalCaseSensitive);
 
                 // Build response
                 XContentBuilder builder = channel.newBuilder();
@@ -136,20 +142,21 @@ public class RestEsTokAnalyzeAction extends BaseRestHandler {
 
     private void sendErrorResponse(org.elasticsearch.rest.RestChannel channel, RestStatus status, String message) {
         try {
-            XContentBuilder builder = channel.newErrorBuilder();
-            builder.startObject()
-                    .field("error", message)
-                    .endObject();
+            XContentBuilder builder = channel.newBuilder();
+            builder.startObject();
+            builder.field("error", message);
+            builder.endObject();
             channel.sendResponse(new RestResponse(status, builder));
         } catch (IOException e) {
-            channel.sendResponse(new RestResponse(status, message));
+            // Fallback error response
         }
     }
 
-    private List<AnalyzeToken> analyzeText(String text, List<String> vocabs, boolean caseSensitive) throws IOException {
+    private List<AnalyzeToken> analyzeText(String text, boolean enableVocab, boolean enableCateg,
+            List<String> vocabs, boolean caseSensitive) throws IOException {
         List<AnalyzeToken> tokens = new ArrayList<>();
 
-        try (EsTokAnalyzer analyzer = new EsTokAnalyzer(vocabs, caseSensitive)) {
+        try (EsTokAnalyzer analyzer = new EsTokAnalyzer(enableVocab, enableCateg, vocabs, caseSensitive)) {
             TokenStream tokenStream = analyzer.tokenStream("field", text);
 
             CharTermAttribute termAtt = tokenStream.addAttribute(CharTermAttribute.class);
