@@ -20,7 +20,7 @@ import java.util.List;
 import static org.elasticsearch.rest.RestRequest.Method.GET;
 import static org.elasticsearch.rest.RestRequest.Method.POST;
 
-public class RestEsTokAnalyzeAction extends BaseRestHandler {
+public class RestAnalyzeAction extends BaseRestHandler {
 
     @Override
     public List<Route> routes() {

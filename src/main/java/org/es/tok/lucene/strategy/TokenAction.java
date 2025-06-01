@@ -1,10 +1,10 @@
-package org.es.tok.lucene.tokenization;
+package org.es.tok.lucene.strategy;
 
 import java.util.List;
 
-public interface TokenizationStrategy {
+public interface TokenAction {
     List<TokenInfo> tokenize(String text);
-    
+
     public static class TokenInfo {
         private final String text;
         private final int startOffset;
@@ -21,10 +21,24 @@ public interface TokenizationStrategy {
         }
 
         // Getters
-        public String getText() { return text; }
-        public int getStartOffset() { return startOffset; }
-        public int getEndOffset() { return endOffset; }
-        public String getType() { return type; }
-        public int getPosition() { return position; }
+        public String getText() {
+            return text;
+        }
+
+        public int getStartOffset() {
+            return startOffset;
+        }
+
+        public int getEndOffset() {
+            return endOffset;
+        }
+
+        public String getType() {
+            return type;
+        }
+
+        public int getPosition() {
+            return position;
+        }
     }
 }

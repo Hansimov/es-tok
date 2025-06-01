@@ -12,7 +12,7 @@ import java.util.List;
 
 import static org.elasticsearch.rest.RestRequest.Method.GET;
 
-public class RestVocabularyAction extends AbstractCatAction {
+public class RestInfoAction extends AbstractCatAction {
 
     @Override
     public List<Route> routes() {
@@ -23,7 +23,7 @@ public class RestVocabularyAction extends AbstractCatAction {
 
     @Override
     public String getName() {
-        return "estok_vocabulary_info";
+        return "estok_tok_info";
     }
 
     @Override
@@ -36,11 +36,11 @@ public class RestVocabularyAction extends AbstractCatAction {
         if (path.endsWith("/version")) {
             table.addCell("es-tok");
             table.addCell(EsTokPlugin.VERSION);
-            table.addCell("Aho-Corasick tokenization plugin");
+            table.addCell("ES-TOK plugin");
         } else {
             table.addCell("es-tok");
             table.addCell("Ready");
-            table.addCell("Use aho_corasick tokenizer/analyzer with vocabulary settings");
+            table.addCell("ES-TOK plugin");
         }
 
         table.endRow();

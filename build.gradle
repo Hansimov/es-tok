@@ -42,31 +42,6 @@ dependencies {
 
 // Test tasks
 
-task testTokenizer(type: JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.es.tok.TestTokenizer'
-}
-
-task testAnalyzer(type: JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.es.tok.TestAnalyzer'
-}
-
-task testAnalyzeAPI(type: JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.es.tok.TestAnalyzeAPI'
-}
-
-task testCustomAnalyzeAPI(type: JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.es.tok.TestCustomAnalyzeAPI'
-}
-
-task testCategTokenizer(type: JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.es.tok.TestCategVocabTokenizer'
-}
-
 task testUnifiedAnalyzer(type: JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'org.es.tok.TestUnifiedEsTokAnalyzer'

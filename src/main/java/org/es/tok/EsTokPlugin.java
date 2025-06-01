@@ -24,8 +24,8 @@ import org.es.tok.analysis.VocabAnalyzerProvider;
 import org.es.tok.analysis.VocabTokenizerFactory;
 import org.es.tok.analysis.CategTokenizerFactory;
 import org.es.tok.analysis.CategVocabTokenizerFactory;
-import org.es.tok.rest.RestVocabularyAction;
-import org.es.tok.rest.RestEsTokAnalyzeAction;
+import org.es.tok.rest.RestInfoAction;
+import org.es.tok.rest.RestAnalyzeAction;
 
 import java.util.HashMap;
 import java.util.List;
@@ -74,7 +74,7 @@ public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin 
             final Supplier<DiscoveryNodes> nodesInCluster,
             final Predicate<NodeFeature> clusterSupportsFeature) {
         return List.of(
-                new RestVocabularyAction(),
-                new RestEsTokAnalyzeAction());
+                new RestInfoAction(),
+                new RestAnalyzeAction());
     }
 }
