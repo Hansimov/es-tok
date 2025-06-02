@@ -72,25 +72,10 @@ curl --cacert $HOME/elasticsearch-docker/certs/ca/ca.crt -u elastic:$ELASTIC_PAS
 ## Test commands
 
 ```sh
-testUnifiedAnalyzer
+./gradlew testUnifiedAnalyzer
 ```
-
 
 ## References
 
-### Elastic Plugin
-
-* Creating classic plugins | Elastic Documentation
-  * https://www.elastic.co/docs/extend/elasticsearch/creating-classic-plugins
-  * https://www.elastic.co/docs/extend/elasticsearch/plugin-descriptor-file-classic
-
-* Creating text analysis plugins with the stable plugin API | Elastic Documentation
-  * https://www.elastic.co/docs/extend/elasticsearch/creating-stable-plugins
-  * https://www.elastic.co/docs/extend/elasticsearch/plugin-descriptor-file-stable
-
-* stable-analysis
-  * https://github.com/elastic/elasticsearch/tree/main/plugins/examples/stable-analysis
-  * https://github.com/elastic/elasticsearch/tree/main/plugins/examples/stable-analysis/src/main/java/org/elasticsearch/example/analysis
-
-* analysis-smartcn
-  * https://github.com/elastic/elasticsearch/tree/main/plugins/analysis-smartcn/src/main/java/org/elasticsearch/plugin/analysis/smartcn
+* ElasticSearch GitHub:
+  * https://github.com/elastic/elasticsearch

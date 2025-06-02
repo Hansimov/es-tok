@@ -1,6 +1,7 @@
 package org.es.tok.strategy;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -30,6 +31,9 @@ public class CategStrategy implements TokenStrategy {
             ")|(?<dash>" + RE_DASH + ")|(?<ws>" + RE_WS + ")|(?<mask>" + RE_MASK + ")|(?<nord>" + RE_NORD + ")";
     private static final Pattern PT_CATEG = Pattern.compile(RE_CATEG);
 
+    private static final List<String> GROUP_NAMES = Arrays.asList(
+            "arab", "eng", "cjk", "lang", "dash", "ws", "mask", "nord");
+
     @Override
     public List<TokenInfo> tokenize(String text) {
         List<TokenInfo> tokens = new ArrayList<>();
@@ -49,29 +53,10 @@ public class CategStrategy implements TokenStrategy {
     }
 
     private String determineTokenType(Matcher matcher) {
-        if (matcher.group("arab") != null) {
-            return "arab";
-        }
-        if (matcher.group("eng") != null) {
-            return "eng";
-        }
-        if (matcher.group("cjk") != null) {
-            return "cjk";
-        }
-        if (matcher.group("lang") != null) {
-            return "lang";
-        }
-        if (matcher.group("dash") != null) {
-            return "dash";
-        }
-        if (matcher.group("ws") != null) {
-            return "ws";
-        }
-        if (matcher.group("mask") != null) {
-            return "mask";
-        }
-        if (matcher.group("nord") != null) {
-            return "nord";
+        for (String groupName : GROUP_NAMES) {
+            if (matcher.group(groupName) != null) {
+                return groupName;
+            }
         }
         return "nord";
     }

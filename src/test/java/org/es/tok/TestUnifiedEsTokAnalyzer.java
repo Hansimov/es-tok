@@ -18,31 +18,33 @@ public class TestUnifiedEsTokAnalyzer {
         String text = "123你好我的世界⻊⻌⽱⿑ Hello World Test-end!@#ЗИЙЛМНЙατυφχψω幩槪𠆆𠇜";
         List<String> vocabs = Arrays.asList("你好", "你好我的", "我的世界", "hello world", "test", "end", "МНЙ", "υφχ");
 
-        // Test 1: Vocabulary only
+        // Test 1: use_vocab
         System.out.println("=== Test 1: [vocab] ===");
         testAnalyzer(text, true, false, vocabs, false);
 
-        // Test 2: Categorization only
+        // Test 2: use_categ
         System.out.println("=== Test 2: [categ] ===");
         testAnalyzer(text, false, true, vocabs, false);
 
-        // Test 3: Both enabled
+        // Test 3: use_vocab + use_categ
         System.out.println("=== Test 3: [vocab, categ] ===");
         testAnalyzer(text, true, true, vocabs, false);
 
-        // Test 4: Case sensitivity
-        System.out.println("=== Test 4: [vocab, case_sensitive] ===");
+        // Test 4: use_vocab + ignore_case
+        System.out.println("=== Test 4: [vocab, ignore_case] ===");
         testAnalyzer(text, true, false, vocabs, true);
     }
 
-    private static void testAnalyzer(String text, boolean enableVocab, boolean enableCateg,
-            List<String> vocabs, boolean caseSensitive) throws IOException {
+    private static void testAnalyzer(
+            String text, boolean useVocab, boolean useCateg, List<String> vocabs, boolean ignoreCase)
+            throws IOException {
 
-        System.out.println("Input: " + text);
-        System.out.println("Config: enableVocab=" + enableVocab + ", enableCateg=" + enableCateg +
-                ", caseSensitive=" + caseSensitive);
+        System.out.println("Input:  " + text);
+        System.out.println("Config: [" +
+                "useVocab=" + useVocab + ", useCateg=" + useCateg + ", ignoreCase=" + ignoreCase +
+                "]");
 
-        try (EsTokAnalyzer analyzer = new EsTokAnalyzer(enableVocab, enableCateg, vocabs, caseSensitive)) {
+        try (EsTokAnalyzer analyzer = new EsTokAnalyzer(useVocab, useCateg, vocabs, ignoreCase)) {
             TokenStream tokenStream = analyzer.tokenStream("field", text);
 
             CharTermAttribute termAtt = tokenStream.addAttribute(CharTermAttribute.class);
@@ -52,18 +54,18 @@ public class TestUnifiedEsTokAnalyzer {
             tokenStream.reset();
 
             System.out.println("Tokens:");
-            int tokenCount = 0;
+            int tokenIdx = 0;
             while (tokenStream.incrementToken()) {
-                tokenCount++;
-                System.out.printf("  [%d] '%s' [%d-%d] type='%s'%n",
-                        tokenCount,
-                        termAtt.toString(),
+                tokenIdx++;
+                System.out.printf("  [%2d] [%2d-%2d] <%5s>: %s%n",
+                        tokenIdx,
                         offsetAtt.startOffset(),
                         offsetAtt.endOffset(),
-                        typeAtt.type());
+                        typeAtt.type(),
+                        termAtt.toString());
             }
 
-            if (tokenCount == 0) {
+            if (tokenIdx == 0) {
                 System.out.println("  No tokens found.");
             }
 

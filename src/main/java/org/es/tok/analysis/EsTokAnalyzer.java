@@ -7,28 +7,23 @@ import org.es.tok.tokenize.EsTokTokenizer;
 import java.util.List;
 
 public class EsTokAnalyzer extends Analyzer {
-    private final boolean enableVocab;
-    private final boolean enableCateg;
+    private final boolean useVocab;
+    private final boolean useCateg;
     private final List<String> vocabs;
-    private final boolean caseSensitive;
+    private final boolean ignoreCase;
 
-    public EsTokAnalyzer(boolean enableVocab, boolean enableCateg, List<String> vocabs, boolean caseSensitive) {
-        this.enableVocab = enableVocab;
-        this.enableCateg = enableCateg;
+    public EsTokAnalyzer(boolean useVocab, boolean useCateg, List<String> vocabs, boolean ignoreCase) {
+        this.useVocab = useVocab;
+        this.useCateg = useCateg;
         this.vocabs = vocabs;
-        this.caseSensitive = caseSensitive;
-    }
-
-    // Backwards compatibility constructor
-    public EsTokAnalyzer(List<String> vocabs, boolean caseSensitive) {
-        this(true, false, vocabs, caseSensitive);
+        this.ignoreCase = ignoreCase;
     }
 
     @Override
     protected TokenStreamComponents createComponents(String fieldName) {
-        EsTokTokenizer tokenizer = new EsTokTokenizer(enableVocab, enableCateg, vocabs, caseSensitive);
+        EsTokTokenizer tokenizer = new EsTokTokenizer(useVocab, useCateg, vocabs, ignoreCase);
 
-        if (!caseSensitive) {
+        if (ignoreCase) {
             LowerCaseFilter lowerCaseFilter = new LowerCaseFilter(tokenizer);
             return new TokenStreamComponents(tokenizer, lowerCaseFilter);
         }
@@ -38,7 +33,7 @@ public class EsTokAnalyzer extends Analyzer {
 
     @Override
     public String toString() {
-        return String.format("EsTokAnalyzer{enableVocab=%s, enableCateg=%s, vocabs=%d terms, caseSensitive=%s}",
-                enableVocab, enableCateg, vocabs != null ? vocabs.size() : 0, caseSensitive);
+        return String.format("EsTokAnalyzer{useVocab=%s, useCateg=%s, vocabs=%d terms, ignoreCase=%s}",
+                useVocab, useCateg, vocabs != null ? vocabs.size() : 0, ignoreCase);
     }
 }

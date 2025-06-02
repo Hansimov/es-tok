@@ -10,22 +10,22 @@ import java.util.List;
 import java.util.Arrays;
 
 public class EsTokTokenizerFactory extends AbstractTokenizerFactory {
-    private final boolean enableVocab;
-    private final boolean enableCateg;
+    private final boolean useVocab;
+    private final boolean useCateg;
     private final List<String> vocabs;
-    private final boolean caseSensitive;
+    private final boolean ignoreCase;
 
     public EsTokTokenizerFactory(IndexSettings indexSettings, Environment environment, String name, Settings settings) {
         super(indexSettings, settings, name);
 
-        this.enableVocab = settings.getAsBoolean("enable_vocab", true);
-        this.enableCateg = settings.getAsBoolean("enable_categ", false);
+        this.useVocab = settings.getAsBoolean("use_vocab", true);
+        this.useCateg = settings.getAsBoolean("use_categ", false);
         this.vocabs = settings.getAsList("vocabs", settings.getAsList("vocabulary", Arrays.asList()));
-        this.caseSensitive = settings.getAsBoolean("case_sensitive", false);
+        this.ignoreCase = settings.getAsBoolean("ignore_case", false);
     }
 
     @Override
     public Tokenizer create() {
-        return new EsTokTokenizer(enableVocab, enableCateg, vocabs, caseSensitive);
+        return new EsTokTokenizer(useVocab, useCateg, vocabs, ignoreCase);
     }
 }

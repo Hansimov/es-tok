@@ -47,10 +47,10 @@ public class RestAnalyzeAction extends BaseRestHandler {
     protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client) throws IOException {
         // Parse parameters
         String text = request.param("text");
-        boolean enableVocab = request.paramAsBoolean("enable_vocab", true);
-        boolean enableCateg = request.paramAsBoolean("enable_categ", false);
+        boolean useVocab = request.paramAsBoolean("use_vocab", true);
+        boolean useCateg = request.paramAsBoolean("use_categ", false);
         String vocabsParam = request.param("vocabs");
-        boolean caseSensitive = request.paramAsBoolean("case_sensitive", false);
+        boolean ignoreCase = request.paramAsBoolean("ignore_case", false);
 
         List<String> vocabs = new ArrayList<>();
         if (vocabsParam != null) {
@@ -69,9 +69,9 @@ public class RestAnalyzeAction extends BaseRestHandler {
                     } else if (token.isValue()) {
                         switch (currentFieldName) {
                             case "text" -> text = parser.text();
-                            case "enable_vocab" -> enableVocab = parser.booleanValue();
-                            case "enable_categ" -> enableCateg = parser.booleanValue();
-                            case "case_sensitive" -> caseSensitive = parser.booleanValue();
+                            case "use_vocab" -> useVocab = parser.booleanValue();
+                            case "use_categ" -> useCateg = parser.booleanValue();
+                            case "ignore_case" -> ignoreCase = parser.booleanValue();
                         }
                     } else if (token == XContentParser.Token.START_ARRAY && "vocabs".equals(currentFieldName)) {
                         vocabs = new ArrayList<>();
@@ -85,10 +85,10 @@ public class RestAnalyzeAction extends BaseRestHandler {
 
         // Store final values for lambda
         final String finalText = text;
-        final boolean finalEnableVocab = enableVocab;
-        final boolean finalEnableCateg = enableCateg;
+        final boolean finaluseVocab = useVocab;
+        final boolean finaluseCateg = useCateg;
         final List<String> finalVocabs = vocabs;
-        final boolean finalCaseSensitive = caseSensitive;
+        final boolean finalIgnoreCase = ignoreCase;
 
         return channel -> {
             try {
@@ -98,21 +98,21 @@ public class RestAnalyzeAction extends BaseRestHandler {
                     return;
                 }
 
-                if (!finalEnableVocab && !finalEnableCateg) {
+                if (!finaluseVocab && !finaluseCateg) {
                     sendErrorResponse(channel, RestStatus.BAD_REQUEST,
-                            "At least one of enable_vocab or enable_categ must be true");
+                            "At least one of use_vocab or use_categ must be true");
                     return;
                 }
 
-                if (finalEnableVocab && finalVocabs.isEmpty()) {
+                if (finaluseVocab && finalVocabs.isEmpty()) {
                     sendErrorResponse(channel, RestStatus.BAD_REQUEST,
-                            "vocabs parameter required when enable_vocab is true");
+                            "vocabs parameter required when use_vocab is true");
                     return;
                 }
 
                 // Perform analysis
-                List<AnalyzeToken> tokens = analyzeText(finalText, finalEnableVocab, finalEnableCateg, finalVocabs,
-                        finalCaseSensitive);
+                List<AnalyzeToken> tokens = analyzeText(finalText, finaluseVocab, finaluseCateg, finalVocabs,
+                        finalIgnoreCase);
 
                 // Build response
                 XContentBuilder builder = channel.newBuilder();
@@ -152,11 +152,11 @@ public class RestAnalyzeAction extends BaseRestHandler {
         }
     }
 
-    private List<AnalyzeToken> analyzeText(String text, boolean enableVocab, boolean enableCateg,
-            List<String> vocabs, boolean caseSensitive) throws IOException {
+    private List<AnalyzeToken> analyzeText(String text, boolean useVocab, boolean useCateg,
+            List<String> vocabs, boolean ignoreCase) throws IOException {
         List<AnalyzeToken> tokens = new ArrayList<>();
 
-        try (EsTokAnalyzer analyzer = new EsTokAnalyzer(enableVocab, enableCateg, vocabs, caseSensitive)) {
+        try (EsTokAnalyzer analyzer = new EsTokAnalyzer(useVocab, useCateg, vocabs, ignoreCase)) {
             TokenStream tokenStream = analyzer.tokenStream("field", text);
 
             CharTermAttribute termAtt = tokenStream.addAttribute(CharTermAttribute.class);

@@ -20,8 +20,8 @@ public class EsTokTokenizer extends Tokenizer {
     private final PositionIncrementAttribute posIncrAtt = addAttribute(PositionIncrementAttribute.class);
     private final TypeAttribute typeAtt = addAttribute(TypeAttribute.class);
 
-    private final boolean enableVocab;
-    private final boolean enableCateg;
+    private final boolean useVocab;
+    private final boolean useCateg;
     private final VocabStrategy VocabStrategy;
     private final CategStrategy CategStrategy;
 
@@ -29,17 +29,16 @@ public class EsTokTokenizer extends Tokenizer {
     private Iterator<TokenStrategy.TokenInfo> tokenIterator;
     private boolean isInitialized = false;
 
-    public EsTokTokenizer(boolean enableVocab, boolean enableCateg, List<String> vocabs, boolean caseSensitive) {
-        this.enableVocab = enableVocab;
-        this.enableCateg = enableCateg;
+    public EsTokTokenizer(boolean useVocab, boolean useCateg, List<String> vocabs, boolean ignoreCase) {
+        this.useVocab = useVocab;
+        this.useCateg = useCateg;
 
-        // Initialize strategies based on configuration
-        this.VocabStrategy = enableVocab ? new VocabStrategy(vocabs, caseSensitive) : null;
-        this.CategStrategy = enableCateg ? new CategStrategy() : null;
+        this.VocabStrategy = useVocab ? new VocabStrategy(vocabs, ignoreCase) : null;
+        this.CategStrategy = useCateg ? new CategStrategy() : null;
 
-        // Validation: at least one strategy must be enabled
-        if (!enableVocab && !enableCateg) {
-            throw new IllegalArgumentException("At least one of enable_vocab or enable_categ must be true");
+        // must use at least one strategy
+        if (!useVocab && !useCateg) {
+            throw new IllegalArgumentException("Must use at least one strategy: use_vocab, use_categ");
         }
     }
 
@@ -86,11 +85,11 @@ public class EsTokTokenizer extends Tokenizer {
     private List<TokenStrategy.TokenInfo> processText(String text) {
         List<TokenStrategy.TokenInfo> allTokens = new ArrayList<>();
 
-        if (enableCateg && CategStrategy != null) {
+        if (useCateg && CategStrategy != null) {
             allTokens.addAll(CategStrategy.tokenize(text));
         }
 
-        if (enableVocab && VocabStrategy != null) {
+        if (useVocab && VocabStrategy != null) {
             List<TokenStrategy.TokenInfo> vocabTokens = VocabStrategy.tokenize(text);
             allTokens.addAll(vocabTokens);
         }

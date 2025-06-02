@@ -10,14 +10,14 @@ import java.util.List;
 public class VocabStrategy implements TokenStrategy {
     private final Trie trie;
 
-    public VocabStrategy(List<String> vocabs, boolean caseSensitive) {
+    public VocabStrategy(List<String> vocabs, boolean ignoreCase) {
         if (vocabs == null || vocabs.isEmpty()) {
             this.trie = null;
             return;
         }
 
         Trie.TrieBuilder builder = Trie.builder();
-        if (!caseSensitive) {
+        if (ignoreCase) {
             builder.ignoreCase();
         }
 
