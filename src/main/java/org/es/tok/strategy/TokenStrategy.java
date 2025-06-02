@@ -20,7 +20,6 @@ public interface TokenStrategy {
             this.position = position;
         }
 
-        // Getters
         public String getText() {
             return text;
         }

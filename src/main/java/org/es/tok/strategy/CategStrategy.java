@@ -49,25 +49,20 @@ public class CategStrategy implements TokenStrategy {
         int position = 0;
 
         while (matcher.find()) {
-            String matchedText = matcher.group();
-
-            if (ignoreCase) {
-                matchedText = matchedText.toLowerCase();
-            }
-
+            String matchText = matcher.group();
+            String tokenText = ignoreCase ? matchText.toLowerCase() : matchText;
             int start = matcher.start();
             int end = matcher.end();
             String type = determineTokenType(matcher);
             if (splitWord && ("cjk".equals(type) || "lang".equals(type))) {
                 for (int i = start; i < end; i++) {
                     tokens.add(new TokenInfo(
-                            String.valueOf(matchedText.charAt(i - start)),
+                            String.valueOf(tokenText.charAt(i - start)),
                             i, i + 1, type, position++));
                 }
             } else {
-                tokens.add(new TokenInfo(matchedText, start, end, type, position++));
+                tokens.add(new TokenInfo(tokenText, start, end, type, position++));
             }
-
         }
 
         return tokens;

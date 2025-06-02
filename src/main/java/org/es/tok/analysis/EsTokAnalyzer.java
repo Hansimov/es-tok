@@ -1,7 +1,6 @@
 package org.es.tok.analysis;
 
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.LowerCaseFilter;
 import org.es.tok.tokenize.EsTokTokenizer;
 
 import java.util.List;
@@ -25,12 +24,6 @@ public class EsTokAnalyzer extends Analyzer {
     @Override
     protected TokenStreamComponents createComponents(String fieldName) {
         EsTokTokenizer tokenizer = new EsTokTokenizer(useVocab, useCateg, vocabs, ignoreCase, splitWord);
-
-        if (ignoreCase) {
-            LowerCaseFilter lowerCaseFilter = new LowerCaseFilter(tokenizer);
-            return new TokenStreamComponents(tokenizer, lowerCaseFilter);
-        }
-
         return new TokenStreamComponents(tokenizer);
     }
 

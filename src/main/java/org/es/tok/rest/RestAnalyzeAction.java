@@ -96,21 +96,19 @@ public class RestAnalyzeAction extends BaseRestHandler {
 
         return channel -> {
             try {
-                // Validate parameters
+                // Validate params
                 if (finalText == null || finalText.isEmpty()) {
-                    sendErrorResponse(channel, RestStatus.BAD_REQUEST, "Missing required parameter: text");
+                    sendErrorResponse(channel, RestStatus.BAD_REQUEST, "Require param: `text`");
                     return;
                 }
-
                 if (!finaluseVocab && !finaluseCateg) {
                     sendErrorResponse(channel, RestStatus.BAD_REQUEST,
-                            "At least one of use_vocab or use_categ must be true");
+                            "Require at least one param to be ture: `use_vocab`, `use_categ`");
                     return;
                 }
-
                 if (finaluseVocab && finalVocabs.isEmpty()) {
                     sendErrorResponse(channel, RestStatus.BAD_REQUEST,
-                            "vocabs parameter required when use_vocab is true");
+                            "Require param when `use_vocab` is true: `vocabs`");
                     return;
                 }
 
@@ -128,8 +126,8 @@ public class RestAnalyzeAction extends BaseRestHandler {
                     builder.field("token", token.term);
                     builder.field("start_offset", token.startOffset);
                     builder.field("end_offset", token.endOffset);
-                    builder.field("position", token.position);
                     builder.field("type", token.type);
+                    builder.field("position", token.position);
                     builder.endObject();
                 }
 
@@ -178,8 +176,8 @@ public class RestAnalyzeAction extends BaseRestHandler {
                         termAtt.toString(),
                         offsetAtt.startOffset(),
                         offsetAtt.endOffset(),
-                        position,
-                        typeAtt.toString()));
+                        typeAtt.type(),
+                        position));
             }
 
             tokenStream.end();
@@ -192,15 +190,15 @@ public class RestAnalyzeAction extends BaseRestHandler {
         final String term;
         final int startOffset;
         final int endOffset;
-        final int position;
         final String type;
+        final int position;
 
-        AnalyzeToken(String term, int startOffset, int endOffset, int position, String type) {
+        AnalyzeToken(String term, int startOffset, int endOffset, String type, int position) {
             this.term = term;
             this.startOffset = startOffset;
             this.endOffset = endOffset;
-            this.position = position;
             this.type = type;
+            this.position = position;
         }
     }
 }
