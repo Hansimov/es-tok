@@ -19,8 +19,9 @@ public class EsTokAnalyzerProvider extends AbstractIndexAnalyzerProvider<EsTokAn
         boolean useCateg = settings.getAsBoolean("use_categ", false);
         List<String> vocabs = settings.getAsList("vocabs", Arrays.asList());
         boolean ignoreCase = settings.getAsBoolean("ignore_case", true);
+        boolean splitWord = settings.getAsBoolean("split_word", true);
 
-        this.analyzer = new EsTokAnalyzer(useVocab, useCateg, vocabs, ignoreCase);
+        this.analyzer = new EsTokAnalyzer(useVocab, useCateg, vocabs, ignoreCase, splitWord);
     }
 
     @Override

@@ -29,17 +29,15 @@ public class EsTokTokenizer extends Tokenizer {
     private Iterator<TokenStrategy.TokenInfo> tokenIterator;
     private boolean isInitialized = false;
 
-    public EsTokTokenizer(boolean useVocab, boolean useCateg, List<String> vocabs, boolean ignoreCase) {
+    public EsTokTokenizer(boolean useVocab, boolean useCateg, List<String> vocabs,
+            boolean ignoreCase, boolean splitWord) {
         this.useVocab = useVocab;
         this.useCateg = useCateg;
-
-        this.VocabStrategy = useVocab ? new VocabStrategy(vocabs, ignoreCase) : null;
-        this.CategStrategy = useCateg ? new CategStrategy() : null;
-
-        // must use at least one strategy
         if (!useVocab && !useCateg) {
             throw new IllegalArgumentException("Must use at least one strategy: use_vocab, use_categ");
         }
+        this.VocabStrategy = useVocab ? new VocabStrategy(vocabs, ignoreCase) : null;
+        this.CategStrategy = useCateg ? new CategStrategy(ignoreCase, splitWord) : null;
     }
 
     @Override

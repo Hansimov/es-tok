@@ -17,22 +17,30 @@ public class CategStrategy implements TokenStrategy {
     private static final String CH_WS = "\\s";
     private static final String CH_MASK = "▂";
 
-    private static final String RE_ARAB = "[" + CH_ARAB + "]+";
-    private static final String RE_ENG = "[" + CH_ENG + "]+";
-    private static final String RE_CJK = "[" + CH_CJK + "]+";
-    private static final String RE_LANG = "[" + CH_LANG + "]+";
-    private static final String RE_DASH = "[" + CH_DASH + "]+";
-    private static final String RE_WS = "[" + CH_WS + "]+";
-    private static final String RE_MASK = "[" + CH_MASK + "]+";
-    private static final String RE_NORD = "[^" + CH_ARAB + CH_ENG + CH_CJK + CH_LANG + CH_DASH + CH_WS + CH_MASK + "]+";
+    private static final String RE_ARAB = "[%s]+".formatted(CH_ARAB);
+    private static final String RE_ENG = "[%s]+".formatted(CH_ENG);
+    private static final String RE_CJK = "[%s]+".formatted(CH_CJK);
+    private static final String RE_LANG = "[%s]+".formatted(CH_LANG);
+    private static final String RE_DASH = "[%s]+".formatted(CH_DASH);
+    private static final String RE_WS = "[%s]+".formatted(CH_WS);
+    private static final String RE_MASK = "[%s]+".formatted(CH_MASK);
+    private static final String RE_NORD = "[^%s]+".formatted(
+            RE_ARAB + RE_ENG + RE_CJK + RE_LANG + RE_DASH + RE_WS + RE_MASK);
 
-    private static final String RE_CATEG = "(?<arab>" + RE_ARAB + ")|(?<eng>" + RE_ENG +
-            ")|(?<cjk>" + RE_CJK + ")|(?<lang>" + RE_LANG +
-            ")|(?<dash>" + RE_DASH + ")|(?<ws>" + RE_WS + ")|(?<mask>" + RE_MASK + ")|(?<nord>" + RE_NORD + ")";
+    private static final String RE_CATEG = "(?<arab>%s)|(?<eng>%s)|(?<cjk>%s)|(?<lang>%s)|(?<dash>%s)|(?<ws>%s)|(?<mask>%s)|(?<nord>%s)"
+            .formatted(RE_ARAB, RE_ENG, RE_CJK, RE_LANG, RE_DASH, RE_WS, RE_MASK, RE_NORD);
     private static final Pattern PT_CATEG = Pattern.compile(RE_CATEG);
 
     private static final List<String> GROUP_NAMES = Arrays.asList(
             "arab", "eng", "cjk", "lang", "dash", "ws", "mask", "nord");
+
+    private final boolean ignoreCase;
+    private final boolean splitWord;
+
+    public CategStrategy(boolean ignoreCase, boolean splitWord) {
+        this.ignoreCase = ignoreCase;
+        this.splitWord = splitWord;
+    }
 
     @Override
     public List<TokenInfo> tokenize(String text) {
@@ -42,11 +50,24 @@ public class CategStrategy implements TokenStrategy {
 
         while (matcher.find()) {
             String matchedText = matcher.group();
+
+            if (ignoreCase) {
+                matchedText = matchedText.toLowerCase();
+            }
+
             int start = matcher.start();
             int end = matcher.end();
             String type = determineTokenType(matcher);
+            if (splitWord && ("cjk".equals(type) || "lang".equals(type))) {
+                for (int i = start; i < end; i++) {
+                    tokens.add(new TokenInfo(
+                            String.valueOf(matchedText.charAt(i - start)),
+                            i, i + 1, type, position++));
+                }
+            } else {
+                tokens.add(new TokenInfo(matchedText, start, end, type, position++));
+            }
 
-            tokens.add(new TokenInfo(matchedText, start, end, type, position++));
         }
 
         return tokens;

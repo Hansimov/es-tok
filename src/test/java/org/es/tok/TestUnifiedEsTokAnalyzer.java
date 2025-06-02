@@ -20,31 +20,34 @@ public class TestUnifiedEsTokAnalyzer {
 
         // Test 1: use_vocab
         System.out.println("=== Test 1: [vocab] ===");
-        testAnalyzer(text, true, false, vocabs, false);
+        testAnalyzer(text, true, false, vocabs, false, false);
 
-        // Test 2: use_categ
-        System.out.println("=== Test 2: [categ] ===");
-        testAnalyzer(text, false, true, vocabs, false);
+        // Test 2: use_categ + split_word
+        System.out.println("=== Test 2: [categ, split_word] ===");
+        testAnalyzer(text, false, true, vocabs, false, true);
 
         // Test 3: use_vocab + use_categ
         System.out.println("=== Test 3: [vocab, categ] ===");
-        testAnalyzer(text, true, true, vocabs, false);
+        testAnalyzer(text, true, true, vocabs, false, false);
 
-        // Test 4: use_vocab + ignore_case
-        System.out.println("=== Test 4: [vocab, ignore_case] ===");
-        testAnalyzer(text, true, false, vocabs, true);
+        // Test 4: use_vocab + use_categ
+        System.out.println("=== Test 4: [vocab, categ, split_word] ===");
+        testAnalyzer(text, true, true, vocabs, false, true);
+
+        // Test 5: use_vocab + ignore_case
+        System.out.println("=== Test 5: [vocab, ignore_case] ===");
+        testAnalyzer(text, true, false, vocabs, true, false);
     }
 
     private static void testAnalyzer(
-            String text, boolean useVocab, boolean useCateg, List<String> vocabs, boolean ignoreCase)
+            String text, boolean useVocab, boolean useCateg, List<String> vocabs, boolean ignoreCase, boolean splitWord)
             throws IOException {
 
         System.out.println("Input:  " + text);
-        System.out.println("Config: [" +
-                "useVocab=" + useVocab + ", useCateg=" + useCateg + ", ignoreCase=" + ignoreCase +
-                "]");
+        System.out.println("Config: [useVocab=%b, useCateg=%b, ignoreCase=%b, splitWord=%b)".formatted(
+                useVocab, useCateg, ignoreCase, splitWord));
 
-        try (EsTokAnalyzer analyzer = new EsTokAnalyzer(useVocab, useCateg, vocabs, ignoreCase)) {
+        try (EsTokAnalyzer analyzer = new EsTokAnalyzer(useVocab, useCateg, vocabs, ignoreCase, splitWord)) {
             TokenStream tokenStream = analyzer.tokenStream("field", text);
 
             CharTermAttribute termAtt = tokenStream.addAttribute(CharTermAttribute.class);

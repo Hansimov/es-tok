@@ -14,18 +14,20 @@ public class EsTokTokenizerFactory extends AbstractTokenizerFactory {
     private final boolean useCateg;
     private final List<String> vocabs;
     private final boolean ignoreCase;
+    private final boolean splitWord;
 
     public EsTokTokenizerFactory(IndexSettings indexSettings, Environment environment, String name, Settings settings) {
         super(indexSettings, settings, name);
 
         this.useVocab = settings.getAsBoolean("use_vocab", true);
         this.useCateg = settings.getAsBoolean("use_categ", false);
-        this.vocabs = settings.getAsList("vocabs", settings.getAsList("vocabulary", Arrays.asList()));
-        this.ignoreCase = settings.getAsBoolean("ignore_case", false);
+        this.vocabs = settings.getAsList("vocabs", Arrays.asList());
+        this.ignoreCase = settings.getAsBoolean("ignore_case", true);
+        this.splitWord = settings.getAsBoolean("split_word", true);
     }
 
     @Override
     public Tokenizer create() {
-        return new EsTokTokenizer(useVocab, useCateg, vocabs, ignoreCase);
+        return new EsTokTokenizer(useVocab, useCateg, vocabs, ignoreCase, splitWord);
     }
 }

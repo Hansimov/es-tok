@@ -12,6 +12,7 @@ import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
+import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -48,16 +49,17 @@ public class RestAnalyzeAction extends BaseRestHandler {
         // Parse parameters
         String text = request.param("text");
         boolean useVocab = request.paramAsBoolean("use_vocab", true);
-        boolean useCateg = request.paramAsBoolean("use_categ", false);
-        String vocabsParam = request.param("vocabs");
-        boolean ignoreCase = request.paramAsBoolean("ignore_case", false);
+        boolean useCateg = request.paramAsBoolean("use_categ", true);
+        String vocabsParam = request.param("vocabs", "");
+        boolean ignoreCase = request.paramAsBoolean("ignore_case", true);
+        boolean splitWord = request.paramAsBoolean("split_word", true);
 
         List<String> vocabs = new ArrayList<>();
         if (vocabsParam != null) {
             vocabs = List.of(vocabsParam.split(","));
         }
 
-        // Parse JSON body if present
+        // Parse JSON body
         if (request.hasContent()) {
             try (XContentParser parser = request.contentParser()) {
                 String currentFieldName = null;
@@ -72,8 +74,9 @@ public class RestAnalyzeAction extends BaseRestHandler {
                             case "use_vocab" -> useVocab = parser.booleanValue();
                             case "use_categ" -> useCateg = parser.booleanValue();
                             case "ignore_case" -> ignoreCase = parser.booleanValue();
+                            case "split_word" -> splitWord = parser.booleanValue();
                         }
-                    } else if (token == XContentParser.Token.START_ARRAY && "vocabs".equals(currentFieldName)) {
+                    } else if ("vocabs".equals(currentFieldName) && token == XContentParser.Token.START_ARRAY) {
                         vocabs = new ArrayList<>();
                         while ((token = parser.nextToken()) != XContentParser.Token.END_ARRAY) {
                             vocabs.add(parser.text());
@@ -89,6 +92,7 @@ public class RestAnalyzeAction extends BaseRestHandler {
         final boolean finaluseCateg = useCateg;
         final List<String> finalVocabs = vocabs;
         final boolean finalIgnoreCase = ignoreCase;
+        final boolean finalSplitWord = splitWord;
 
         return channel -> {
             try {
@@ -112,7 +116,7 @@ public class RestAnalyzeAction extends BaseRestHandler {
 
                 // Perform analysis
                 List<AnalyzeToken> tokens = analyzeText(finalText, finaluseVocab, finaluseCateg, finalVocabs,
-                        finalIgnoreCase);
+                        finalIgnoreCase, finalSplitWord);
 
                 // Build response
                 XContentBuilder builder = channel.newBuilder();
@@ -125,6 +129,7 @@ public class RestAnalyzeAction extends BaseRestHandler {
                     builder.field("start_offset", token.startOffset);
                     builder.field("end_offset", token.endOffset);
                     builder.field("position", token.position);
+                    builder.field("type", token.type);
                     builder.endObject();
                 }
 
@@ -152,16 +157,17 @@ public class RestAnalyzeAction extends BaseRestHandler {
         }
     }
 
-    private List<AnalyzeToken> analyzeText(String text, boolean useVocab, boolean useCateg,
-            List<String> vocabs, boolean ignoreCase) throws IOException {
+    private List<AnalyzeToken> analyzeText(String text, boolean useVocab, boolean useCateg, List<String> vocabs,
+            boolean ignoreCase, boolean splitWord) throws IOException {
         List<AnalyzeToken> tokens = new ArrayList<>();
 
-        try (EsTokAnalyzer analyzer = new EsTokAnalyzer(useVocab, useCateg, vocabs, ignoreCase)) {
+        try (EsTokAnalyzer analyzer = new EsTokAnalyzer(useVocab, useCateg, vocabs, ignoreCase, splitWord)) {
             TokenStream tokenStream = analyzer.tokenStream("field", text);
 
             CharTermAttribute termAtt = tokenStream.addAttribute(CharTermAttribute.class);
             OffsetAttribute offsetAtt = tokenStream.addAttribute(OffsetAttribute.class);
             PositionIncrementAttribute posIncrAtt = tokenStream.addAttribute(PositionIncrementAttribute.class);
+            TypeAttribute typeAtt = tokenStream.addAttribute(TypeAttribute.class);
 
             tokenStream.reset();
 
@@ -172,7 +178,8 @@ public class RestAnalyzeAction extends BaseRestHandler {
                         termAtt.toString(),
                         offsetAtt.startOffset(),
                         offsetAtt.endOffset(),
-                        position));
+                        position,
+                        typeAtt.toString()));
             }
 
             tokenStream.end();
@@ -186,12 +193,14 @@ public class RestAnalyzeAction extends BaseRestHandler {
         final int startOffset;
         final int endOffset;
         final int position;
+        final String type;
 
-        AnalyzeToken(String term, int startOffset, int endOffset, int position) {
+        AnalyzeToken(String term, int startOffset, int endOffset, int position, String type) {
             this.term = term;
             this.startOffset = startOffset;
             this.endOffset = endOffset;
             this.position = position;
+            this.type = type;
         }
     }
 }
