@@ -4,9 +4,9 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.analysis.AbstractIndexAnalyzerProvider;
+import org.es.tok.file.VocabLoader;
 
 import java.util.List;
-import java.util.Arrays;
 
 public class EsTokAnalyzerProvider extends AbstractIndexAnalyzerProvider<EsTokAnalyzer> {
     private final EsTokAnalyzer analyzer;
@@ -17,7 +17,7 @@ public class EsTokAnalyzerProvider extends AbstractIndexAnalyzerProvider<EsTokAn
         // Parse configuration
         boolean useVocab = settings.getAsBoolean("use_vocab", true);
         boolean useCateg = settings.getAsBoolean("use_categ", false);
-        List<String> vocabs = settings.getAsList("vocabs", Arrays.asList());
+        List<String> vocabs = VocabLoader.loadVocabs(settings, environment);
         boolean ignoreCase = settings.getAsBoolean("ignore_case", true);
         boolean splitWord = settings.getAsBoolean("split_word", true);
 

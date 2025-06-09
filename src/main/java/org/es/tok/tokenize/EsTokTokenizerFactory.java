@@ -5,9 +5,9 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.analysis.AbstractTokenizerFactory;
+import org.es.tok.file.VocabLoader;
 
 import java.util.List;
-import java.util.Arrays;
 
 public class EsTokTokenizerFactory extends AbstractTokenizerFactory {
     private final boolean useVocab;
@@ -21,7 +21,7 @@ public class EsTokTokenizerFactory extends AbstractTokenizerFactory {
 
         this.useVocab = settings.getAsBoolean("use_vocab", true);
         this.useCateg = settings.getAsBoolean("use_categ", false);
-        this.vocabs = settings.getAsList("vocabs", Arrays.asList());
+        this.vocabs = VocabLoader.loadVocabs(settings, environment);
         this.ignoreCase = settings.getAsBoolean("ignore_case", true);
         this.splitWord = settings.getAsBoolean("split_word", true);
     }

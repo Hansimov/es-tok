@@ -7,7 +7,9 @@ import org.elasticsearch.rest.RestResponse;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentParser;
+import org.elasticsearch.common.settings.Settings;
 import org.es.tok.analysis.EsTokAnalyzer;
+import org.es.tok.file.VocabLoader;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
@@ -16,7 +18,9 @@ import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 import static org.elasticsearch.rest.RestRequest.Method.GET;
 import static org.elasticsearch.rest.RestRequest.Method.POST;
@@ -50,77 +54,163 @@ public class RestAnalyzeAction extends BaseRestHandler {
         String text = request.param("text");
         boolean useVocab = request.paramAsBoolean("use_vocab", true);
         boolean useCateg = request.paramAsBoolean("use_categ", true);
+        boolean useCache = request.paramAsBoolean("use_cache", true);
         String vocabsParam = request.param("vocabs", "");
         boolean ignoreCase = request.paramAsBoolean("ignore_case", true);
         boolean splitWord = request.paramAsBoolean("split_word", true);
 
         List<String> vocabs = new ArrayList<>();
-        if (vocabsParam != null) {
-            vocabs = List.of(vocabsParam.split(","));
+        if (vocabsParam != null && !vocabsParam.trim().isEmpty()) {
+            vocabs = Arrays.asList(vocabsParam.split(","));
+        }
+
+        // Parse vocab config parameters
+        String vocabFile = request.param("vocab_file");
+        String vocabListParam = request.param("vocab_list", "");
+        int vocabSize = request.paramAsInt("vocab_size", -1);
+
+        List<String> vocabListFromParam = new ArrayList<>();
+        if (vocabListParam != null && !vocabListParam.trim().isEmpty()) {
+            vocabListFromParam = Arrays.asList(vocabListParam.split(","));
         }
 
         // Parse JSON body
         if (request.hasContent()) {
             try (XContentParser parser = request.contentParser()) {
-                String currentFieldName = null;
-                XContentParser.Token token;
+                Map<String, Object> body = parser.map();
 
-                while ((token = parser.nextToken()) != XContentParser.Token.END_OBJECT) {
-                    if (token == XContentParser.Token.FIELD_NAME) {
-                        currentFieldName = parser.currentName();
-                    } else if (token.isValue()) {
-                        switch (currentFieldName) {
-                            case "text" -> text = parser.text();
-                            case "use_vocab" -> useVocab = parser.booleanValue();
-                            case "use_categ" -> useCateg = parser.booleanValue();
-                            case "ignore_case" -> ignoreCase = parser.booleanValue();
-                            case "split_word" -> splitWord = parser.booleanValue();
-                        }
-                    } else if ("vocabs".equals(currentFieldName) && token == XContentParser.Token.START_ARRAY) {
+                if (body.containsKey("text")) {
+                    text = (String) body.get("text");
+                }
+                if (body.containsKey("use_vocab")) {
+                    useVocab = (Boolean) body.get("use_vocab");
+                }
+                if (body.containsKey("use_categ")) {
+                    useCateg = (Boolean) body.get("use_categ");
+                }
+                if (body.containsKey("use_cache")) {
+                    useCache = (Boolean) body.get("use_cache");
+                }
+                if (body.containsKey("ignore_case")) {
+                    ignoreCase = (Boolean) body.get("ignore_case");
+                }
+                if (body.containsKey("split_word")) {
+                    splitWord = (Boolean) body.get("split_word");
+                }
+
+                // Legacy vocabs parameter support
+                if (body.containsKey("vocabs")) {
+                    Object vocabsObj = body.get("vocabs");
+                    if (vocabsObj instanceof List<?>) {
+                        List<?> rawList = (List<?>) vocabsObj;
                         vocabs = new ArrayList<>();
-                        while ((token = parser.nextToken()) != XContentParser.Token.END_ARRAY) {
-                            vocabs.add(parser.text());
+                        for (Object item : rawList) {
+                            if (item instanceof String) {
+                                vocabs.add((String) item);
+                            }
+                        }
+                    }
+                }
+
+                // New vocab_config parameter support
+                if (body.containsKey("vocab_config")) {
+                    Object vocabConfigObj = body.get("vocab_config");
+                    if (vocabConfigObj instanceof Map<?, ?>) {
+                        Map<?, ?> rawMap = (Map<?, ?>) vocabConfigObj;
+
+                        if (rawMap.containsKey("file")) {
+                            Object fileObj = rawMap.get("file");
+                            if (fileObj instanceof String) {
+                                vocabFile = (String) fileObj;
+                            }
+                        }
+
+                        if (rawMap.containsKey("list")) {
+                            Object listObj = rawMap.get("list");
+                            if (listObj instanceof List<?>) {
+                                List<?> rawList = (List<?>) listObj;
+                                vocabListFromParam = new ArrayList<>();
+                                for (Object item : rawList) {
+                                    if (item instanceof String) {
+                                        vocabListFromParam.add((String) item);
+                                    }
+                                }
+                            }
+                        }
+
+                        if (rawMap.containsKey("size")) {
+                            Object sizeObj = rawMap.get("size");
+                            if (sizeObj instanceof Integer) {
+                                vocabSize = (Integer) sizeObj;
+                            }
                         }
                     }
                 }
             }
         }
 
+        // Validate required parameters
+        if (text == null || text.trim().isEmpty()) {
+            return channel -> sendErrorResponse(channel, RestStatus.BAD_REQUEST, "Missing required parameter: text");
+        }
+
+        // Build final vocab list using new structure if provided, otherwise use legacy
+        List<String> finalVocabs;
+        if (vocabFile != null || !vocabListFromParam.isEmpty() || vocabSize >= 0) {
+            // Use new vocab_config structure
+            Settings.Builder settingsBuilder = Settings.builder();
+            settingsBuilder.put("use_vocab", useVocab);
+
+            // Build vocab_config as nested settings
+            if (vocabFile != null) {
+                settingsBuilder.put("vocab_config.file", vocabFile);
+            }
+            if (!vocabListFromParam.isEmpty()) {
+                settingsBuilder.putList("vocab_config.list", vocabListFromParam);
+            }
+            if (vocabSize >= 0) {
+                settingsBuilder.put("vocab_config.size", vocabSize);
+            }
+
+            try {
+                // Use caching for REST API requests
+                finalVocabs = VocabLoader.loadVocabs(settingsBuilder.build(), null, useCache);
+            } catch (Exception e) {
+                return channel -> sendErrorResponse(channel, RestStatus.BAD_REQUEST,
+                        "Error loading vocab config: " + e.getMessage());
+            }
+        } else {
+            // Use legacy vocabs parameter (no caching needed for in-memory lists)
+            finalVocabs = vocabs;
+        }
+
         // Store final values for lambda
         final String finalText = text;
-        final boolean finaluseVocab = useVocab;
-        final boolean finaluseCateg = useCateg;
-        final List<String> finalVocabs = vocabs;
+        final boolean finalUseVocab = useVocab;
+        final boolean finalUseCateg = useCateg;
+        final boolean finalUseCache = useCache;
+        final List<String> finalVocabList = finalVocabs;
         final boolean finalIgnoreCase = ignoreCase;
         final boolean finalSplitWord = splitWord;
 
         return channel -> {
             try {
-                // Validate params
-                if (finalText == null || finalText.isEmpty()) {
-                    sendErrorResponse(channel, RestStatus.BAD_REQUEST, "Require param: `text`");
-                    return;
-                }
-                if (!finaluseVocab && !finaluseCateg) {
-                    sendErrorResponse(channel, RestStatus.BAD_REQUEST,
-                            "Require at least one param to be ture: `use_vocab`, `use_categ`");
-                    return;
-                }
-                if (finaluseVocab && finalVocabs.isEmpty()) {
-                    sendErrorResponse(channel, RestStatus.BAD_REQUEST,
-                            "Require param when `use_vocab` is true: `vocabs`");
-                    return;
-                }
+                List<AnalyzeToken> tokens = analyzeText(finalText, finalUseVocab, finalUseCateg,
+                        finalVocabList, finalIgnoreCase, finalSplitWord);
 
-                // Perform analysis
-                List<AnalyzeToken> tokens = analyzeText(finalText, finaluseVocab, finaluseCateg, finalVocabs,
-                        finalIgnoreCase, finalSplitWord);
-
-                // Build response
                 XContentBuilder builder = channel.newBuilder();
                 builder.startObject();
-                builder.startArray("tokens");
+                builder.field("text", finalText);
+                builder.startObject("config");
+                builder.field("use_vocab", finalUseVocab);
+                builder.field("use_categ", finalUseCateg);
+                builder.field("ignore_case", finalIgnoreCase);
+                builder.field("split_word", finalSplitWord);
+                builder.field("vocab_count", finalVocabList.size());
+                builder.field("use_cache", finalUseCache);
+                builder.endObject();
 
+                builder.startArray("tokens");
                 for (AnalyzeToken token : tokens) {
                     builder.startObject();
                     builder.field("token", token.term);
@@ -130,7 +220,6 @@ public class RestAnalyzeAction extends BaseRestHandler {
                     builder.field("position", token.position);
                     builder.endObject();
                 }
-
                 builder.endArray();
                 builder.endObject();
 
@@ -138,7 +227,7 @@ public class RestAnalyzeAction extends BaseRestHandler {
 
             } catch (Exception e) {
                 sendErrorResponse(channel, RestStatus.INTERNAL_SERVER_ERROR,
-                        "Error analyzing text: " + e.getMessage());
+                        "Analysis failed: " + e.getMessage());
             }
         };
     }
