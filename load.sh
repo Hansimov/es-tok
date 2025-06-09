@@ -5,6 +5,7 @@ export ES_DOCKER_PATH="$HOME/elasticsearch-docker"
 export ES_NODE="es01"
 export ES_PLUGIN_PATH="$ES_DOCKER_PATH/plugins/$ES_NODE/$PLUGIN_NAME"
 export BUILT_ZIP_PATH="$HOME/repos/$PLUGIN_NAME/build/distributions/$PLUGIN_NAME-$PLUGIN_VERSION.zip"
+export VOCAB_TXT="$HOME/repos/bili-search-algo/models/sentencepiece/checkpoints/sp_merged.txt"
 
 echo "> Copy plugin to elasticsearch docker"
 echo "  * from: $BUILT_ZIP_PATH"
@@ -19,6 +20,9 @@ if [ ! -f $BUILT_ZIP_PATH ]; then
     exit 1
 fi
 unzip $BUILT_ZIP_PATH -d $ES_PLUGIN_PATH
+
+echo "> Copy vocab file"
+cp $VOCAB_TXT $ES_PLUGIN_PATH/vocabs.txt
 
 echo "+ Unzip success!"
 

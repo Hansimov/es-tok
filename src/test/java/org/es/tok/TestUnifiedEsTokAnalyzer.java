@@ -5,8 +5,12 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
 import org.es.tok.analysis.EsTokAnalyzer;
+import org.es.tok.file.VocabLoader;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
 
@@ -15,7 +19,7 @@ public class TestUnifiedEsTokAnalyzer {
     public static void main(String[] args) throws IOException {
         System.out.println("=== Unified ES-TOK Analyzer Test ===\n");
 
-        String text = "123你好我的世界⻊⻌⽱⿑ Hello World Test-end!@#ЗИЙЛМНЙατυφχψω幩槪𠆆𠇜";
+        String text = "123你好我的世界⻊⻌⽱⿑ Hello World Test-end GTA5 Chat GPT!@#ЗИЙЛМНЙατυφχψω幩槪𠆆𠇜";
         List<String> vocabs = Arrays.asList("你好", "你好我的", "我的世界", "hello world", "test", "end", "МНЙ", "υφχ");
 
         // Test 1: use_vocab
@@ -37,6 +41,18 @@ public class TestUnifiedEsTokAnalyzer {
         // Test 5: use_vocab + ignore_case
         System.out.println("=== Test 5: [vocab, ignore_case] ===");
         testAnalyzer(text, true, false, vocabs, true, false);
+
+        // Test 6: use_vocab + vocab file
+        System.out.println("=== Test 6: [vocab, ignore_case, vocab file] ===");
+        String vocabFile = "/home/asimov/repos/bili-search-algo/models/sentencepiece/checkpoints/sp_merged.txt";
+        Path vocabFilePath = Paths.get(vocabFile);
+        if (Files.exists(vocabFilePath)) {
+            List<String> fileVocabs = VocabLoader.loadVocabsFromFilePath(vocabFilePath);
+            testAnalyzer(text, true, false, fileVocabs, true, false);
+        } else {
+            System.out.println("Vocab file not found: " + vocabFile);
+        }
+
     }
 
     private static void testAnalyzer(
