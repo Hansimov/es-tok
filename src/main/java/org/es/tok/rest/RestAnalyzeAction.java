@@ -55,14 +55,8 @@ public class RestAnalyzeAction extends BaseRestHandler {
         boolean useVocab = request.paramAsBoolean("use_vocab", true);
         boolean useCateg = request.paramAsBoolean("use_categ", true);
         boolean useCache = request.paramAsBoolean("use_cache", true);
-        String vocabsParam = request.param("vocabs", "");
         boolean ignoreCase = request.paramAsBoolean("ignore_case", true);
         boolean splitWord = request.paramAsBoolean("split_word", true);
-
-        List<String> vocabs = new ArrayList<>();
-        if (vocabsParam != null && !vocabsParam.trim().isEmpty()) {
-            vocabs = Arrays.asList(vocabsParam.split(","));
-        }
 
         // Parse vocab config parameters
         String vocabFile = request.param("vocab_file");
@@ -96,20 +90,6 @@ public class RestAnalyzeAction extends BaseRestHandler {
                 }
                 if (body.containsKey("split_word")) {
                     splitWord = (Boolean) body.get("split_word");
-                }
-
-                // Legacy vocabs parameter support
-                if (body.containsKey("vocabs")) {
-                    Object vocabsObj = body.get("vocabs");
-                    if (vocabsObj instanceof List<?>) {
-                        List<?> rawList = (List<?>) vocabsObj;
-                        vocabs = new ArrayList<>();
-                        for (Object item : rawList) {
-                            if (item instanceof String) {
-                                vocabs.add((String) item);
-                            }
-                        }
-                    }
                 }
 
                 // New vocab_config parameter support
@@ -155,7 +135,7 @@ public class RestAnalyzeAction extends BaseRestHandler {
         }
 
         // Build final vocab list using new structure if provided, otherwise use legacy
-        List<String> finalVocabs;
+        List<String> vocabs;
         if (vocabFile != null || !vocabListFromParam.isEmpty() || vocabSize >= 0) {
             // Use new vocab_config structure
             Settings.Builder settingsBuilder = Settings.builder();
@@ -174,42 +154,31 @@ public class RestAnalyzeAction extends BaseRestHandler {
 
             try {
                 // Use caching for REST API requests
-                finalVocabs = VocabLoader.loadVocabs(settingsBuilder.build(), null, useCache);
+                vocabs = VocabLoader.loadVocabs(settingsBuilder.build(), null, useCache);
             } catch (Exception e) {
                 return channel -> sendErrorResponse(channel, RestStatus.BAD_REQUEST,
-                        "Error loading vocab config: " + e.getMessage());
+                        "Error loading `vocab_config`: " + e.getMessage());
             }
         } else {
-            // Use legacy vocabs parameter (no caching needed for in-memory lists)
-            finalVocabs = vocabs;
+            return channel -> sendErrorResponse(channel, RestStatus.BAD_REQUEST,
+                    "Must provide `file` or `list` in `vocab_config`");
         }
 
         // Store final values for lambda
         final String finalText = text;
         final boolean finalUseVocab = useVocab;
         final boolean finalUseCateg = useCateg;
-        final boolean finalUseCache = useCache;
-        final List<String> finalVocabList = finalVocabs;
+        final List<String> finalVocabs = vocabs;
         final boolean finalIgnoreCase = ignoreCase;
         final boolean finalSplitWord = splitWord;
 
         return channel -> {
             try {
-                List<AnalyzeToken> tokens = analyzeText(finalText, finalUseVocab, finalUseCateg,
-                        finalVocabList, finalIgnoreCase, finalSplitWord);
+                List<AnalyzeToken> tokens = analyzeText(finalText, finalUseVocab, finalUseCateg, finalVocabs,
+                        finalIgnoreCase, finalSplitWord);
 
                 XContentBuilder builder = channel.newBuilder();
                 builder.startObject();
-                builder.field("text", finalText);
-                builder.startObject("config");
-                builder.field("use_vocab", finalUseVocab);
-                builder.field("use_categ", finalUseCateg);
-                builder.field("ignore_case", finalIgnoreCase);
-                builder.field("split_word", finalSplitWord);
-                builder.field("vocab_count", finalVocabList.size());
-                builder.field("use_cache", finalUseCache);
-                builder.endObject();
-
                 builder.startArray("tokens");
                 for (AnalyzeToken token : tokens) {
                     builder.startObject();

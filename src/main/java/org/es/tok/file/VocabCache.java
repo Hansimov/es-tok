@@ -25,8 +25,8 @@ public class VocabCache {
             return cached.vocabs;
         }
 
-        // Load fresh vocabs and cache them
-        List<String> vocabs = VocabLoader.loadVocabs(settings, environment);
+        // Load new vocabs, and then cache them
+        List<String> vocabs = VocabLoader.loadVocabsInternal(settings, environment);
         CachedVocab newCached = new CachedVocab(vocabs, settings, environment);
         cache.put(cacheKey, newCached);
 
@@ -57,11 +57,7 @@ public class VocabCache {
             int size = vocabConfig.getAsInt("size", -1);
             keyBuilder.append("size:").append(size).append("|");
         } else {
-            // Legacy vocabs parameter
-            List<String> legacyVocabs = settings.getAsList("vocabs");
-            if (!legacyVocabs.isEmpty()) {
-                keyBuilder.append("vocabs:").append(String.join(",", legacyVocabs)).append("|");
-            }
+            throw new IllegalArgumentException("Must set `vocab_config`");
         }
 
         return keyBuilder.toString();

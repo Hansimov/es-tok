@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.stream.Stream;
 
 public class VocabLoader {
-
     public static List<String> loadVocabs(Settings settings, Environment environment) {
         return loadVocabs(settings, environment, false);
     }
@@ -20,9 +19,9 @@ public class VocabLoader {
     public static List<String> loadVocabs(Settings settings, Environment environment, boolean useCache) {
         if (useCache) {
             return VocabCache.loadVocabsWithCache(settings, environment);
+        } else {
+            return loadVocabsInternal(settings, environment);
         }
-
-        return loadVocabsInternal(settings, environment);
     }
 
     static List<String> loadVocabsInternal(Settings settings, Environment environment) {
@@ -30,13 +29,7 @@ public class VocabLoader {
         if (!useVocab) {
             return new ArrayList<>();
         }
-
         Settings vocabConfig = settings.getAsSettings("vocab_config");
-        if (vocabConfig == null || vocabConfig.isEmpty()) {
-            // Fallback to legacy "vocabs" list parameter for backward compatibility
-            return settings.getAsList("vocabs", Arrays.asList());
-        }
-
         return loadVocabsFromConfigInEnv(vocabConfig, environment);
     }
 
@@ -66,8 +59,7 @@ public class VocabLoader {
     static List<String> loadVocabsFromFileInEnv(String vocabFile, Environment environment) {
         Path filePath;
         if (environment == null) {
-            // For REST API usage where Environment might not be available
-            // implement fallback mechanism here
+            // Environment is not available for REST API, fallback implementation is needed
             filePath = Path.of("/usr/share/elasticsearch/plugins/" + vocabFile);
         } else {
             filePath = environment.configFile().resolve(vocabFile);
@@ -101,5 +93,4 @@ public class VocabLoader {
         }
         return fileVocabs;
     }
-
 }
