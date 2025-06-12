@@ -1,10 +1,10 @@
 #!/bin/bash
-export PLUGIN_NAME="es-tok"
+export PLUGIN_NAME="es_tok"
 export PLUGIN_VERSION=0.5.0
 export ES_DOCKER_PATH="$HOME/elasticsearch-docker"
 export ES_NODE="es01"
 export ES_PLUGIN_PATH="$ES_DOCKER_PATH/plugins/$ES_NODE/$PLUGIN_NAME"
-export BUILT_ZIP_PATH="$HOME/repos/$PLUGIN_NAME/build/distributions/$PLUGIN_NAME-$PLUGIN_VERSION.zip"
+export BUILT_ZIP_PATH="$HOME/repos/es-tok/build/distributions/$PLUGIN_NAME-$PLUGIN_VERSION.zip"
 export VOCAB_TXT="$HOME/repos/bili-search-algo/models/sentencepiece/checkpoints/sp_merged.txt"
 
 echo "> Copy plugin to elasticsearch docker"

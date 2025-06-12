@@ -25,7 +25,7 @@ repositories {
 }
 
 esplugin {
-    name = 'es-tok'
+    name = 'es_tok'
     description = 'ES-TOK plugin'
     classname = 'org.es.tok.EsTokPlugin'
 }

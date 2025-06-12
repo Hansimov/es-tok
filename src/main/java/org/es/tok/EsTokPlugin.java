@@ -41,7 +41,7 @@ public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin 
     @Override
     public Map<String, AnalysisProvider<AnalyzerProvider<? extends Analyzer>>> getAnalyzers() {
         Map<String, AnalysisProvider<AnalyzerProvider<? extends Analyzer>>> analyzers = new HashMap<>();
-        analyzers.put("es-tok", EsTokAnalyzerProvider::new);
+        analyzers.put("es_tok", EsTokAnalyzerProvider::new);
         return analyzers;
     }
 

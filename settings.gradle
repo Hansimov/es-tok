@@ -1,4 +1,4 @@
-rootProject.name = 'es-tok'
+rootProject.name = 'es_tok'
 try {
     enableFeaturePreview('TYPESAFE_PROJECT_ACCESSORS')
 } catch (MissingMethodException ignored) {

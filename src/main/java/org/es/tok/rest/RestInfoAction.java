@@ -34,11 +34,11 @@ public class RestInfoAction extends AbstractCatAction {
         table.startRow();
 
         if (path.endsWith("/version")) {
-            table.addCell("es-tok");
+            table.addCell("es_tok");
             table.addCell(EsTokPlugin.VERSION);
             table.addCell("ES-TOK plugin");
         } else {
-            table.addCell("es-tok");
+            table.addCell("es_tok");
             table.addCell("Ready");
             table.addCell("ES-TOK plugin");
         }
