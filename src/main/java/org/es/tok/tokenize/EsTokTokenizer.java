@@ -97,11 +97,12 @@ public class EsTokTokenizer extends Tokenizer {
             int offsetCompare = Integer.compare(a.getStartOffset(), b.getStartOffset());
             if (offsetCompare != 0)
                 return offsetCompare;
-
-            if ("vocab".equals(a.getType()) && !"vocab".equals(b.getType()))
+            if ("vocab".equals(a.getType()) && !"vocab".equals(b.getType())) {
                 return -1;
-            if (!"vocab".equals(a.getType()) && "vocab".equals(b.getType()))
+            }
+            if (!"vocab".equals(a.getType()) && "vocab".equals(b.getType())) {
                 return 1;
+            }
             return 0;
         });
 

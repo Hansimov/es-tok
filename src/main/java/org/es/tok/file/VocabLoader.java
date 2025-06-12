@@ -43,7 +43,8 @@ public class VocabLoader {
         // Load vocabs from "file"
         String vocabFile = vocabConfig.get("file");
         if (vocabFile != null && !vocabFile.trim().isEmpty()) {
-            List<String> fileVocabs = loadVocabsFromFileInEnv(vocabFile, environment);
+            Path filePath = getVocabFileFullPath(vocabFile, environment);
+            List<String> fileVocabs = loadVocabsFromFilePath(filePath);
             allVocabs.addAll(fileVocabs);
         }
 
@@ -56,17 +57,9 @@ public class VocabLoader {
         return allVocabs;
     }
 
-    static List<String> loadVocabsFromFileInEnv(String vocabFile, Environment environment) {
-        Path filePath;
-        if (environment == null) {
-            // Environment is not available for REST API, fallback implementation is needed
-            filePath = Path.of("/usr/share/elasticsearch/plugins/" + vocabFile);
-        } else {
-            filePath = environment.configFile().resolve(vocabFile);
-        }
-
-        List<String> fileVocabs = loadVocabsFromFilePath(filePath);
-        return fileVocabs;
+    static Path getVocabFileFullPath(String vocabFile, Environment environment) {
+        Path pluginDir = Path.of("/usr/share/elasticsearch/plugins/es_tok");
+        return pluginDir.resolve(vocabFile);
     }
 
     public static List<String> loadVocabsFromFilePath(Path filePath) {
