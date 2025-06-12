@@ -1,81 +1,68 @@
-# ES-TOK Plugin
+# ES-TOK Plugin User Guide
 
-## Installations
+See [ES-TOK Plugin Development Guide](DEVELOP.md) for installation and development.
 
-### Install Java 17
-
-```sh
-sudo apt update && sudo apt install -y openjdk-17-jdk
-```
-
-Set `JAVA_HOME` in `~/.bashrc`:
+## Get version
 
 ```sh
-export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-export PATH=$JAVA_HOME/bin:$PATH
+GET /_cat/es_tok/version?v
 ```
 
-Check version:
+## Analyze via REST API
 
-```sh
-java -version
-javac -version
+```json
+GET /_es_tok/analyze
+{
+    "text": "...",
+    "use_vocab": true,
+    "use_categ": true,
+    "split_word": true,
+    "ignore_case": true,
+    "vocab_config": {
+        "file": "vocabs.txt",
+        "size": 300000
+    }
+}
 ```
 
-### Install gradle
+## Create index with ES-TOK
 
-```sh
-cd downloads
-wget https://githubfast.com/gradle/gradle-distributions/releases/download/v8.14.1/gradle-8.14.1-bin.zip
-unzip gradle-8.14.1-bin.zip -d ~
+```json
+PUT test
+{
+  "settings": {
+    "analysis": {
+      "tokenizer": {
+        "es_tok_tokenizer": {
+          "type": "es_tok",
+          "use_vocab": true,
+          "use_categ": true,
+          "split_word": true,
+          "ignore_case": true,
+          "vocab_config": {
+            "file": "vocabs.txt",
+            "size": 300000
+          },
+        }
+      },
+      "analyzer": {
+        "es_tok_analyzer": {
+          "type": "custom",
+          "tokenizer": "es_tok_tokenizer",
+          "filter": ["lowercase"]
+        }
+      }
+    }
+  }
+}
 ```
 
-Add following line to `~/.bashrc`:
+## Use analzyer in index
 
-```sh
-export PATH=$HOME/gradle-8.14.1/bin:$PATH
+```json
+GET /test/_analyze
+{
+    "text": "...",
+    "analyzer": "es_tok_analyzer"
+}
 ```
-
-Check version:
-
-```sh
-gradle -v
-```
-
-## Build commands
-
-```sh
-gradle wrapper --gradle-version 8.14.1
-```
-
-```sh
-./gradlew clean assemble
-# ./gradlew --refresh-dependencies clean assemble
-```
-
-## Load commands
-
-See: [`load.sh`](./load.sh)
-
-Load plugin to elasticsearch:
-
-```sh
-./load.sh
-```
-
-Check if plugin is loaded:
-
-```sh
-curl --cacert $HOME/elasticsearch-docker/certs/ca/ca.crt -u elastic:$ELASTIC_PASSWORD -X GET "https://localhost:19200/_cat/plugins?v"
-```
-
-## Test commands
-
-```sh
-./gradlew testUnifiedAnalyzer
-```
-
-## References
-
-* ElasticSearch GitHub:
-  * https://github.com/elastic/elasticsearch
