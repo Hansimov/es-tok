@@ -17,15 +17,19 @@ public class EsTokAnalyzer extends Analyzer {
 
     // Backward compatibility constructors
     public EsTokAnalyzer(VocabConfig vocabConfig, CategConfig categConfig) {
-        this(vocabConfig, categConfig, new NgramConfig(false, false, false, false), true);
+        this(vocabConfig, categConfig, new NgramConfig(false, false, false, false), true, false);
     }
 
     public EsTokAnalyzer(VocabConfig vocabConfig, CategConfig categConfig, NgramConfig ngramConfig) {
-        this(vocabConfig, categConfig, ngramConfig, true);
+        this(vocabConfig, categConfig, ngramConfig, true, false);
     }
 
     public EsTokAnalyzer(VocabConfig vocabConfig, CategConfig categConfig, NgramConfig ngramConfig, boolean ignoreCase) {
-        this.config = new EsTokConfig(vocabConfig, categConfig, ngramConfig, ignoreCase);
+        this(vocabConfig, categConfig, ngramConfig, ignoreCase, false);
+    }
+
+    public EsTokAnalyzer(VocabConfig vocabConfig, CategConfig categConfig, NgramConfig ngramConfig, boolean ignoreCase, boolean dropDuplicates) {
+        this.config = new EsTokConfig(vocabConfig, categConfig, ngramConfig, ignoreCase, dropDuplicates);
     }
 
     @Override

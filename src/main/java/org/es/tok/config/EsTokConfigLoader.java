@@ -19,7 +19,8 @@ public class EsTokConfigLoader {
         CategConfig categConfig = CategLoader.loadCategConfig(settings);
         NgramConfig ngramConfig = NgramLoader.loadNgramConfig(settings);
         boolean ignoreCase = settings.getAsBoolean("ignore_case", true);
+        boolean dropDuplicates = settings.getAsBoolean("drop_duplicates", false);
 
-        return new EsTokConfig(vocabConfig, categConfig, ngramConfig, ignoreCase);
+        return new EsTokConfig(vocabConfig, categConfig, ngramConfig, ignoreCase, dropDuplicates);
     }
 }

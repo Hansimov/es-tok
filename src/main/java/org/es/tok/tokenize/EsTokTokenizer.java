@@ -14,7 +14,9 @@ import org.es.tok.strategy.VocabStrategy;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 public class EsTokTokenizer extends Tokenizer {
     private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
@@ -51,7 +53,7 @@ public class EsTokTokenizer extends Tokenizer {
     public EsTokTokenizer(org.es.tok.vocab.VocabConfig vocabConfig, 
                          org.es.tok.categ.CategConfig categConfig, 
                          org.es.tok.ngram.NgramConfig ngramConfig) {
-        this(new EsTokConfig(vocabConfig, categConfig, ngramConfig, true));
+        this(new EsTokConfig(vocabConfig, categConfig, ngramConfig, true, false));
     }
 
     @Override
@@ -107,6 +109,11 @@ public class EsTokTokenizer extends Tokenizer {
             baseTokens.addAll(vocabTokens);
         }
 
+        // Remove duplicates if enabled
+        if (config.isDropDuplicates()) {
+            baseTokens = removeDuplicateTokens(baseTokens);
+        }
+
         // Sort base tokens by start_offset, then by type (`vocab` first)
         baseTokens.sort((a, b) -> {
             int offsetCompare = Integer.compare(a.getStartOffset(), b.getStartOffset());
@@ -129,6 +136,45 @@ public class EsTokTokenizer extends Tokenizer {
         }
 
         return allTokens;
+    }
+
+    private List<TokenStrategy.TokenInfo> removeDuplicateTokens(List<TokenStrategy.TokenInfo> tokens) {
+        // Use LinkedHashSet to maintain insertion order while removing duplicates
+        Set<TokenKey> seenTokens = new LinkedHashSet<>();
+        List<TokenStrategy.TokenInfo> uniqueTokens = new ArrayList<>();
+
+        for (TokenStrategy.TokenInfo token : tokens) {
+            TokenKey key = new TokenKey(token.getStartOffset(), token.getEndOffset());
+            if (seenTokens.add(key)) {
+                uniqueTokens.add(token);
+            }
+        }
+
+        return uniqueTokens;
+    }
+
+    // Helper class to represent a token's position for deduplication
+    private static class TokenKey {
+        private final int startOffset;
+        private final int endOffset;
+
+        public TokenKey(int startOffset, int endOffset) {
+            this.startOffset = startOffset;
+            this.endOffset = endOffset;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            TokenKey tokenKey = (TokenKey) o;
+            return startOffset == tokenKey.startOffset && endOffset == tokenKey.endOffset;
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * startOffset + endOffset;
+        }
     }
 
     @Override

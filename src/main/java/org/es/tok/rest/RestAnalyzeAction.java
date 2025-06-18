@@ -19,7 +19,6 @@ import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -51,29 +50,23 @@ public class RestAnalyzeAction extends BaseRestHandler {
 
     @Override
     protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client) throws IOException {
-        // Parse parameters
+        // Parse top-level parameters
         String text = request.param("text");
         boolean useVocab = request.paramAsBoolean("use_vocab", true);
         boolean useCateg = request.paramAsBoolean("use_categ", true);
         boolean useNgram = request.paramAsBoolean("use_ngram", false);
         boolean useCache = request.paramAsBoolean("use_cache", true);
         boolean ignoreCase = request.paramAsBoolean("ignore_case", true);
-        boolean splitWord = request.paramAsBoolean("split_word", true);
+        boolean dropDuplicates = request.paramAsBoolean("drop_duplicates", false);
 
-        // Parse vocab config parameters
-        String vocabFile = request.param("vocab_file");
-        String vocabListParam = request.param("vocab_list", "");
-        int vocabSize = request.paramAsInt("vocab_size", -1);
-
-        // Parse ngram config parameters
-        boolean useBigram = request.paramAsBoolean("use_bigram", false);
-        boolean useVcgram = request.paramAsBoolean("use_vcgram", false);
-        boolean useVbgram = request.paramAsBoolean("use_vbgram", false);
-
-        List<String> vocabListFromParam = new ArrayList<>();
-        if (vocabListParam != null && !vocabListParam.trim().isEmpty()) {
-            vocabListFromParam = Arrays.asList(vocabListParam.split(","));
-        }
+        // Initialize config objects
+        String vocabFile = null;
+        List<String> vocabList = new ArrayList<>();
+        int vocabSize = -1;
+        boolean splitWord = true;
+        boolean useBigram = false;
+        boolean useVcgram = false;
+        boolean useVbgram = false;
 
         // Parse JSON body
         if (request.hasContent()) {
@@ -98,40 +91,55 @@ public class RestAnalyzeAction extends BaseRestHandler {
                 if (body.containsKey("ignore_case")) {
                     ignoreCase = (Boolean) body.get("ignore_case");
                 }
-                if (body.containsKey("split_word")) {
-                    splitWord = (Boolean) body.get("split_word");
+                if (body.containsKey("drop_duplicates")) {
+                    dropDuplicates = (Boolean) body.get("drop_duplicates");
                 }
 
                 // Parse vocab_config
                 if (body.containsKey("vocab_config")) {
                     Object vocabConfigObj = body.get("vocab_config");
                     if (vocabConfigObj instanceof Map<?, ?>) {
-                        Map<?, ?> rawMap = (Map<?, ?>) vocabConfigObj;
+                        Map<?, ?> vocabConfigMap = (Map<?, ?>) vocabConfigObj;
 
-                        if (rawMap.containsKey("file")) {
-                            Object fileObj = rawMap.get("file");
+                        if (vocabConfigMap.containsKey("file")) {
+                            Object fileObj = vocabConfigMap.get("file");
                             if (fileObj instanceof String) {
                                 vocabFile = (String) fileObj;
                             }
                         }
 
-                        if (rawMap.containsKey("list")) {
-                            Object listObj = rawMap.get("list");
+                        if (vocabConfigMap.containsKey("list")) {
+                            Object listObj = vocabConfigMap.get("list");
                             if (listObj instanceof List<?>) {
                                 List<?> rawList = (List<?>) listObj;
-                                vocabListFromParam = new ArrayList<>();
+                                vocabList = new ArrayList<>();
                                 for (Object item : rawList) {
                                     if (item instanceof String) {
-                                        vocabListFromParam.add((String) item);
+                                        vocabList.add((String) item);
                                     }
                                 }
                             }
                         }
 
-                        if (rawMap.containsKey("size")) {
-                            Object sizeObj = rawMap.get("size");
+                        if (vocabConfigMap.containsKey("size")) {
+                            Object sizeObj = vocabConfigMap.get("size");
                             if (sizeObj instanceof Integer) {
                                 vocabSize = (Integer) sizeObj;
+                            }
+                        }
+                    }
+                }
+
+                // Parse categ_config
+                if (body.containsKey("categ_config")) {
+                    Object categConfigObj = body.get("categ_config");
+                    if (categConfigObj instanceof Map<?, ?>) {
+                        Map<?, ?> categConfigMap = (Map<?, ?>) categConfigObj;
+
+                        if (categConfigMap.containsKey("split_word")) {
+                            Object splitWordObj = categConfigMap.get("split_word");
+                            if (splitWordObj instanceof Boolean) {
+                                splitWord = (Boolean) splitWordObj;
                             }
                         }
                     }
@@ -141,24 +149,24 @@ public class RestAnalyzeAction extends BaseRestHandler {
                 if (body.containsKey("ngram_config")) {
                     Object ngramConfigObj = body.get("ngram_config");
                     if (ngramConfigObj instanceof Map<?, ?>) {
-                        Map<?, ?> rawMap = (Map<?, ?>) ngramConfigObj;
+                        Map<?, ?> ngramConfigMap = (Map<?, ?>) ngramConfigObj;
 
-                        if (rawMap.containsKey("use_bigram")) {
-                            Object bigramObj = rawMap.get("use_bigram");
+                        if (ngramConfigMap.containsKey("use_bigram")) {
+                            Object bigramObj = ngramConfigMap.get("use_bigram");
                             if (bigramObj instanceof Boolean) {
                                 useBigram = (Boolean) bigramObj;
                             }
                         }
 
-                        if (rawMap.containsKey("use_vcgram")) {
-                            Object vcgramObj = rawMap.get("use_vcgram");
+                        if (ngramConfigMap.containsKey("use_vcgram")) {
+                            Object vcgramObj = ngramConfigMap.get("use_vcgram");
                             if (vcgramObj instanceof Boolean) {
                                 useVcgram = (Boolean) vcgramObj;
                             }
                         }
 
-                        if (rawMap.containsKey("use_vbgram")) {
-                            Object vbgramObj = rawMap.get("use_vbgram");
+                        if (ngramConfigMap.containsKey("use_vbgram")) {
+                            Object vbgramObj = ngramConfigMap.get("use_vbgram");
                             if (vbgramObj instanceof Boolean) {
                                 useVbgram = (Boolean) vbgramObj;
                             }
@@ -179,15 +187,15 @@ public class RestAnalyzeAction extends BaseRestHandler {
         settingsBuilder.put("use_categ", useCateg);
         settingsBuilder.put("use_ngram", useNgram);
         settingsBuilder.put("ignore_case", ignoreCase);
-        settingsBuilder.put("split_word", splitWord);
+        settingsBuilder.put("drop_duplicates", dropDuplicates);
 
-        // Build vocab_config
-        if (vocabFile != null || !vocabListFromParam.isEmpty() || vocabSize >= 0) {
+        // Build vocab_config settings
+        if (vocabFile != null || !vocabList.isEmpty() || vocabSize >= 0) {
             if (vocabFile != null) {
                 settingsBuilder.put("vocab_config.file", vocabFile);
             }
-            if (!vocabListFromParam.isEmpty()) {
-                settingsBuilder.putList("vocab_config.list", vocabListFromParam);
+            if (!vocabList.isEmpty()) {
+                settingsBuilder.putList("vocab_config.list", vocabList);
             }
             if (vocabSize >= 0) {
                 settingsBuilder.put("vocab_config.size", vocabSize);
@@ -197,7 +205,12 @@ public class RestAnalyzeAction extends BaseRestHandler {
                     "Must provide `file` or `list` in `vocab_config` when use_vocab is true");
         }
 
-        // Build ngram_config
+        // Build categ_config settings
+        if (useCateg) {
+            settingsBuilder.put("categ_config.split_word", splitWord);
+        }
+
+        // Build ngram_config settings
         if (useNgram && (useBigram || useVcgram || useVbgram)) {
             settingsBuilder.put("ngram_config.use_bigram", useBigram);
             settingsBuilder.put("ngram_config.use_vcgram", useVcgram);

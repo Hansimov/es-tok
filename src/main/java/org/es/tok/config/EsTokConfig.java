@@ -9,17 +9,28 @@ public class EsTokConfig {
     private final CategConfig categConfig;
     private final NgramConfig ngramConfig;
     private final boolean ignoreCase;
+    private final boolean dropDuplicates;
 
-    public EsTokConfig(VocabConfig vocabConfig, CategConfig categConfig, NgramConfig ngramConfig, boolean ignoreCase) {
+    public EsTokConfig(VocabConfig vocabConfig, CategConfig categConfig, NgramConfig ngramConfig, boolean ignoreCase, boolean dropDuplicates) {
         this.vocabConfig = vocabConfig;
         this.categConfig = categConfig;
         this.ngramConfig = ngramConfig;
         this.ignoreCase = ignoreCase;
+        this.dropDuplicates = dropDuplicates;
     }
 
     // Constructor with default NgramConfig
+    public EsTokConfig(VocabConfig vocabConfig, CategConfig categConfig, boolean ignoreCase, boolean dropDuplicates) {
+        this(vocabConfig, categConfig, new NgramConfig(false, false, false, false), ignoreCase, dropDuplicates);
+    }
+
+    // Backward compatibility constructors
+    public EsTokConfig(VocabConfig vocabConfig, CategConfig categConfig, NgramConfig ngramConfig, boolean ignoreCase) {
+        this(vocabConfig, categConfig, ngramConfig, ignoreCase, false);
+    }
+
     public EsTokConfig(VocabConfig vocabConfig, CategConfig categConfig, boolean ignoreCase) {
-        this(vocabConfig, categConfig, new NgramConfig(false, false, false, false), ignoreCase);
+        this(vocabConfig, categConfig, new NgramConfig(false, false, false, false), ignoreCase, false);
     }
 
     public VocabConfig getVocabConfig() {
@@ -38,9 +49,13 @@ public class EsTokConfig {
         return ignoreCase;
     }
 
+    public boolean isDropDuplicates() {
+        return dropDuplicates;
+    }
+
     @Override
     public String toString() {
-        return String.format("EsTokConfig{vocabConfig=%s, categConfig=%s, ngramConfig=%s, ignoreCase=%s}",
-                vocabConfig, categConfig, ngramConfig, ignoreCase);
+        return String.format("EsTokConfig{vocabConfig=%s, categConfig=%s, ngramConfig=%s, ignoreCase=%s, dropDuplicates=%s}",
+                vocabConfig, categConfig, ngramConfig, ignoreCase, dropDuplicates);
     }
 }
