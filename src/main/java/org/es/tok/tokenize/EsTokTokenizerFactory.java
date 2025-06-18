@@ -6,6 +6,8 @@ import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.analysis.AbstractTokenizerFactory;
 import org.es.tok.file.VocabLoader;
+import org.es.tok.ngram.NgramConfig;
+import org.es.tok.ngram.NgramLoader;
 
 import java.util.List;
 
@@ -15,6 +17,7 @@ public class EsTokTokenizerFactory extends AbstractTokenizerFactory {
     private final List<String> vocabs;
     private final boolean ignoreCase;
     private final boolean splitWord;
+    private final NgramConfig ngramConfig;
 
     public EsTokTokenizerFactory(IndexSettings indexSettings, Environment environment, String name, Settings settings) {
         super(indexSettings, settings, name);
@@ -24,10 +27,11 @@ public class EsTokTokenizerFactory extends AbstractTokenizerFactory {
         this.vocabs = VocabLoader.loadVocabs(settings, environment);
         this.ignoreCase = settings.getAsBoolean("ignore_case", true);
         this.splitWord = settings.getAsBoolean("split_word", true);
+        this.ngramConfig = NgramLoader.loadNgramConfig(settings);
     }
 
     @Override
     public Tokenizer create() {
-        return new EsTokTokenizer(useVocab, useCateg, vocabs, ignoreCase, splitWord);
+        return new EsTokTokenizer(useVocab, useCateg, vocabs, ignoreCase, splitWord, ngramConfig);
     }
 }

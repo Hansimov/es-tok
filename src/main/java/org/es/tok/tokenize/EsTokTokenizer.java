@@ -5,7 +5,9 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
+import org.es.tok.ngram.NgramConfig;
 import org.es.tok.strategy.CategStrategy;
+import org.es.tok.strategy.NgramStrategy;
 import org.es.tok.strategy.TokenStrategy;
 import org.es.tok.strategy.VocabStrategy;
 
@@ -22,22 +24,26 @@ public class EsTokTokenizer extends Tokenizer {
 
     private final boolean useVocab;
     private final boolean useCateg;
-    private final VocabStrategy VocabStrategy;
-    private final CategStrategy CategStrategy;
+    private final VocabStrategy vocabStrategy;
+    private final CategStrategy categStrategy;
+    private final NgramStrategy ngramStrategy;
 
     private String inputText;
     private Iterator<TokenStrategy.TokenInfo> tokenIterator;
     private boolean isInitialized = false;
 
     public EsTokTokenizer(boolean useVocab, boolean useCateg, List<String> vocabs,
-            boolean ignoreCase, boolean splitWord) {
+            boolean ignoreCase, boolean splitWord, NgramConfig ngramConfig) {
         this.useVocab = useVocab;
         this.useCateg = useCateg;
+
         if (!useVocab && !useCateg) {
             throw new IllegalArgumentException("Must use at least one strategy: use_vocab, use_categ");
         }
-        this.VocabStrategy = useVocab ? new VocabStrategy(vocabs, ignoreCase) : null;
-        this.CategStrategy = useCateg ? new CategStrategy(ignoreCase, splitWord) : null;
+
+        this.vocabStrategy = useVocab ? new VocabStrategy(vocabs, ignoreCase) : null;
+        this.categStrategy = useCateg ? new CategStrategy(ignoreCase, splitWord) : null;
+        this.ngramStrategy = ngramConfig.hasAnyNgramEnabled() ? new NgramStrategy(ngramConfig) : null;
     }
 
     @Override
@@ -81,19 +87,20 @@ public class EsTokTokenizer extends Tokenizer {
     }
 
     private List<TokenStrategy.TokenInfo> processText(String text) {
-        List<TokenStrategy.TokenInfo> allTokens = new ArrayList<>();
+        List<TokenStrategy.TokenInfo> baseTokens = new ArrayList<>();
 
-        if (useCateg && CategStrategy != null) {
-            allTokens.addAll(CategStrategy.tokenize(text));
+        // Generate base tokens from categ and vocab strategies
+        if (useCateg && categStrategy != null) {
+            baseTokens.addAll(categStrategy.tokenize(text));
         }
 
-        if (useVocab && VocabStrategy != null) {
-            List<TokenStrategy.TokenInfo> vocabTokens = VocabStrategy.tokenize(text);
-            allTokens.addAll(vocabTokens);
+        if (useVocab && vocabStrategy != null) {
+            List<TokenStrategy.TokenInfo> vocabTokens = vocabStrategy.tokenize(text);
+            baseTokens.addAll(vocabTokens);
         }
 
-        // Sort by start_offset, then by type (`vocab` first)
-        allTokens.sort((a, b) -> {
+        // Sort base tokens by start_offset, then by type (`vocab` first)
+        baseTokens.sort((a, b) -> {
             int offsetCompare = Integer.compare(a.getStartOffset(), b.getStartOffset());
             if (offsetCompare != 0)
                 return offsetCompare;
@@ -105,6 +112,13 @@ public class EsTokTokenizer extends Tokenizer {
             }
             return 0;
         });
+
+        // Generate n-grams if enabled
+        List<TokenStrategy.TokenInfo> allTokens = new ArrayList<>(baseTokens);
+        if (ngramStrategy != null) {
+            List<TokenStrategy.TokenInfo> ngramTokens = ngramStrategy.generateNgrams(baseTokens);
+            allTokens.addAll(ngramTokens);
+        }
 
         return allTokens;
     }

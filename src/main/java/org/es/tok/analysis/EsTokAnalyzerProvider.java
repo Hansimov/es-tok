@@ -5,6 +5,8 @@ import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.analysis.AbstractIndexAnalyzerProvider;
 import org.es.tok.file.VocabLoader;
+import org.es.tok.ngram.NgramConfig;
+import org.es.tok.ngram.NgramLoader;
 
 import java.util.List;
 
@@ -20,8 +22,9 @@ public class EsTokAnalyzerProvider extends AbstractIndexAnalyzerProvider<EsTokAn
         List<String> vocabs = VocabLoader.loadVocabs(settings, environment);
         boolean ignoreCase = settings.getAsBoolean("ignore_case", true);
         boolean splitWord = settings.getAsBoolean("split_word", true);
+        NgramConfig ngramConfig = NgramLoader.loadNgramConfig(settings);
 
-        this.analyzer = new EsTokAnalyzer(useVocab, useCateg, vocabs, ignoreCase, splitWord);
+        this.analyzer = new EsTokAnalyzer(useVocab, useCateg, vocabs, ignoreCase, splitWord, ngramConfig);
     }
 
     @Override
