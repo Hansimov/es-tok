@@ -40,6 +40,12 @@ public class NgramStrategy {
         return SEP_TYPES.contains(token.getType());
     }
 
+    private boolean isContainedIn(TokenStrategy.TokenInfo token1, TokenStrategy.TokenInfo token2) {
+        // token1 is contained in token2, i.e., L2<=L1<=R1<=R2
+        return token2.getStartOffset() <= token1.getStartOffset() &&
+                token1.getEndOffset() <= token2.getEndOffset();
+    }
+
     // main function
     public List<TokenStrategy.TokenInfo> generateNgrams(List<TokenStrategy.TokenInfo> baseTokens) {
         List<TokenStrategy.TokenInfo> ngramTokens = new ArrayList<>();
@@ -91,99 +97,155 @@ public class NgramStrategy {
         return ngramTokens;
     }
 
-    // bigram: ngrams that concat adjacent categ tokens
+    // bigram: ngrams that concat exactly 2 adjacent categ tokens
     private List<TokenStrategy.TokenInfo> generateBigrams(List<TokenStrategy.TokenInfo> tokens) {
         List<TokenStrategy.TokenInfo> bigrams = new ArrayList<>();
-        for (int i = 0; i < tokens.size(); i++) {
-            TokenStrategy.TokenInfo thisToken = tokens.get(i);
-            if (!isCategToken(thisToken)) {
+
+        for (int i = 0; i < tokens.size() - 1; i++) {
+            TokenStrategy.TokenInfo firstToken = tokens.get(i);
+            if (!isCategToken(firstToken)) {
                 continue;
             }
-            StringBuilder ngramText = new StringBuilder(thisToken.getText());
-            int startOffset = thisToken.getStartOffset();
-            int endOffset = thisToken.getEndOffset();
-            boolean hasSpace = false;
+
+            // Look for the next categ token that doesn't overlap with current token
             for (int j = i + 1; j < tokens.size(); j++) {
-                TokenStrategy.TokenInfo nextToken = tokens.get(j);
-                if (isSepToken(nextToken)) {
-                    ngramText.append(" ");
-                    hasSpace = true;
+                TokenStrategy.TokenInfo secondToken = tokens.get(j);
+
+                // Skip if current token is contained in or overlaps with the second token
+                if (isContainedIn(firstToken, secondToken) || isContainedIn(secondToken, firstToken)) {
                     continue;
-                } else if (isCategToken(nextToken)) {
-                    ngramText.append(nextToken.getText());
-                    endOffset = nextToken.getEndOffset();
-                    bigrams.addAll(processNgramText(ngramText, startOffset, endOffset, "bigram", hasSpace));
+                }
+
+                if (isSepToken(secondToken)) {
+                    continue; // Skip separators, keep looking
+                } else if (isCategToken(secondToken)) {
+                    // Found valid second categ token, create bigram
+                    StringBuilder ngramText = new StringBuilder();
+                    ngramText.append(firstToken.getText());
+
+                    boolean hasSpace = false;
+                    // Check if there are separators between the tokens
+                    if (firstToken.getEndOffset() < secondToken.getStartOffset()) {
+                        ngramText.append(" ");
+                        hasSpace = true;
+                    }
+
+                    ngramText.append(secondToken.getText());
+
+                    bigrams.addAll(processNgramText(
+                            ngramText,
+                            firstToken.getStartOffset(),
+                            secondToken.getEndOffset(),
+                            "bigram",
+                            hasSpace));
+                    break; // Only create one bigram per starting token
                 } else {
-                    break;
+                    break; // Stop if we encounter non-categ, non-sep token
                 }
             }
         }
         return bigrams;
     }
 
-    // vbgram: ngrams that concat adjacent vocab tokens
+    // vbgram: ngrams that concat exactly 2 adjacent vocab tokens
     private List<TokenStrategy.TokenInfo> generateVbgrams(List<TokenStrategy.TokenInfo> tokens) {
         List<TokenStrategy.TokenInfo> vbgrams = new ArrayList<>();
-        for (int i = 0; i < tokens.size(); i++) {
-            TokenStrategy.TokenInfo thisToken = tokens.get(i);
-            if (!isVocabToken(thisToken)) {
+
+        for (int i = 0; i < tokens.size() - 1; i++) {
+            TokenStrategy.TokenInfo firstToken = tokens.get(i);
+            if (!isVocabToken(firstToken)) {
                 continue;
             }
-            StringBuilder ngramText = new StringBuilder(thisToken.getText());
-            int startOffset = thisToken.getStartOffset();
-            int endOffset = thisToken.getEndOffset();
-            boolean hasSpace = false;
+
+            // Look for the next vocab token that doesn't overlap with current token
             for (int j = i + 1; j < tokens.size(); j++) {
-                TokenStrategy.TokenInfo nextToken = tokens.get(j);
-                if (isSepToken(nextToken)) {
-                    ngramText.append(" ");
-                    hasSpace = true;
+                TokenStrategy.TokenInfo secondToken = tokens.get(j);
+
+                // Skip if current token is contained in or overlaps with the second token
+                if (isContainedIn(firstToken, secondToken) || isContainedIn(secondToken, firstToken)) {
                     continue;
-                } else if (isVocabToken(nextToken)) {
-                    ngramText.append(nextToken.getText());
-                    endOffset = nextToken.getEndOffset();
-                    vbgrams.addAll(processNgramText(ngramText, startOffset, endOffset, "vbgram", hasSpace));
+                }
+
+                if (isSepToken(secondToken)) {
+                    continue; // Skip separators, keep looking
+                } else if (isVocabToken(secondToken)) {
+                    // Found valid second vocab token, create vbgram
+                    StringBuilder ngramText = new StringBuilder();
+                    ngramText.append(firstToken.getText());
+
+                    boolean hasSpace = false;
+                    // Check if there are separators between the tokens
+                    if (firstToken.getEndOffset() < secondToken.getStartOffset()) {
+                        ngramText.append(" ");
+                        hasSpace = true;
+                    }
+
+                    ngramText.append(secondToken.getText());
+
+                    vbgrams.addAll(processNgramText(
+                            ngramText,
+                            firstToken.getStartOffset(),
+                            secondToken.getEndOffset(),
+                            "vbgram",
+                            hasSpace));
+                    break; // Only create one vbgram per starting token
                 } else {
-                    break;
+                    break; // Stop if we encounter non-vocab, non-sep token
                 }
             }
         }
         return vbgrams;
     }
 
-    // vcgram: ngrams that concat adjacent tokens, but must contain vocab token
+    // vcgram: ngrams that concat exactly 2 adjacent word tokens, but must contain
+    // at least one vocab token
     private List<TokenStrategy.TokenInfo> generateVcgrams(List<TokenStrategy.TokenInfo> tokens) {
         List<TokenStrategy.TokenInfo> vcgrams = new ArrayList<>();
-        for (int i = 0; i < tokens.size(); i++) {
-            TokenStrategy.TokenInfo thisToken = tokens.get(i);
-            if (!isWordToken(thisToken)) {
+
+        for (int i = 0; i < tokens.size() - 1; i++) {
+            TokenStrategy.TokenInfo firstToken = tokens.get(i);
+            if (!isWordToken(firstToken)) {
                 continue;
             }
-            StringBuilder ngramText = new StringBuilder(thisToken.getText());
-            int startOffset = thisToken.getStartOffset();
-            int endOffset = thisToken.getEndOffset();
-            boolean hasVocab = isVocabToken(thisToken);
-            boolean hasSpace = false;
-            for (int j = i + 1; j < tokens.size(); j++) {
-                TokenStrategy.TokenInfo nextToken = tokens.get(j);
-                if (isSepToken(nextToken)) {
-                    ngramText.append(" ");
-                    hasSpace = true;
-                    continue;
-                } else if (isWordToken(nextToken)) {
-                    ngramText.append(nextToken.getText());
-                    endOffset = nextToken.getEndOffset();
-                    if (isVocabToken(nextToken)) {
-                        hasVocab = true;
-                    }
-                    if (hasVocab) {
-                        vcgrams.addAll(processNgramText(ngramText, startOffset, endOffset, "vcgram", hasSpace));
-                    } else {
-                        break;
-                    }
-                } else {
-                    break;
 
+            // Look for the next word token that doesn't overlap with current token
+            for (int j = i + 1; j < tokens.size(); j++) {
+                TokenStrategy.TokenInfo secondToken = tokens.get(j);
+
+                // Skip if current token is contained in or overlaps with the second token
+                if (isContainedIn(firstToken, secondToken) || isContainedIn(secondToken, firstToken)) {
+                    continue;
+                }
+
+                if (isSepToken(secondToken)) {
+                    continue; // Skip separators, keep looking
+                } else if (isWordToken(secondToken)) {
+                    // Check if at least one token is a vocab token
+                    boolean hasVocab = isVocabToken(firstToken) || isVocabToken(secondToken);
+                    if (hasVocab) {
+                        // Create vcgram
+                        StringBuilder ngramText = new StringBuilder();
+                        ngramText.append(firstToken.getText());
+
+                        boolean hasSpace = false;
+                        // Check if there are separators between the tokens
+                        if (firstToken.getEndOffset() < secondToken.getStartOffset()) {
+                            ngramText.append(" ");
+                            hasSpace = true;
+                        }
+
+                        ngramText.append(secondToken.getText());
+
+                        vcgrams.addAll(processNgramText(
+                                ngramText,
+                                firstToken.getStartOffset(),
+                                secondToken.getEndOffset(),
+                                "vcgram",
+                                hasSpace));
+                    }
+                    break; // Only create one vcgram per starting token
+                } else {
+                    break; // Stop if we encounter non-word, non-sep token
                 }
             }
         }
