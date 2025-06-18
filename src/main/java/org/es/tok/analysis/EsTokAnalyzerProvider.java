@@ -4,11 +4,8 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.analysis.AbstractIndexAnalyzerProvider;
-import org.es.tok.file.VocabLoader;
-import org.es.tok.ngram.NgramConfig;
-import org.es.tok.ngram.NgramLoader;
-
-import java.util.List;
+import org.es.tok.config.EsTokConfig;
+import org.es.tok.config.EsTokConfigLoader;
 
 public class EsTokAnalyzerProvider extends AbstractIndexAnalyzerProvider<EsTokAnalyzer> {
     private final EsTokAnalyzer analyzer;
@@ -16,15 +13,9 @@ public class EsTokAnalyzerProvider extends AbstractIndexAnalyzerProvider<EsTokAn
     public EsTokAnalyzerProvider(IndexSettings indexSettings, Environment environment, String name, Settings settings) {
         super(name, settings);
 
-        // Parse configuration
-        boolean useVocab = settings.getAsBoolean("use_vocab", true);
-        boolean useCateg = settings.getAsBoolean("use_categ", false);
-        List<String> vocabs = VocabLoader.loadVocabs(settings, environment);
-        boolean ignoreCase = settings.getAsBoolean("ignore_case", true);
-        boolean splitWord = settings.getAsBoolean("split_word", true);
-        NgramConfig ngramConfig = NgramLoader.loadNgramConfig(settings);
-
-        this.analyzer = new EsTokAnalyzer(useVocab, useCateg, vocabs, ignoreCase, splitWord, ngramConfig);
+        // Load unified configuration
+        EsTokConfig config = EsTokConfigLoader.loadConfig(settings, environment);
+        this.analyzer = new EsTokAnalyzer(config);
     }
 
     @Override

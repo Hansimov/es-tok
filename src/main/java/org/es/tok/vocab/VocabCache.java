@@ -1,4 +1,4 @@
-package org.es.tok.file;
+package org.es.tok.vocab;
 
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
@@ -26,7 +26,7 @@ public class VocabCache {
         }
 
         // Load new vocabs, and then cache them
-        List<String> vocabs = VocabLoader.loadVocabsInternal(settings, environment);
+        List<String> vocabs = VocabFileLoader.loadVocabsInternal(settings, environment);
         CachedVocab newCached = new CachedVocab(vocabs, settings, environment);
         cache.put(cacheKey, newCached);
 
@@ -90,12 +90,12 @@ public class VocabCache {
                 file = vocabConfig.get("file");
                 if (file != null && environment != null) {
                     try {
-                        Path filePath = environment.configFile().resolve(file);
+                        Path filePath = VocabFileLoader.getVocabFileFullPath(file, environment);
                         if (Files.exists(filePath)) {
                             lastModified = Files.getLastModifiedTime(filePath);
                         }
                     } catch (IOException e) {
-                        // Ignore, will force refresh on next access
+                        // Ignore - will treat as uncached
                     }
                 }
             }
@@ -114,18 +114,18 @@ public class VocabCache {
             // Check if file has been modified (if file is used)
             if (filePath != null && environment != null) {
                 try {
-                    Path path = environment.configFile().resolve(filePath);
-                    if (Files.exists(path)) {
-                        FileTime currentLastModified = Files.getLastModifiedTime(path);
+                    Path currentFilePath = VocabFileLoader.getVocabFileFullPath(filePath, environment);
+                    if (Files.exists(currentFilePath)) {
+                        FileTime currentLastModified = Files.getLastModifiedTime(currentFilePath);
                         if (!Objects.equals(this.fileLastModified, currentLastModified)) {
                             return false;
                         }
                     } else if (this.fileLastModified != null) {
-                        // File was deleted
+                        // File existed before but doesn't exist now
                         return false;
                     }
                 } catch (IOException e) {
-                    // If we can't check file modification time, consider cache invalid
+                    // If we can't check file modification time, consider it invalid
                     return false;
                 }
             }

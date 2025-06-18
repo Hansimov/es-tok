@@ -5,7 +5,7 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
-import org.es.tok.ngram.NgramConfig;
+import org.es.tok.config.EsTokConfig;
 import org.es.tok.strategy.CategStrategy;
 import org.es.tok.strategy.NgramStrategy;
 import org.es.tok.strategy.TokenStrategy;
@@ -22,8 +22,7 @@ public class EsTokTokenizer extends Tokenizer {
     private final PositionIncrementAttribute posIncrAtt = addAttribute(PositionIncrementAttribute.class);
     private final TypeAttribute typeAtt = addAttribute(TypeAttribute.class);
 
-    private final boolean useVocab;
-    private final boolean useCateg;
+    private final EsTokConfig config;
     private final VocabStrategy vocabStrategy;
     private final CategStrategy categStrategy;
     private final NgramStrategy ngramStrategy;
@@ -32,18 +31,27 @@ public class EsTokTokenizer extends Tokenizer {
     private Iterator<TokenStrategy.TokenInfo> tokenIterator;
     private boolean isInitialized = false;
 
-    public EsTokTokenizer(boolean useVocab, boolean useCateg, List<String> vocabs,
-            boolean ignoreCase, boolean splitWord, NgramConfig ngramConfig) {
-        this.useVocab = useVocab;
-        this.useCateg = useCateg;
+    // New constructor using EsTokConfig
+    public EsTokTokenizer(EsTokConfig config) {
+        this.config = config;
 
-        if (!useVocab && !useCateg) {
+        if (!config.getVocabConfig().isUseVocab() && !config.getCategConfig().isUseCateg()) {
             throw new IllegalArgumentException("Must use at least one strategy: use_vocab, use_categ");
         }
 
-        this.vocabStrategy = useVocab ? new VocabStrategy(vocabs, ignoreCase) : null;
-        this.categStrategy = useCateg ? new CategStrategy(ignoreCase, splitWord) : null;
-        this.ngramStrategy = ngramConfig.hasAnyNgramEnabled() ? new NgramStrategy(ngramConfig) : null;
+        this.vocabStrategy = config.getVocabConfig().isUseVocab() ? 
+            new VocabStrategy(config.getVocabConfig().getVocabs(), config.isIgnoreCase()) : null;
+        this.categStrategy = config.getCategConfig().isUseCateg() ? 
+            new CategStrategy(config.isIgnoreCase(), config.getCategConfig().isSplitWord()) : null;
+        this.ngramStrategy = config.getNgramConfig().hasAnyNgramEnabled() ? 
+            new NgramStrategy(config.getNgramConfig()) : null;
+    }
+
+    // Backward compatibility constructor
+    public EsTokTokenizer(org.es.tok.vocab.VocabConfig vocabConfig, 
+                         org.es.tok.categ.CategConfig categConfig, 
+                         org.es.tok.ngram.NgramConfig ngramConfig) {
+        this(new EsTokConfig(vocabConfig, categConfig, ngramConfig, true));
     }
 
     @Override
@@ -90,11 +98,11 @@ public class EsTokTokenizer extends Tokenizer {
         List<TokenStrategy.TokenInfo> baseTokens = new ArrayList<>();
 
         // Generate base tokens from categ and vocab strategies
-        if (useCateg && categStrategy != null) {
+        if (config.getCategConfig().isUseCateg() && categStrategy != null) {
             baseTokens.addAll(categStrategy.tokenize(text));
         }
 
-        if (useVocab && vocabStrategy != null) {
+        if (config.getVocabConfig().isUseVocab() && vocabStrategy != null) {
             List<TokenStrategy.TokenInfo> vocabTokens = vocabStrategy.tokenize(text);
             baseTokens.addAll(vocabTokens);
         }

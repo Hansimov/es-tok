@@ -5,33 +5,20 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.analysis.AbstractTokenizerFactory;
-import org.es.tok.file.VocabLoader;
-import org.es.tok.ngram.NgramConfig;
-import org.es.tok.ngram.NgramLoader;
-
-import java.util.List;
+import org.es.tok.config.EsTokConfig;
+import org.es.tok.config.EsTokConfigLoader;
 
 public class EsTokTokenizerFactory extends AbstractTokenizerFactory {
-    private final boolean useVocab;
-    private final boolean useCateg;
-    private final List<String> vocabs;
-    private final boolean ignoreCase;
-    private final boolean splitWord;
-    private final NgramConfig ngramConfig;
+    private final EsTokConfig config;
 
     public EsTokTokenizerFactory(IndexSettings indexSettings, Environment environment, String name, Settings settings) {
         super(indexSettings, settings, name);
 
-        this.useVocab = settings.getAsBoolean("use_vocab", true);
-        this.useCateg = settings.getAsBoolean("use_categ", false);
-        this.vocabs = VocabLoader.loadVocabs(settings, environment);
-        this.ignoreCase = settings.getAsBoolean("ignore_case", true);
-        this.splitWord = settings.getAsBoolean("split_word", true);
-        this.ngramConfig = NgramLoader.loadNgramConfig(settings);
+        this.config = EsTokConfigLoader.loadConfig(settings, environment);
     }
 
     @Override
     public Tokenizer create() {
-        return new EsTokTokenizer(useVocab, useCateg, vocabs, ignoreCase, splitWord, ngramConfig);
+        return new EsTokTokenizer(config);
     }
 }

@@ -1,43 +1,41 @@
 package org.es.tok.analysis;
 
 import org.apache.lucene.analysis.Analyzer;
+import org.es.tok.categ.CategConfig;
+import org.es.tok.config.EsTokConfig;
 import org.es.tok.ngram.NgramConfig;
 import org.es.tok.tokenize.EsTokTokenizer;
-
-import java.util.List;
+import org.es.tok.vocab.VocabConfig;
 
 public class EsTokAnalyzer extends Analyzer {
-    private final boolean useVocab;
-    private final boolean useCateg;
-    private final List<String> vocabs;
-    private final boolean ignoreCase;
-    private final boolean splitWord;
-    private final NgramConfig ngramConfig;
+    private final EsTokConfig config;
 
-    public EsTokAnalyzer(boolean useVocab, boolean useCateg, List<String> vocabs,
-            boolean ignoreCase, boolean splitWord) {
-        this(useVocab, useCateg, vocabs, ignoreCase, splitWord, new NgramConfig(false, false, false, false));
+    // New constructor using EsTokConfig
+    public EsTokAnalyzer(EsTokConfig config) {
+        this.config = config;
     }
 
-    public EsTokAnalyzer(boolean useVocab, boolean useCateg, List<String> vocabs,
-            boolean ignoreCase, boolean splitWord, NgramConfig ngramConfig) {
-        this.useVocab = useVocab;
-        this.useCateg = useCateg;
-        this.vocabs = vocabs;
-        this.ignoreCase = ignoreCase;
-        this.splitWord = splitWord;
-        this.ngramConfig = ngramConfig;
+    // Backward compatibility constructors
+    public EsTokAnalyzer(VocabConfig vocabConfig, CategConfig categConfig) {
+        this(vocabConfig, categConfig, new NgramConfig(false, false, false, false), true);
+    }
+
+    public EsTokAnalyzer(VocabConfig vocabConfig, CategConfig categConfig, NgramConfig ngramConfig) {
+        this(vocabConfig, categConfig, ngramConfig, true);
+    }
+
+    public EsTokAnalyzer(VocabConfig vocabConfig, CategConfig categConfig, NgramConfig ngramConfig, boolean ignoreCase) {
+        this.config = new EsTokConfig(vocabConfig, categConfig, ngramConfig, ignoreCase);
     }
 
     @Override
     protected TokenStreamComponents createComponents(String fieldName) {
-        EsTokTokenizer tokenizer = new EsTokTokenizer(useVocab, useCateg, vocabs, ignoreCase, splitWord, ngramConfig);
+        EsTokTokenizer tokenizer = new EsTokTokenizer(config);
         return new TokenStreamComponents(tokenizer);
     }
 
     @Override
     public String toString() {
-        return String.format("EsTokAnalyzer{useVocab=%s, useCateg=%s, vocabs=%d terms, ignoreCase=%s, splitWord=%s, ngramConfig=%s}",
-                useVocab, useCateg, vocabs != null ? vocabs.size() : 0, ignoreCase, splitWord, ngramConfig);
+        return String.format("EsTokAnalyzer{config=%s}", config);
     }
 }

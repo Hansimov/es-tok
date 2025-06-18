@@ -1,4 +1,4 @@
-package org.es.tok.file;
+package org.es.tok.vocab;
 
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
@@ -11,7 +11,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Stream;
 
-public class VocabLoader {
+public class VocabFileLoader {
     public static List<String> loadVocabs(Settings settings, Environment environment) {
         return loadVocabs(settings, environment, false);
     }

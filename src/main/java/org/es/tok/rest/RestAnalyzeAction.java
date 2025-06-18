@@ -9,9 +9,8 @@ import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentParser;
 import org.elasticsearch.common.settings.Settings;
 import org.es.tok.analysis.EsTokAnalyzer;
-import org.es.tok.file.VocabLoader;
-import org.es.tok.ngram.NgramConfig;
-import org.es.tok.ngram.NgramLoader;
+import org.es.tok.config.EsTokConfig;
+import org.es.tok.config.EsTokConfigLoader;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
@@ -207,12 +206,10 @@ public class RestAnalyzeAction extends BaseRestHandler {
 
         Settings finalSettings = settingsBuilder.build();
 
-        // Load configurations using internal loaders
-        List<String> vocabs;
-        NgramConfig ngramConfig;
+        // Load unified configuration
+        EsTokConfig config;
         try {
-            vocabs = VocabLoader.loadVocabs(finalSettings, null, useCache);
-            ngramConfig = NgramLoader.loadNgramConfig(finalSettings);
+            config = EsTokConfigLoader.loadConfig(finalSettings, null, useCache);
         } catch (Exception e) {
             return channel -> sendErrorResponse(channel, RestStatus.BAD_REQUEST,
                     "Error loading configuration: " + e.getMessage());
@@ -220,17 +217,11 @@ public class RestAnalyzeAction extends BaseRestHandler {
 
         // Store final values for lambda
         final String finalText = text;
-        final boolean finalUseVocab = useVocab;
-        final boolean finalUseCateg = useCateg;
-        final List<String> finalVocabs = vocabs;
-        final boolean finalIgnoreCase = ignoreCase;
-        final boolean finalSplitWord = splitWord;
-        final NgramConfig finalNgramConfig = ngramConfig;
+        final EsTokConfig finalConfig = config;
 
         return channel -> {
             try {
-                List<AnalyzeToken> tokens = analyzeText(finalText, finalUseVocab, finalUseCateg,
-                        finalVocabs, finalIgnoreCase, finalSplitWord, finalNgramConfig);
+                List<AnalyzeToken> tokens = analyzeText(finalText, finalConfig);
 
                 XContentBuilder builder = channel.newBuilder();
                 builder.startObject();
@@ -268,12 +259,10 @@ public class RestAnalyzeAction extends BaseRestHandler {
         }
     }
 
-    private List<AnalyzeToken> analyzeText(String text, boolean useVocab, boolean useCateg,
-                                           List<String> vocabs, boolean ignoreCase, boolean splitWord,
-                                           NgramConfig ngramConfig) throws IOException {
+    private List<AnalyzeToken> analyzeText(String text, EsTokConfig config) throws IOException {
         List<AnalyzeToken> tokens = new ArrayList<>();
 
-        try (EsTokAnalyzer analyzer = new EsTokAnalyzer(useVocab, useCateg, vocabs, ignoreCase, splitWord, ngramConfig)) {
+        try (EsTokAnalyzer analyzer = new EsTokAnalyzer(config)) {
             TokenStream tokenStream = analyzer.tokenStream("field", text);
 
             CharTermAttribute termAtt = tokenStream.addAttribute(CharTermAttribute.class);
