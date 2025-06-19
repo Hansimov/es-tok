@@ -14,13 +14,22 @@ GET /_cat/es_tok/version?v
 GET /_es_tok/analyze
 {
     "text": "...",
-    "use_vocab": true,
     "use_categ": true,
-    "split_word": true,
+    "use_vocab": true,
+    "use_ngram": true,
     "ignore_case": true,
+    "drop_duplicates": true,
+    "categ_config": {
+      "split_word": true
+    },
     "vocab_config": {
         "file": "vocabs.txt",
         "size": 300000
+    },
+    "ngram_config": {
+      "use_bigram": true,
+      "use_vbgram": true,
+      "use_vcgram": true
     }
 }
 ```
@@ -35,14 +44,23 @@ PUT test
       "tokenizer": {
         "es_tok_tokenizer": {
           "type": "es_tok",
-          "use_vocab": true,
           "use_categ": true,
-          "split_word": true,
+          "use_vocab": true,
+          "use_ngram": true,
           "ignore_case": true,
-          "vocab_config": {
-            "file": "vocabs.txt",
-            "size": 300000
+          "drop_duplicates": true,
+          "categ_config": {
+            "split_word": true
           },
+          "vocab_config": {
+              "file": "vocabs.txt",
+              "size": 300000
+          },
+          "ngram_config": {
+            "use_bigram": true,
+            "use_vbgram": true,
+            "use_vcgram": true
+          }
         }
       },
       "analyzer": {
