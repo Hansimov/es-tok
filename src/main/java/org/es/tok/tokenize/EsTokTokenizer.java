@@ -41,19 +41,14 @@ public class EsTokTokenizer extends Tokenizer {
             throw new IllegalArgumentException("Must use at least one strategy: use_vocab, use_categ");
         }
 
-        this.vocabStrategy = config.getVocabConfig().isUseVocab() ? 
-            new VocabStrategy(config.getVocabConfig().getVocabs(), config.isIgnoreCase()) : null;
-        this.categStrategy = config.getCategConfig().isUseCateg() ? 
-            new CategStrategy(config.isIgnoreCase(), config.getCategConfig().isSplitWord()) : null;
-        this.ngramStrategy = config.getNgramConfig().hasAnyNgramEnabled() ? 
-            new NgramStrategy(config.getNgramConfig()) : null;
-    }
-
-    // Backward compatibility constructor
-    public EsTokTokenizer(org.es.tok.vocab.VocabConfig vocabConfig, 
-                         org.es.tok.categ.CategConfig categConfig, 
-                         org.es.tok.ngram.NgramConfig ngramConfig) {
-        this(new EsTokConfig(vocabConfig, categConfig, ngramConfig, true, false));
+        this.vocabStrategy = config.getVocabConfig().isUseVocab()
+                ? new VocabStrategy(config.getVocabConfig().getVocabs(), config.isIgnoreCase())
+                : null;
+        this.categStrategy = config.getCategConfig().isUseCateg()
+                ? new CategStrategy(config.isIgnoreCase(), config.getCategConfig().isSplitWord())
+                : null;
+        this.ngramStrategy = config.getNgramConfig().hasAnyNgramEnabled() ? new NgramStrategy(config.getNgramConfig())
+                : null;
     }
 
     @Override
@@ -97,54 +92,88 @@ public class EsTokTokenizer extends Tokenizer {
     }
 
     private List<TokenStrategy.TokenInfo> processText(String text) {
-        List<TokenStrategy.TokenInfo> baseTokens = new ArrayList<>();
+        // Step 1: Generate base tokens from categ and vocab strategies
+        List<TokenStrategy.TokenInfo> baseTokens = generateBaseTokens(text);
 
-        // Generate base tokens from categ and vocab strategies
-        if (config.getCategConfig().isUseCateg() && categStrategy != null) {
-            baseTokens.addAll(categStrategy.tokenize(text));
-        }
-
-        if (config.getVocabConfig().isUseVocab() && vocabStrategy != null) {
-            List<TokenStrategy.TokenInfo> vocabTokens = vocabStrategy.tokenize(text);
-            baseTokens.addAll(vocabTokens);
-        }
-
-        // Remove duplicates if enabled
+        // Step 2: Apply first deduplication on base tokens if enabled
         if (config.isDropDuplicates()) {
-            baseTokens = removeDuplicateTokens(baseTokens);
+            baseTokens = dropDuplicatedTokens(baseTokens);
         }
 
-        // Sort base tokens by start_offset, then by type (`vocab` first)
-        baseTokens.sort((a, b) -> {
-            int offsetCompare = Integer.compare(a.getStartOffset(), b.getStartOffset());
-            if (offsetCompare != 0)
-                return offsetCompare;
-            if ("vocab".equals(a.getType()) && !"vocab".equals(b.getType())) {
-                return -1;
-            }
-            if (!"vocab".equals(a.getType()) && "vocab".equals(b.getType())) {
-                return 1;
-            }
-            return 0;
-        });
+        // Step 3: Sort base tokens
+        baseTokens = sortTokens(baseTokens);
 
-        // Generate n-grams if enabled
+        // Step 4: Generate n-grams if enabled
         List<TokenStrategy.TokenInfo> allTokens = new ArrayList<>(baseTokens);
         if (ngramStrategy != null) {
             List<TokenStrategy.TokenInfo> ngramTokens = ngramStrategy.generateNgrams(baseTokens);
             allTokens.addAll(ngramTokens);
         }
 
+        // Step 5: Apply final deduplication after n-gram generation if enabled
+        if (config.isDropDuplicates()) {
+            allTokens = dropDuplicatedTokens(allTokens);
+        }
+
         return allTokens;
     }
 
-    private List<TokenStrategy.TokenInfo> removeDuplicateTokens(List<TokenStrategy.TokenInfo> tokens) {
-        // Use LinkedHashSet to maintain insertion order while removing duplicates
+    // Generate base tokens from categ and vocab strategies
+    private List<TokenStrategy.TokenInfo> generateBaseTokens(String text) {
+        List<TokenStrategy.TokenInfo> baseTokens = new ArrayList<>();
+
+        // Generate tokens from categ strategy
+        if (config.getCategConfig().isUseCateg() && categStrategy != null) {
+            baseTokens.addAll(categStrategy.tokenize(text));
+        }
+
+        // Generate tokens from vocab strategy
+        if (config.getVocabConfig().isUseVocab() && vocabStrategy != null) {
+            List<TokenStrategy.TokenInfo> vocabTokens = vocabStrategy.tokenize(text);
+            baseTokens.addAll(vocabTokens);
+        }
+
+        return baseTokens;
+    }
+
+    // Sort tokens by start_offset, then by type ('vocab' first)
+    private List<TokenStrategy.TokenInfo> sortTokens(List<TokenStrategy.TokenInfo> tokens) {
+        List<TokenStrategy.TokenInfo> sortedTokens = new ArrayList<>(tokens);
+        sortedTokens.sort((a, b) -> {
+            // First, compare by start offset
+            int offsetCompare = Integer.compare(a.getStartOffset(), b.getStartOffset());
+            if (offsetCompare != 0) {
+                return offsetCompare;
+            }
+
+            // If same start offset, prioritize 'vocab' type
+            if ("vocab".equals(a.getType()) && !"vocab".equals(b.getType())) {
+                return -1;
+            }
+            if (!"vocab".equals(a.getType()) && "vocab".equals(b.getType())) {
+                return 1;
+            }
+
+            // If same start offset and same type priority, compare by end offset
+            int endOffsetCompare = Integer.compare(a.getEndOffset(), b.getEndOffset());
+            if (endOffsetCompare != 0) {
+                return endOffsetCompare;
+            }
+
+            // Finally, compare by token text for consistent ordering
+            return a.getText().compareTo(b.getText());
+        });
+
+        return sortedTokens;
+    }
+
+    // Remove duplicated tokens based on: token text, start_offset, and end_offset
+    private List<TokenStrategy.TokenInfo> dropDuplicatedTokens(List<TokenStrategy.TokenInfo> tokens) {
         Set<TokenKey> seenTokens = new LinkedHashSet<>();
         List<TokenStrategy.TokenInfo> uniqueTokens = new ArrayList<>();
 
         for (TokenStrategy.TokenInfo token : tokens) {
-            TokenKey key = new TokenKey(token.getStartOffset(), token.getEndOffset());
+            TokenKey key = new TokenKey(token.getText(), token.getStartOffset(), token.getEndOffset());
             if (seenTokens.add(key)) {
                 uniqueTokens.add(token);
             }
@@ -153,27 +182,43 @@ public class EsTokTokenizer extends Tokenizer {
         return uniqueTokens;
     }
 
-    // Helper class to represent a token's position for deduplication
+    // unique token by: (text, start_offset, end_offset)
     private static class TokenKey {
+        private final String text;
         private final int startOffset;
         private final int endOffset;
 
-        public TokenKey(int startOffset, int endOffset) {
+        public TokenKey(String text, int startOffset, int endOffset) {
+            this.text = text;
             this.startOffset = startOffset;
             this.endOffset = endOffset;
         }
 
         @Override
         public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
+            if (this == o)
+                return true;
+            if (o == null || getClass() != o.getClass())
+                return false;
+
             TokenKey tokenKey = (TokenKey) o;
-            return startOffset == tokenKey.startOffset && endOffset == tokenKey.endOffset;
+            return startOffset == tokenKey.startOffset &&
+                    endOffset == tokenKey.endOffset &&
+                    text.equals(tokenKey.text);
         }
 
         @Override
         public int hashCode() {
-            return 31 * startOffset + endOffset;
+            int result = text.hashCode();
+            result = 31 * result + startOffset;
+            result = 31 * result + endOffset;
+            return result;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("TokenKey{text='%s', startOffset=%d, endOffset=%d}",
+                    text, startOffset, endOffset);
         }
     }
 
