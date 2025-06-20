@@ -1,4 +1,4 @@
-# ES-TOK Plugin Development Guide
+# ES-TOK Plugin Developer Guide
 
 ## Installations
 
