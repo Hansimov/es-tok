@@ -146,14 +146,6 @@ public class EsTokTokenizer extends Tokenizer {
                 return offsetCompare;
             }
 
-            // If same start offset, prioritize 'vocab' type
-            if ("vocab".equals(a.getType()) && !"vocab".equals(b.getType())) {
-                return -1;
-            }
-            if (!"vocab".equals(a.getType()) && "vocab".equals(b.getType())) {
-                return 1;
-            }
-
             // If same start offset and same type priority, compare by end offset
             int endOffsetCompare = Integer.compare(a.getEndOffset(), b.getEndOffset());
             if (endOffsetCompare != 0) {

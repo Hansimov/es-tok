@@ -148,10 +148,10 @@ public class TestUnifiedEsTokAnalyzer {
 
         // Test case 7: Mixed language n-grams
         System.out.println("=== Test 8.7: [mixed language ngrams] ===");
-        String text7 = "Hello世界deep学习test测试";
-        List<String> vocabs7 = Arrays.asList("Hello", "世界", "deep", "学习", "test", "测试");
+        String text7 = "越来越多的人选择了大语言模型(LLM)";
+        List<String> vocabs7 = Arrays.asList("越多", "越来越", "越来越多", "大语言模型", "语言", "模型", "LLM");
         NgramConfig ngramConfig7 = new NgramConfig(true, true, true, true); // All n-grams
-        testAnalyzerWithNgram(text7, true, true, vocabs7, true, false, true, ngramConfig7);
+        testAnalyzerWithNgram(text7, true, true, vocabs7, true, true, true, ngramConfig7);
 
     }
 

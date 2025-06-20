@@ -1,6 +1,7 @@
 package org.es.tok.strategy;
 
 import org.es.tok.ngram.NgramConfig;
+import org.es.tok.ngram.NgramTextBuilder;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -66,10 +67,13 @@ public class NgramStrategy {
     }
 
     // process ngrams that could have spaces
-    public List<TokenStrategy.TokenInfo> processNgramText(
-            StringBuilder ngramText, int startOffset, int endOffset, String ngramType, boolean hasSpace) {
+    public List<TokenStrategy.TokenInfo> spacifyNgramText(
+            NgramTextBuilder ngramTextBuilder, String ngramType, boolean hasSpace) {
         List<TokenStrategy.TokenInfo> ngramTokens = new ArrayList<>();
-        String ngramString = ngramText.toString();
+        String ngramString = ngramTextBuilder.toString();
+        int startOffset = ngramTextBuilder.getStartOffset();
+        int endOffset = ngramTextBuilder.getEndOffset();
+
         if (hasSpace) {
             // replace multiple spaces with a single space
             String ngramStringClean = ngramString.replaceAll("\\s+", " ");
@@ -131,25 +135,25 @@ public class NgramStrategy {
                         break; // Validation failed, stop looking
                     }
 
-                    // Create n-gram
-                    StringBuilder ngramText = new StringBuilder();
-                    ngramText.append(firstToken.getText());
+                    // Create n-gram using NgramTextBuilder
+                    NgramTextBuilder ngramTextBuilder = new NgramTextBuilder(firstToken);
 
                     boolean hasSpace = false;
-                    // Check if there are separators between the tokens
+                    // Check if there are gaps between the tokens
                     if (firstToken.getEndOffset() < secondToken.getStartOffset()) {
-                        ngramText.append(" ");
                         hasSpace = true;
+                        TokenStrategy.TokenInfo spaceToken = new TokenStrategy.TokenInfo(
+                                " ",
+                                firstToken.getEndOffset(),
+                                secondToken.getStartOffset(),
+                                "space",
+                                0);
+                        ngramTextBuilder.appendToken(spaceToken);
                     }
 
-                    ngramText.append(secondToken.getText());
+                    ngramTextBuilder.appendToken(secondToken);
 
-                    ngrams.addAll(processNgramText(
-                            ngramText,
-                            firstToken.getStartOffset(),
-                            secondToken.getEndOffset(),
-                            ngramType,
-                            hasSpace));
+                    ngrams.addAll(spacifyNgramText(ngramTextBuilder, ngramType, hasSpace));
                     break; // Only create one n-gram per starting token
                 } else {
                     break; // Stop if we encounter invalid token type
