@@ -23,6 +23,7 @@ public class EsTokTokenizer extends Tokenizer {
     private final OffsetAttribute offsetAtt = addAttribute(OffsetAttribute.class);
     private final PositionIncrementAttribute posIncrAtt = addAttribute(PositionIncrementAttribute.class);
     private final TypeAttribute typeAtt = addAttribute(TypeAttribute.class);
+    private final GroupAttribute groupAtt = addAttribute(GroupAttribute.class);
 
     private final EsTokConfig config;
     private final VocabStrategy vocabStrategy;
@@ -65,6 +66,7 @@ public class EsTokTokenizer extends Tokenizer {
             offsetAtt.setOffset(token.getStartOffset(), token.getEndOffset());
             posIncrAtt.setPositionIncrement(1);
             typeAtt.setType(token.getType());
+            groupAtt.setGroup(token.getGroup());
 
             return true;
         }

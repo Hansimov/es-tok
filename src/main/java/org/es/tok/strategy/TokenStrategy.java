@@ -11,13 +11,15 @@ public interface TokenStrategy {
         private final int endOffset;
         private final String type;
         private final int position;
+        private final String group;
 
-        public TokenInfo(String text, int startOffset, int endOffset, String type, int position) {
+        public TokenInfo(String text, int startOffset, int endOffset, String type, int position, String group) {
             this.text = text;
             this.startOffset = startOffset;
             this.endOffset = endOffset;
             this.type = type;
             this.position = position;
+            this.group = group;
         }
 
         public String getText() {
@@ -38,6 +40,10 @@ public interface TokenStrategy {
 
         public int getPosition() {
             return position;
+        }
+
+        public String getGroup() {
+            return group;
         }
     }
 }

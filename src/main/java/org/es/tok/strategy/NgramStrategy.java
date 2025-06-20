@@ -82,7 +82,8 @@ public class NgramStrategy {
                     startOffset,
                     endOffset,
                     ngramType,
-                    0));
+                    0,
+                    "ngram"));
             // remove spaces
             String ngramStringNoSpace = ngramString.replaceAll(" ", "");
             ngramTokens.add(new TokenStrategy.TokenInfo(
@@ -90,14 +91,16 @@ public class NgramStrategy {
                     startOffset,
                     endOffset,
                     ngramType,
-                    0));
+                    0,
+                    "ngram"));
         } else {
             ngramTokens.add(new TokenStrategy.TokenInfo(
                     ngramString,
                     startOffset,
                     endOffset,
                     ngramType,
-                    0));
+                    0,
+                    "ngram"));
         }
         return ngramTokens;
     }
@@ -147,7 +150,8 @@ public class NgramStrategy {
                                 firstToken.getEndOffset(),
                                 secondToken.getStartOffset(),
                                 "space",
-                                0);
+                                0,
+                                "ngram");
                         ngramTextBuilder.appendToken(spaceToken);
                     }
 

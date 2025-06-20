@@ -4,6 +4,7 @@ import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
+import org.es.tok.tokenize.GroupAttribute;
 import org.es.tok.analysis.EsTokAnalyzer;
 import org.es.tok.config.EsTokConfig;
 import org.es.tok.vocab.VocabConfig;
@@ -183,6 +184,7 @@ public class TestUnifiedEsTokAnalyzer {
             CharTermAttribute termAtt = tokenStream.addAttribute(CharTermAttribute.class);
             OffsetAttribute offsetAtt = tokenStream.addAttribute(OffsetAttribute.class);
             TypeAttribute typeAtt = tokenStream.addAttribute(TypeAttribute.class);
+            GroupAttribute groupAtt = tokenStream.addAttribute(GroupAttribute.class);
 
             tokenStream.reset();
 
@@ -190,11 +192,12 @@ public class TestUnifiedEsTokAnalyzer {
             int tokenIdx = 0;
             while (tokenStream.incrementToken()) {
                 tokenIdx++;
-                System.out.printf("  [%2d] [%2d-%2d] <%8s>: %s%n",
+                System.out.printf("  [%2d] [%2d-%2d] <%6s> (%5s): %s%n",
                         tokenIdx,
                         offsetAtt.startOffset(),
                         offsetAtt.endOffset(),
                         typeAtt.type(),
+                        groupAtt.group(),
                         termAtt.toString());
             }
 

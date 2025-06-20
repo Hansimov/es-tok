@@ -11,6 +11,7 @@ import org.elasticsearch.common.settings.Settings;
 import org.es.tok.analysis.EsTokAnalyzer;
 import org.es.tok.config.EsTokConfig;
 import org.es.tok.config.EsTokConfigLoader;
+import org.es.tok.tokenize.GroupAttribute;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
@@ -245,6 +246,7 @@ public class RestAnalyzeAction extends BaseRestHandler {
                     builder.field("start_offset", token.startOffset);
                     builder.field("end_offset", token.endOffset);
                     builder.field("type", token.type);
+                    builder.field("group", token.group);
                     builder.field("position", token.position);
                     builder.endObject();
                 }
@@ -282,6 +284,7 @@ public class RestAnalyzeAction extends BaseRestHandler {
             OffsetAttribute offsetAtt = tokenStream.addAttribute(OffsetAttribute.class);
             PositionIncrementAttribute posIncrAtt = tokenStream.addAttribute(PositionIncrementAttribute.class);
             TypeAttribute typeAtt = tokenStream.addAttribute(TypeAttribute.class);
+            GroupAttribute groupAtt = tokenStream.addAttribute(GroupAttribute.class);
 
             tokenStream.reset();
 
@@ -293,6 +296,7 @@ public class RestAnalyzeAction extends BaseRestHandler {
                         offsetAtt.startOffset(),
                         offsetAtt.endOffset(),
                         typeAtt.type(),
+                        groupAtt.group(),
                         position));
             }
 
@@ -307,13 +311,15 @@ public class RestAnalyzeAction extends BaseRestHandler {
         final int startOffset;
         final int endOffset;
         final String type;
+        final String group;
         final int position;
 
-        AnalyzeToken(String term, int startOffset, int endOffset, String type, int position) {
+        AnalyzeToken(String term, int startOffset, int endOffset, String type, String group, int position) {
             this.term = term;
             this.startOffset = startOffset;
             this.endOffset = endOffset;
             this.type = type;
+            this.group = group;
             this.position = position;
         }
     }

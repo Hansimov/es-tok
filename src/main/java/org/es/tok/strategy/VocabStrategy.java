@@ -47,7 +47,8 @@ public class VocabStrategy implements TokenStrategy {
                     emit.getStart(),
                     emit.getEnd() + 1,
                     "vocab",
-                    position++));
+                    position++,
+                    "vocab"));
         }
 
         return tokens;

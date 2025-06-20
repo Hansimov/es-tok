@@ -31,7 +31,7 @@ public class CategStrategy implements TokenStrategy {
             .formatted(RE_ARAB, RE_ENG, RE_CJK, RE_LANG, RE_DASH, RE_WS, RE_MASK, RE_NORD);
     private static final Pattern PT_CATEG = Pattern.compile(RE_CATEG);
 
-    private static final List<String> GROUP_NAMES = Arrays.asList(
+    private static final List<String> TYPE_NAMES = Arrays.asList(
             "arab", "eng", "cjk", "lang", "dash", "ws", "mask", "nord");
 
     private final boolean ignoreCase;
@@ -58,10 +58,10 @@ public class CategStrategy implements TokenStrategy {
                 for (int i = start; i < end; i++) {
                     tokens.add(new TokenInfo(
                             String.valueOf(tokenText.charAt(i - start)),
-                            i, i + 1, type, position++));
+                            i, i + 1, type, position++, "categ"));
                 }
             } else {
-                tokens.add(new TokenInfo(tokenText, start, end, type, position++));
+                tokens.add(new TokenInfo(tokenText, start, end, type, position++, "categ"));
             }
         }
 
@@ -69,9 +69,9 @@ public class CategStrategy implements TokenStrategy {
     }
 
     private String determineTokenType(Matcher matcher) {
-        for (String groupName : GROUP_NAMES) {
-            if (matcher.group(groupName) != null) {
-                return groupName;
+        for (String typeName : TYPE_NAMES) {
+            if (matcher.group(typeName) != null) {
+                return typeName;
             }
         }
         return "nord";
