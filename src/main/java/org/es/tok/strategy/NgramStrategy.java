@@ -20,7 +20,9 @@ public class NgramStrategy {
     private static final Set<String> WORD_TYPES = new HashSet<>(Arrays.asList(
             "arab", "eng", "cjk", "lang", "vocab"));
     private static final Set<String> SEP_TYPES = new HashSet<>(Arrays.asList(
-            "dash", "ws", "mask", "nord"));
+            "dash", "ws", "mask"));
+    private static final Set<String> NORD_TYPES = new HashSet<>(Arrays.asList(
+            "nord"));
 
     public NgramStrategy(NgramConfig ngramConfig) {
         this.ngramConfig = ngramConfig;
@@ -42,6 +44,10 @@ public class NgramStrategy {
         return SEP_TYPES.contains(token.getType());
     }
 
+    private boolean isNordToken(TokenStrategy.TokenInfo token) {
+        return NORD_TYPES.contains(token.getType());
+    }
+
     private boolean isContainedIn(TokenStrategy.TokenInfo token1, TokenStrategy.TokenInfo token2) {
         // token1 is contained in token2, i.e., L2<=L1<=R1<=R2
         return token2.getStartOffset() <= token1.getStartOffset() &&
@@ -50,7 +56,14 @@ public class NgramStrategy {
 
     private boolean isOneContainsOther(TokenStrategy.TokenInfo token1, TokenStrategy.TokenInfo token2) {
         return isContainedIn(token1, token2) || isContainedIn(token2, token1);
+    }
 
+    private boolean isNonOverlapAfter(TokenStrategy.TokenInfo secondToken, TokenStrategy.TokenInfo firstToken) {
+        return secondToken.getStartOffset() >= firstToken.getEndOffset();
+    }
+
+    private boolean isOverlapOrAdjacent(TokenStrategy.TokenInfo secondToken, TokenStrategy.TokenInfo firstToken) {
+        return secondToken.getStartOffset() <= firstToken.getEndOffset();
     }
 
     // main function
@@ -112,14 +125,42 @@ public class NgramStrategy {
 
     private List<TokenStrategy.TokenInfo> findAllValidNextAdjacentTokens(
             TokenStrategy.TokenInfo firstToken,
-            List<TokenStrategy.TokenInfo> allTokens,
+            List<TokenStrategy.TokenInfo> baseTokens,
             int firstTokenIdx,
             Predicate<TokenStrategy.TokenInfo> secondTokenPredicate) {
 
         List<TokenStrategy.TokenInfo> validTokens = new ArrayList<>();
 
-        for (int i = firstTokenIdx + 1; i < allTokens.size(); i++) {
-            TokenStrategy.TokenInfo candidateToken = allTokens.get(i);
+        // upperbound of candicate tokens idx:
+        // break at first "nord" or nonSecondTokenPredicate token after firstToken
+        int candidateIdxUB = baseTokens.size();
+        for (int i = firstTokenIdx + 1; i < baseTokens.size(); i++) {
+            TokenStrategy.TokenInfo token = baseTokens.get(i);
+            if (isNonOverlapAfter(token, firstToken) &&
+                    !isSepToken(token) &&
+                    (isNordToken(token) || !secondTokenPredicate.test(token))) {
+                candidateIdxUB = i;
+                break;
+            }
+        }
+
+        // upperbound of candicate tokens start_offset:
+        // break at first nonSep and secondTokenPredicate-passed token after firstToken
+        // (implicit constraint: idx < candidateIdxUB)
+        int candidateStartOffsetUB = baseTokens.get(candidateIdxUB - 1).getStartOffset();
+        for (int i = firstTokenIdx + 1; i < candidateIdxUB; i++) {
+            TokenStrategy.TokenInfo token = baseTokens.get(i);
+            if (isNonOverlapAfter(token, firstToken) &&
+                    !isSepToken(token) &&
+                    secondTokenPredicate.test(token)) {
+                candidateStartOffsetUB = token.getStartOffset() + 1;
+                break;
+            }
+        }
+
+        // i: index of candidate token
+        for (int i = firstTokenIdx + 1; i < candidateIdxUB; i++) {
+            TokenStrategy.TokenInfo candidateToken = baseTokens.get(i);
             // Skip if one token is contained in the other
             if (isOneContainsOther(firstToken, candidateToken)) {
                 continue;
@@ -128,27 +169,15 @@ public class NgramStrategy {
             if (!secondTokenPredicate.test(candidateToken)) {
                 continue;
             }
-            if (firstToken.getEndOffset() >= candidateToken.getStartOffset()) {
-                // Overlapping or touching - this is adjacent
+            if (isOverlapOrAdjacent(candidateToken, firstToken)) {
+                // valid if candidate token is overlapping or adjacent to first token
                 validTokens.add(candidateToken);
             } else {
-                // Check if all between tokens are separators
-                // As tokens are sorted by start_offset,
-                // only need to check tokens between firstTokenIdx and i
-                // TODO: need to improve sepToken check for more complex cases
-                boolean allBetweenTokensAreSep = true;
-                for (int j = firstTokenIdx + 1; j < i; j++) {
-                    TokenStrategy.TokenInfo betweenToken = allTokens.get(j);
-                    if (betweenToken.getStartOffset() >= firstToken.getEndOffset() &&
-                            betweenToken.getEndOffset() <= candidateToken.getStartOffset()) {
-                        if (!isSepToken(betweenToken)) {
-                            allBetweenTokensAreSep = false;
-                            break;
-                        }
-                    }
-                }
-                if (allBetweenTokensAreSep) {
+                if (candidateToken.getStartOffset() < candidateStartOffsetUB) {
+                    // valid for any candidate token that starts before the upper bound
                     validTokens.add(candidateToken);
+                } else {
+                    break;
                 }
             }
         }

@@ -135,7 +135,7 @@ public class TestUnifiedEsTokAnalyzer {
 
         // Test case 5: N-gram with separators (space, dash, etc.)
         System.out.println("=== Test 8.5: [ngram with separators] ===");
-        String text5 = "deep learning test-case hello world";
+        String text5 = "deep learning, test-case hello world";
         List<String> vocabs5 = Arrays.asList("deep", "hello", "world");
         NgramConfig ngramConfig5 = new NgramConfig(true, true, true, true); // All n-grams
         testAnalyzerWithNgram(text5, true, true, vocabs5, true, false, true, ngramConfig5);
