@@ -138,17 +138,17 @@ public class EsTokTokenizer extends Tokenizer {
         return baseTokens;
     }
 
-    // Sort tokens by start_offset, then by type ('vocab' first)
+    // Sort tokens by start_offset and end_offset, finally by token text
     private List<TokenStrategy.TokenInfo> sortTokens(List<TokenStrategy.TokenInfo> tokens) {
         List<TokenStrategy.TokenInfo> sortedTokens = new ArrayList<>(tokens);
         sortedTokens.sort((a, b) -> {
-            // First, compare by start offset
+            // 1st, compare by start offset
             int offsetCompare = Integer.compare(a.getStartOffset(), b.getStartOffset());
             if (offsetCompare != 0) {
                 return offsetCompare;
             }
 
-            // If same start offset and same type priority, compare by end offset
+            // 2nd, compare by end offset
             int endOffsetCompare = Integer.compare(a.getEndOffset(), b.getEndOffset());
             if (endOffsetCompare != 0) {
                 return endOffsetCompare;

@@ -48,6 +48,11 @@ public class NgramStrategy {
                 token1.getEndOffset() <= token2.getEndOffset();
     }
 
+    private boolean isOneContainsOther(TokenStrategy.TokenInfo token1, TokenStrategy.TokenInfo token2) {
+        return isContainedIn(token1, token2) || isContainedIn(token2, token1);
+
+    }
+
     // main function
     public List<TokenStrategy.TokenInfo> generateNgrams(List<TokenStrategy.TokenInfo> baseTokens) {
         List<TokenStrategy.TokenInfo> ngramTokens = new ArrayList<>();
@@ -105,63 +110,96 @@ public class NgramStrategy {
         return ngramTokens;
     }
 
+    private List<TokenStrategy.TokenInfo> findAllValidNextAdjacentTokens(
+            TokenStrategy.TokenInfo firstToken,
+            List<TokenStrategy.TokenInfo> allTokens,
+            int firstTokenIdx,
+            Predicate<TokenStrategy.TokenInfo> secondTokenPredicate) {
+
+        List<TokenStrategy.TokenInfo> validTokens = new ArrayList<>();
+
+        for (int i = firstTokenIdx + 1; i < allTokens.size(); i++) {
+            TokenStrategy.TokenInfo candidateToken = allTokens.get(i);
+            // Skip if one token is contained in the other
+            if (isOneContainsOther(firstToken, candidateToken)) {
+                continue;
+            }
+            // Skip if candidate token does not pass the second token predicate
+            if (!secondTokenPredicate.test(candidateToken)) {
+                continue;
+            }
+            if (firstToken.getEndOffset() >= candidateToken.getStartOffset()) {
+                // Overlapping or touching - this is adjacent
+                validTokens.add(candidateToken);
+            } else {
+                // Check if all between tokens are separators
+                // As tokens are sorted by start_offset,
+                // only need to check tokens between firstTokenIdx and i
+                // TODO: need to improve sepToken check for more complex cases
+                boolean allBetweenTokensAreSep = true;
+                for (int j = firstTokenIdx + 1; j < i; j++) {
+                    TokenStrategy.TokenInfo betweenToken = allTokens.get(j);
+                    if (betweenToken.getStartOffset() >= firstToken.getEndOffset() &&
+                            betweenToken.getEndOffset() <= candidateToken.getStartOffset()) {
+                        if (!isSepToken(betweenToken)) {
+                            allBetweenTokensAreSep = false;
+                            break;
+                        }
+                    }
+                }
+                if (allBetweenTokensAreSep) {
+                    validTokens.add(candidateToken);
+                }
+            }
+        }
+
+        return validTokens;
+    }
+
     private List<TokenStrategy.TokenInfo> generateNgramsGeneric(
             List<TokenStrategy.TokenInfo> tokens,
             Predicate<TokenStrategy.TokenInfo> firstTokenPredicate,
             Predicate<TokenStrategy.TokenInfo> secondTokenPredicate,
-            Predicate<TokenPair> additionalValidation,
+            Predicate<TokenPair> extraPredicate,
             String ngramType) {
 
         List<TokenStrategy.TokenInfo> ngrams = new ArrayList<>();
 
-        for (int i = 0; i < tokens.size() - 1; i++) {
+        for (int i = 0; i < tokens.size(); i++) {
             TokenStrategy.TokenInfo firstToken = tokens.get(i);
             if (!firstTokenPredicate.test(firstToken)) {
                 continue;
             }
 
-            // Look for the next valid token that doesn't overlap with current token
-            for (int j = i + 1; j < tokens.size(); j++) {
-                TokenStrategy.TokenInfo secondToken = tokens.get(j);
+            // Find all valid adjacent tokens for this first token
+            List<TokenStrategy.TokenInfo> validSecondTokens = findAllValidNextAdjacentTokens(
+                    firstToken, tokens, i, secondTokenPredicate);
 
-                // Skip if current token is contained in or overlaps with the second token
-                if (isContainedIn(firstToken, secondToken) || isContainedIn(secondToken, firstToken)) {
+            for (TokenStrategy.TokenInfo secondToken : validSecondTokens) {
+                if (extraPredicate != null &&
+                        !extraPredicate.test(new TokenPair(firstToken, secondToken))) {
                     continue;
                 }
 
-                if (isSepToken(secondToken)) {
-                    continue; // Skip separators, keep looking
-                } else if (secondTokenPredicate.test(secondToken)) {
-                    // Apply additional validation if provided
-                    if (additionalValidation != null &&
-                            !additionalValidation.test(new TokenPair(firstToken, secondToken))) {
-                        break; // Validation failed, stop looking
-                    }
+                NgramTextBuilder ngramTextBuilder = new NgramTextBuilder(firstToken);
 
-                    // Create n-gram using NgramTextBuilder
-                    NgramTextBuilder ngramTextBuilder = new NgramTextBuilder(firstToken);
-
-                    boolean hasSpace = false;
-                    // Check if there are gaps between the tokens
-                    if (firstToken.getEndOffset() < secondToken.getStartOffset()) {
-                        hasSpace = true;
-                        TokenStrategy.TokenInfo spaceToken = new TokenStrategy.TokenInfo(
-                                " ",
-                                firstToken.getEndOffset(),
-                                secondToken.getStartOffset(),
-                                "space",
-                                0,
-                                "ngram");
-                        ngramTextBuilder.appendToken(spaceToken);
-                    }
-
-                    ngramTextBuilder.appendToken(secondToken);
-
-                    ngrams.addAll(spacifyNgramText(ngramTextBuilder, ngramType, hasSpace));
-                    break; // Only create one n-gram per starting token
-                } else {
-                    break; // Stop if we encounter invalid token type
+                // Add space token if there is gap between two tokens
+                boolean hasSpace = false;
+                if (firstToken.getEndOffset() < secondToken.getStartOffset()) {
+                    hasSpace = true;
+                    TokenStrategy.TokenInfo spaceToken = new TokenStrategy.TokenInfo(
+                            " ",
+                            firstToken.getEndOffset(),
+                            secondToken.getStartOffset(),
+                            "space",
+                            0,
+                            "ngram");
+                    ngramTextBuilder.appendToken(spaceToken);
                 }
+
+                ngramTextBuilder.appendToken(secondToken);
+
+                ngrams.addAll(spacifyNgramText(ngramTextBuilder, ngramType, hasSpace));
             }
         }
         return ngrams;
