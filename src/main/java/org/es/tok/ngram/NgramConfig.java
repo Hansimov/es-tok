@@ -5,12 +5,14 @@ public class NgramConfig {
     private final boolean useBigram;
     private final boolean useVcgram;
     private final boolean useVbgram;
+    private final boolean dropCogram;
 
-    public NgramConfig(boolean useNgram, boolean useBigram, boolean useVcgram, boolean useVbgram) {
+    public NgramConfig(boolean useNgram, boolean useBigram, boolean useVcgram, boolean useVbgram, boolean dropCogram) {
         this.useNgram = useNgram;
         this.useBigram = useBigram;
         this.useVcgram = useVcgram;
         this.useVbgram = useVbgram;
+        this.dropCogram = dropCogram;
     }
 
     public boolean isUseNgram() {
@@ -29,13 +31,17 @@ public class NgramConfig {
         return useVbgram;
     }
 
+    public boolean isDropCogram() {
+        return dropCogram;
+    }
+
     public boolean hasAnyNgramEnabled() {
         return useNgram && (useBigram || useVcgram || useVbgram);
     }
 
     @Override
     public String toString() {
-        return String.format("NgramConfig{useNgram=%s, useBigram=%s, useVcgram=%s, useVbgram=%s}",
-                useNgram, useBigram, useVcgram, useVbgram);
+        return String.format("NgramConfig{useNgram=%s, useBigram=%s, useVcgram=%s, useVbgram=%s, dropCogram=%s}",
+                useNgram, useBigram, useVcgram, useVbgram, dropCogram);
     }
 }

@@ -67,6 +67,7 @@ public class RestAnalyzeAction extends BaseRestHandler {
         boolean useBigram = false;
         boolean useVcgram = false;
         boolean useVbgram = false;
+        boolean dropCogram = true;
 
         // Parse JSON body
         if (request.hasContent()) {
@@ -171,6 +172,13 @@ public class RestAnalyzeAction extends BaseRestHandler {
                                 useVbgram = (Boolean) vbgramObj;
                             }
                         }
+
+                        if (ngramConfigMap.containsKey("drop_cogram")) {
+                            Object dropCogramObj = ngramConfigMap.get("drop_cogram");
+                            if (dropCogramObj instanceof Boolean) {
+                                dropCogram = (Boolean) dropCogramObj;
+                            }
+                        }
                     }
                 }
             }
@@ -211,10 +219,11 @@ public class RestAnalyzeAction extends BaseRestHandler {
         }
 
         // Build ngram_config settings
-        if (useNgram && (useBigram || useVcgram || useVbgram)) {
+        if (useNgram && (useBigram || useVcgram || useVbgram || dropCogram)) {
             settingsBuilder.put("ngram_config.use_bigram", useBigram);
             settingsBuilder.put("ngram_config.use_vcgram", useVcgram);
             settingsBuilder.put("ngram_config.use_vbgram", useVbgram);
+            settingsBuilder.put("ngram_config.drop_cogram", dropCogram);
         }
 
         Settings finalSettings = settingsBuilder.build();

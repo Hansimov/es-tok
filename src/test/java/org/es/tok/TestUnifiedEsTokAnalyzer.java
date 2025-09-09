@@ -63,6 +63,9 @@ public class TestUnifiedEsTokAnalyzer {
 
         // Test 8: N-gram tests
         testNgramCases();
+
+        // Test 9: Del Cogram tests
+        testDropCogramCases();
     }
 
     private static void testDropDuplicatesCases() throws IOException {
@@ -93,7 +96,7 @@ public class TestUnifiedEsTokAnalyzer {
         // Test case 4: Drop duplicates with n-grams
         String text3 = "深度学习";
         List<String> vocabs3 = Arrays.asList("深度", "学习");
-        NgramConfig ngramConfig = new NgramConfig(true, true, true, true);
+        NgramConfig ngramConfig = new NgramConfig(true, true, true, true, true);
 
         System.out.println("=== Test 7.5: [ngram overlap] WITHOUT drop_duplicates ===");
         testAnalyzer(text3, true, true, vocabs3, false, false, true, ngramConfig);
@@ -109,51 +112,94 @@ public class TestUnifiedEsTokAnalyzer {
         System.out.println("=== Test 8.1: [bigram - categ + categ] ===");
         String text1 = "deep learning machine";
         List<String> vocabs1 = Arrays.asList(); // No vocab words
-        NgramConfig ngramConfig1 = new NgramConfig(true, true, false, false); // Only bigram
+        NgramConfig ngramConfig1 = new NgramConfig(true, true, false, false, true); // Only bigram
         testAnalyzerWithNgram(text1, false, true, vocabs1, false, false, true, ngramConfig1);
 
         // Test case 2: vcgram (vocab + vocab)
         System.out.println("=== Test 8.2: [vcgram - vocab + vocab] ===");
         String text2 = "深度学习机器学习";
         List<String> vocabs2 = Arrays.asList("深度", "学习", "机器");
-        NgramConfig ngramConfig2 = new NgramConfig(true, false, true, false); // Only vcgram
+        NgramConfig ngramConfig2 = new NgramConfig(true, false, true, false, true); // Only vcgram
         testAnalyzerWithNgram(text2, true, true, vocabs2, false, false, true, ngramConfig2);
 
         // Test case 3: vbgram (vocab + categ)
         System.out.println("=== Test 8.3: [vbgram - vocab + categ] ===");
         String text3 = "深度learning机器123";
         List<String> vocabs3 = Arrays.asList("深度", "机器");
-        NgramConfig ngramConfig3 = new NgramConfig(true, false, false, true); // Only vbgram
+        NgramConfig ngramConfig3 = new NgramConfig(true, false, false, true, true); // Only vbgram
         testAnalyzerWithNgram(text3, true, true, vocabs3, false, false, true, ngramConfig3);
 
         // Test case 4: All n-grams enabled
         System.out.println("=== Test 8.4: [all ngrams] ===");
         String text4 = "深度 learning 机器 123 测试";
         List<String> vocabs4 = Arrays.asList("深度", "机器", "测试");
-        NgramConfig ngramConfig4 = new NgramConfig(true, true, true, true); // All n-grams
+        NgramConfig ngramConfig4 = new NgramConfig(true, true, true, true, true); // All n-grams
         testAnalyzerWithNgram(text4, true, true, vocabs4, false, false, true, ngramConfig4);
 
         // Test case 5: N-gram with separators (space, dash, etc.)
         System.out.println("=== Test 8.5: [ngram with separators] ===");
         String text5 = "deep learning, test-case hello world";
         List<String> vocabs5 = Arrays.asList("deep", "hello", "world");
-        NgramConfig ngramConfig5 = new NgramConfig(true, true, true, true); // All n-grams
+        NgramConfig ngramConfig5 = new NgramConfig(true, true, true, true, true); // All n-grams
         testAnalyzerWithNgram(text5, true, true, vocabs5, true, false, true, ngramConfig5);
 
         // Test case 6: N-gram interrupted by "nord" (punctuation)
         System.out.println("=== Test 8.6: [ngram interrupted by punct] ===");
         String text6 = "深度，学习！机器。测试";
         List<String> vocabs6 = Arrays.asList("深度", "学习", "机器", "测试");
-        NgramConfig ngramConfig6 = new NgramConfig(true, true, true, true); // All n-grams
+        NgramConfig ngramConfig6 = new NgramConfig(true, true, true, true, true); // All n-grams
         testAnalyzerWithNgram(text6, true, true, vocabs6, false, false, true, ngramConfig6);
 
         // Test case 7: Mixed language n-grams
         System.out.println("=== Test 8.7: [mixed language ngrams] ===");
         String text7 = "越来越多的人选择了大语言模型(LLM)";
         List<String> vocabs7 = Arrays.asList("越多", "越来越", "越来越多", "大语言模型", "语言", "模型", "LLM");
-        NgramConfig ngramConfig7 = new NgramConfig(true, true, true, true); // All n-grams
+        NgramConfig ngramConfig7 = new NgramConfig(true, true, true, true, true); // All n-grams
         testAnalyzerWithNgram(text7, true, true, vocabs7, true, true, true, ngramConfig7);
 
+    }
+
+    private static void testDropCogramCases() throws IOException {
+        System.out.println("=== Del Cogram Test Cases ===\n");
+
+        // Test case from requirement: "你的名字"
+        // vocabs: ["你的", "名字", "你的名字"]
+        // Expected bigram without drop_cogram: "的名"
+        // Expected bigram with drop_cogram: none (filtered out)
+        String text1 = "你的名字";
+        List<String> vocabs1 = Arrays.asList("你的", "名字", "你的名字");
+
+        System.out.println("=== Test 9.1: [drop_cogram = false] - should include cograms ===");
+        NgramConfig ngramConfig1 = new NgramConfig(true, true, false, false, false); // drop_cogram = false
+        testAnalyzer(text1, true, true, vocabs1, false, true, false, ngramConfig1);
+
+        System.out.println("=== Test 9.2: [drop_cogram = true] - should exclude cograms ===");
+        NgramConfig ngramConfig2 = new NgramConfig(true, true, false, false, true); // drop_cogram = true
+        testAnalyzer(text1, true, true, vocabs1, false, true, false, ngramConfig2);
+
+        // Test case 2: Another example with multiple vocabs
+        String text2 = "今天天气很好";
+        List<String> vocabs2 = Arrays.asList("今天", "天气", "很好");
+
+        System.out.println("=== Test 9.3: [text2 with drop_cogram = false] ===");
+        NgramConfig ngramConfig3 = new NgramConfig(true, true, false, false, false); // drop_cogram = false
+        testAnalyzer(text2, true, true, vocabs2, false, true, false, ngramConfig3);
+
+        System.out.println("=== Test 9.4: [text2 with drop_cogram = true] ===");
+        NgramConfig ngramConfig4 = new NgramConfig(true, true, false, false, true); // drop_cogram = true
+        testAnalyzer(text2, true, true, vocabs2, false, true, false, ngramConfig4);
+
+        // Test case 3: Complex case with overlapping vocabs
+        String text3 = "深度学习机器学习";
+        List<String> vocabs3 = Arrays.asList("深度", "学习", "机器", "深度学习", "机器学习");
+
+        System.out.println("=== Test 9.5: [complex overlap with drop_cogram = false] ===");
+        NgramConfig ngramConfig5 = new NgramConfig(true, true, false, false, false); // drop_cogram = false
+        testAnalyzer(text3, true, true, vocabs3, false, true, false, ngramConfig5);
+
+        System.out.println("=== Test 9.6: [complex overlap with drop_cogram = true] ===");
+        NgramConfig ngramConfig6 = new NgramConfig(true, true, false, false, true); // drop_cogram = true
+        testAnalyzer(text3, true, true, vocabs3, false, true, false, ngramConfig6);
     }
 
     private static void testAnalyzer(
@@ -172,7 +218,8 @@ public class TestUnifiedEsTokAnalyzer {
         // Create configuration objects
         VocabConfig vocabConfig = new VocabConfig(useVocab, vocabs);
         CategConfig categConfig = new CategConfig(useCateg, splitWord);
-        NgramConfig finalNgramConfig = ngramConfig != null ? ngramConfig : new NgramConfig(false, false, false, false);
+        NgramConfig finalNgramConfig = ngramConfig != null ? ngramConfig
+                : new NgramConfig(false, false, false, false, true);
 
         // Create unified config with all settings
         EsTokConfig config = new EsTokConfig(vocabConfig, categConfig, finalNgramConfig, ignoreCase, dropDuplicates);

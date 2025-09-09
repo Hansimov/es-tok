@@ -185,6 +185,47 @@ public class NgramStrategy {
         return validTokens;
     }
 
+    /**
+     * Check if a bigram is a "cogram" (combination of vocab suffixes/prefixes).
+     * A cogram is a bigram where:
+     * 1. The first token ends at the end of some vocab token
+     * 2. The second token starts at the beginning of some vocab token
+     * 3. These are two different vocab tokens
+     */
+    private boolean isCogram(TokenStrategy.TokenInfo firstToken, TokenStrategy.TokenInfo secondToken,
+            List<TokenStrategy.TokenInfo> allTokens) {
+        if (!ngramConfig.isDropCogram()) {
+            return false;
+        }
+
+        // Find vocab tokens that end at firstToken's end position
+        List<TokenStrategy.TokenInfo> vocabsEndingAtFirst = new ArrayList<>();
+        for (TokenStrategy.TokenInfo token : allTokens) {
+            if (isVocabToken(token) && token.getEndOffset() == firstToken.getEndOffset()) {
+                vocabsEndingAtFirst.add(token);
+            }
+        }
+
+        // Find vocab tokens that start at secondToken's start position
+        List<TokenStrategy.TokenInfo> vocabsStartingAtSecond = new ArrayList<>();
+        for (TokenStrategy.TokenInfo token : allTokens) {
+            if (isVocabToken(token) && token.getStartOffset() == secondToken.getStartOffset()) {
+                vocabsStartingAtSecond.add(token);
+            }
+        }
+
+        // Check if they are different vocab tokens
+        for (TokenStrategy.TokenInfo vocab1 : vocabsEndingAtFirst) {
+            for (TokenStrategy.TokenInfo vocab2 : vocabsStartingAtSecond) {
+                if (!vocab1.equals(vocab2)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     private List<TokenStrategy.TokenInfo> generateNgramsGeneric(
             List<TokenStrategy.TokenInfo> tokens,
             Predicate<TokenStrategy.TokenInfo> firstTokenPredicate,
@@ -259,7 +300,7 @@ public class NgramStrategy {
                 tokens,
                 this::isCategToken, // first token must be categ
                 this::isCategToken, // second token must be categ
-                null, // no additional validation
+                pair -> !isCogram(pair.getFirst(), pair.getSecond(), tokens), // exclude cograms if drop_cogram is true
                 "bigram");
     }
 

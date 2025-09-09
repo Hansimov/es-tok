@@ -11,7 +11,8 @@ public class EsTokConfig {
     private final boolean ignoreCase;
     private final boolean dropDuplicates;
 
-    public EsTokConfig(VocabConfig vocabConfig, CategConfig categConfig, NgramConfig ngramConfig, boolean ignoreCase, boolean dropDuplicates) {
+    public EsTokConfig(VocabConfig vocabConfig, CategConfig categConfig, NgramConfig ngramConfig, boolean ignoreCase,
+            boolean dropDuplicates) {
         this.vocabConfig = vocabConfig;
         this.categConfig = categConfig;
         this.ngramConfig = ngramConfig;
@@ -21,7 +22,7 @@ public class EsTokConfig {
 
     // Constructor with default NgramConfig
     public EsTokConfig(VocabConfig vocabConfig, CategConfig categConfig, boolean ignoreCase, boolean dropDuplicates) {
-        this(vocabConfig, categConfig, new NgramConfig(false, false, false, false), ignoreCase, dropDuplicates);
+        this(vocabConfig, categConfig, new NgramConfig(false, false, false, false, true), ignoreCase, dropDuplicates);
     }
 
     // Backward compatibility constructors
@@ -30,7 +31,7 @@ public class EsTokConfig {
     }
 
     public EsTokConfig(VocabConfig vocabConfig, CategConfig categConfig, boolean ignoreCase) {
-        this(vocabConfig, categConfig, new NgramConfig(false, false, false, false), ignoreCase, false);
+        this(vocabConfig, categConfig, new NgramConfig(false, false, false, false, true), ignoreCase, false);
     }
 
     public VocabConfig getVocabConfig() {
@@ -55,7 +56,8 @@ public class EsTokConfig {
 
     @Override
     public String toString() {
-        return String.format("EsTokConfig{vocabConfig=%s, categConfig=%s, ngramConfig=%s, ignoreCase=%s, dropDuplicates=%s}",
+        return String.format(
+                "EsTokConfig{vocabConfig=%s, categConfig=%s, ngramConfig=%s, ignoreCase=%s, dropDuplicates=%s}",
                 vocabConfig, categConfig, ngramConfig, ignoreCase, dropDuplicates);
     }
 }

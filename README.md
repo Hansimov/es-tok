@@ -28,12 +28,13 @@ GET /_es_tok/analyze
     },
     "vocab_config": {
         "file": "vocabs.txt",
-        "size": 300000
+        "size": 800000
     },
     "ngram_config": {
       "use_bigram": true,
       "use_vbgram": true,
-      "use_vcgram": true
+      "use_vcgram": true,
+      "drop_cogram": true
     }
 }
 ```
@@ -58,12 +59,13 @@ PUT test
           },
           "vocab_config": {
               "file": "vocabs.txt",
-              "size": 300000
+              "size": 800000
           },
           "ngram_config": {
             "use_bigram": true,
             "use_vbgram": true,
-            "use_vcgram": true
+            "use_vcgram": true,
+            "drop_cogram": true
           }
         }
       },
