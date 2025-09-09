@@ -44,7 +44,6 @@ public class RestAnalyzeAction extends BaseRestHandler {
         return false;
     }
 
-    @Override
     public boolean allowsUnsafeBuffers() {
         return true;
     }

@@ -12,7 +12,7 @@ public class EsTokTokenizerFactory extends AbstractTokenizerFactory {
     private final EsTokConfig config;
 
     public EsTokTokenizerFactory(IndexSettings indexSettings, Environment environment, String name, Settings settings) {
-        super(indexSettings, settings, name);
+        super(name);
 
         this.config = EsTokConfigLoader.loadConfig(settings, environment);
     }

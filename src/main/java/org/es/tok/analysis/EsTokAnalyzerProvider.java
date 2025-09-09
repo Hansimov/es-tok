@@ -11,7 +11,7 @@ public class EsTokAnalyzerProvider extends AbstractIndexAnalyzerProvider<EsTokAn
     private final EsTokAnalyzer analyzer;
 
     public EsTokAnalyzerProvider(IndexSettings indexSettings, Environment environment, String name, Settings settings) {
-        super(name, settings);
+        super(name);
 
         // Load unified configuration
         EsTokConfig config = EsTokConfigLoader.loadConfig(settings, environment);
