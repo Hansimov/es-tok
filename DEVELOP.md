@@ -2,16 +2,22 @@
 
 ## Installations
 
-### Install Java 17
+### Install Java 21
 
 ```sh
-sudo apt update && sudo apt install -y openjdk-17-jdk
+sudo apt update && sudo apt install -y openjdk-21-jdk
 ```
 
-Set `JAVA_HOME` in `~/.bashrc`:
+Check installation:
 
 ```sh
-export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ls -l /usr/lib/jvm/
+```
+
+Set `JAVA_HOME` in `~/.zshrc`:
+
+```sh
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 export PATH=$JAVA_HOME/bin:$PATH
 ```
 
@@ -26,14 +32,16 @@ javac -version
 
 ```sh
 cd downloads
-wget https://githubfast.com/gradle/gradle-distributions/releases/download/v8.14.1/gradle-8.14.1-bin.zip
-unzip gradle-8.14.1-bin.zip -d ~
+GRADLE_VERSION=9.0.0
+wget https://githubfast.com/gradle/gradle-distributions/releases/download/v$GRADLE_VERSION/gradle-$GRADLE_VERSION-bin.zip
+unzip gradle-$GRADLE_VERSION-bin.zip -d ~
 ```
 
-Add following line to `~/.bashrc`:
+Add following line to `~/.zshrc`:
 
 ```sh
-export PATH=$HOME/gradle-8.14.1/bin:$PATH
+export GRADLE_VERSION=9.0.0
+export PATH=$HOME/gradle-$GRADLE_VERSION/bin:$PATH
 ```
 
 Check version:
@@ -45,7 +53,7 @@ gradle -v
 ## Build commands
 
 ```sh
-gradle wrapper --gradle-version 8.14.1
+gradle wrapper --gradle-version $GRADLE_VERSION
 ```
 
 ```sh
@@ -66,7 +74,7 @@ Load plugin to elasticsearch:
 Check if plugin is loaded:
 
 ```sh
-curl --cacert $HOME/elasticsearch-docker/certs/ca/ca.crt -u elastic:$ELASTIC_PASSWORD -X GET "https://localhost:19200/_cat/plugins?v"
+curl --cacert $HOME/elasticsearch-docker-9.1.3/certs/ca/ca.crt -u elastic:$ELASTIC_PASSWORD -X GET "https://localhost:19200/_cat/plugins?v"
 ```
 
 ## Test commands
