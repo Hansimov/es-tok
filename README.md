@@ -18,11 +18,14 @@ GET /_cat/es_tok/version?v
 GET /_es_tok/analyze
 {
     "text": "...",
+    "use_extra": true,
     "use_categ": true,
     "use_vocab": true,
     "use_ngram": true,
-    "ignore_case": true,
-    "drop_duplicates": true,
+    "extra_config": {
+      "ignore_case": true,
+      "drop_duplicates": true
+    },
     "categ_config": {
       "split_word": true
     },
@@ -32,8 +35,8 @@ GET /_es_tok/analyze
     },
     "ngram_config": {
       "use_bigram": true,
-      "use_vbgram": true,
-      "use_vcgram": true,
+      "use_vbgram": false,
+      "use_vcgram": false,
       "drop_cogram": true
     }
 }
@@ -49,11 +52,14 @@ PUT test
       "tokenizer": {
         "es_tok_tokenizer": {
           "type": "es_tok",
+          "use_extra": true,
           "use_categ": true,
           "use_vocab": true,
           "use_ngram": true,
-          "ignore_case": true,
-          "drop_duplicates": true,
+          "extra_config": {
+            "ignore_case": true,
+            "drop_duplicates": true
+          },
           "categ_config": {
             "split_word": true
           },
@@ -63,8 +69,8 @@ PUT test
           },
           "ngram_config": {
             "use_bigram": true,
-            "use_vbgram": true,
-            "use_vcgram": true,
+            "use_vbgram": false,
+            "use_vcgram": false,
             "drop_cogram": true
           }
         }

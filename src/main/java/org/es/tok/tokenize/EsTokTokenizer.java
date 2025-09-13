@@ -96,7 +96,7 @@ public class EsTokTokenizer extends Tokenizer {
     // Main processing function
     private List<TokenStrategy.TokenInfo> processText(String text) {
         // apply ignore_case
-        if (config.isIgnoreCase()) {
+        if (config.getExtraConfig().isIgnoreCase()) {
             text = text.toLowerCase();
         }
 
@@ -104,7 +104,7 @@ public class EsTokTokenizer extends Tokenizer {
         List<TokenStrategy.TokenInfo> baseTokens = generateBaseTokens(text);
 
         // deduplicate base tokens
-        if (config.isDropDuplicates()) {
+        if (config.getExtraConfig().isDropDuplicates()) {
             baseTokens = dropDuplicatedTokens(baseTokens);
         }
 
@@ -119,7 +119,7 @@ public class EsTokTokenizer extends Tokenizer {
         }
 
         // deduplicate all tokens
-        if (config.isDropDuplicates()) {
+        if (config.getExtraConfig().isDropDuplicates()) {
             allTokens = dropDuplicatedTokens(allTokens);
         }
 

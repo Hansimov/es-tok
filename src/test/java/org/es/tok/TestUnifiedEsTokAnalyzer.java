@@ -7,9 +7,10 @@ import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
 import org.es.tok.tokenize.GroupAttribute;
 import org.es.tok.analysis.EsTokAnalyzer;
 import org.es.tok.config.EsTokConfig;
+import org.es.tok.extra.ExtraConfig;
+import org.es.tok.categ.CategConfig;
 import org.es.tok.vocab.VocabConfig;
 import org.es.tok.vocab.VocabFileLoader;
-import org.es.tok.categ.CategConfig;
 import org.es.tok.ngram.NgramConfig;
 
 import java.io.IOException;
@@ -220,9 +221,10 @@ public class TestUnifiedEsTokAnalyzer {
         CategConfig categConfig = new CategConfig(useCateg, splitWord);
         NgramConfig finalNgramConfig = ngramConfig != null ? ngramConfig
                 : new NgramConfig(false, false, false, false, true);
+        ExtraConfig extraConfig = new ExtraConfig(ignoreCase, dropDuplicates);
 
         // Create unified config with all settings
-        EsTokConfig config = new EsTokConfig(vocabConfig, categConfig, finalNgramConfig, ignoreCase, dropDuplicates);
+        EsTokConfig config = new EsTokConfig(vocabConfig, categConfig, finalNgramConfig, extraConfig);
         EsTokAnalyzer analyzer = new EsTokAnalyzer(config);
 
         try (analyzer) {

@@ -50,20 +50,24 @@ public class RestAnalyzeAction extends BaseRestHandler {
 
     @Override
     protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client) throws IOException {
-        // Parse top-level parameters
+        // Initialize top-level parameters with defaults
         String text = request.param("text");
+        boolean useExtra = request.paramAsBoolean("use_extra", true);
         boolean useVocab = request.paramAsBoolean("use_vocab", true);
         boolean useCateg = request.paramAsBoolean("use_categ", true);
-        boolean useNgram = request.paramAsBoolean("use_ngram", false);
-        boolean useCache = request.paramAsBoolean("use_cache", true);
-        boolean ignoreCase = request.paramAsBoolean("ignore_case", true);
-        boolean dropDuplicates = request.paramAsBoolean("drop_duplicates", false);
+        boolean useNgram = request.paramAsBoolean("use_ngram", true);
 
-        // Initialize config objects
+        // Initialize config variables
+        // extra_config
+        boolean ignoreCase = true;
+        boolean dropDuplicates = true;
+        // categ_config
+        boolean splitWord = true;
+        // vocab_config
         String vocabFile = null;
         List<String> vocabList = new ArrayList<>();
         int vocabSize = -1;
-        boolean splitWord = true;
+        // ngram_config
         boolean useBigram = false;
         boolean useVcgram = false;
         boolean useVbgram = false;
@@ -77,6 +81,9 @@ public class RestAnalyzeAction extends BaseRestHandler {
                 if (body.containsKey("text")) {
                     text = (String) body.get("text");
                 }
+                if (body.containsKey("use_extra")) {
+                    useExtra = (Boolean) body.get("use_extra");
+                }
                 if (body.containsKey("use_vocab")) {
                     useVocab = (Boolean) body.get("use_vocab");
                 }
@@ -86,14 +93,27 @@ public class RestAnalyzeAction extends BaseRestHandler {
                 if (body.containsKey("use_ngram")) {
                     useNgram = (Boolean) body.get("use_ngram");
                 }
-                if (body.containsKey("use_cache")) {
-                    useCache = (Boolean) body.get("use_cache");
-                }
-                if (body.containsKey("ignore_case")) {
-                    ignoreCase = (Boolean) body.get("ignore_case");
-                }
-                if (body.containsKey("drop_duplicates")) {
-                    dropDuplicates = (Boolean) body.get("drop_duplicates");
+
+                // Parse extra_config
+                if (body.containsKey("extra_config")) {
+                    Object extraConfigObj = body.get("extra_config");
+                    if (extraConfigObj instanceof Map<?, ?>) {
+                        Map<?, ?> extraConfigMap = (Map<?, ?>) extraConfigObj;
+
+                        if (extraConfigMap.containsKey("ignore_case")) {
+                            Object ignoreCaseObj = extraConfigMap.get("ignore_case");
+                            if (ignoreCaseObj instanceof Boolean) {
+                                ignoreCase = (Boolean) ignoreCaseObj;
+                            }
+                        }
+
+                        if (extraConfigMap.containsKey("drop_duplicates")) {
+                            Object dropDuplicatesObj = extraConfigMap.get("drop_duplicates");
+                            if (dropDuplicatesObj instanceof Boolean) {
+                                dropDuplicates = (Boolean) dropDuplicatesObj;
+                            }
+                        }
+                    }
                 }
 
                 // Parse vocab_config
@@ -191,11 +211,21 @@ public class RestAnalyzeAction extends BaseRestHandler {
 
         // Build Settings for internal use
         Settings.Builder settingsBuilder = Settings.builder();
+        settingsBuilder.put("use_extra", useExtra);
         settingsBuilder.put("use_vocab", useVocab);
         settingsBuilder.put("use_categ", useCateg);
         settingsBuilder.put("use_ngram", useNgram);
-        settingsBuilder.put("ignore_case", ignoreCase);
-        settingsBuilder.put("drop_duplicates", dropDuplicates);
+
+        // Build extra_config settings
+        if (useExtra) {
+            settingsBuilder.put("extra_config.ignore_case", ignoreCase);
+            settingsBuilder.put("extra_config.drop_duplicates", dropDuplicates);
+        }
+
+        // Build categ_config settings
+        if (useCateg) {
+            settingsBuilder.put("categ_config.split_word", splitWord);
+        }
 
         // Build vocab_config settings
         if (vocabFile != null || !vocabList.isEmpty() || vocabSize >= 0) {
@@ -213,11 +243,6 @@ public class RestAnalyzeAction extends BaseRestHandler {
                     "Must provide `file` or `list` in `vocab_config` when use_vocab is true");
         }
 
-        // Build categ_config settings
-        if (useCateg) {
-            settingsBuilder.put("categ_config.split_word", splitWord);
-        }
-
         // Build ngram_config settings
         if (useNgram && (useBigram || useVcgram || useVbgram || dropCogram)) {
             settingsBuilder.put("ngram_config.use_bigram", useBigram);
@@ -231,7 +256,7 @@ public class RestAnalyzeAction extends BaseRestHandler {
         // Load unified configuration
         EsTokConfig config;
         try {
-            config = EsTokConfigLoader.loadConfig(finalSettings, null, useCache);
+            config = EsTokConfigLoader.loadConfig(finalSettings, null, true);
         } catch (Exception e) {
             return channel -> sendErrorResponse(channel, RestStatus.BAD_REQUEST,
                     "Error loading configuration: " + e.getMessage());
