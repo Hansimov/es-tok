@@ -10,17 +10,13 @@ import java.util.List;
 public class VocabStrategy implements TokenStrategy {
     private final Trie trie;
 
-    public VocabStrategy(List<String> vocabs, boolean ignoreCase) {
+    public VocabStrategy(List<String> vocabs) {
         if (vocabs == null || vocabs.isEmpty()) {
             this.trie = null;
             return;
         }
 
         Trie.TrieBuilder builder = Trie.builder();
-        if (ignoreCase) {
-            builder.ignoreCase();
-        }
-
         for (String word : vocabs) {
             if (word != null && !word.trim().isEmpty()) {
                 builder.addKeyword(word.trim());

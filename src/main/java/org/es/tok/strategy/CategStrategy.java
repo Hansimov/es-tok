@@ -34,11 +34,9 @@ public class CategStrategy implements TokenStrategy {
     private static final List<String> TYPE_NAMES = Arrays.asList(
             "arab", "eng", "cjk", "lang", "dash", "ws", "mask", "nord");
 
-    private final boolean ignoreCase;
     private final boolean splitWord;
 
-    public CategStrategy(boolean ignoreCase, boolean splitWord) {
-        this.ignoreCase = ignoreCase;
+    public CategStrategy(boolean splitWord) {
         this.splitWord = splitWord;
     }
 
@@ -49,8 +47,7 @@ public class CategStrategy implements TokenStrategy {
         int position = 0;
 
         while (matcher.find()) {
-            String matchText = matcher.group();
-            String tokenText = ignoreCase ? matchText.toLowerCase() : matchText;
+            String tokenText = matcher.group();
             int start = matcher.start();
             int end = matcher.end();
             String type = determineTokenType(matcher);

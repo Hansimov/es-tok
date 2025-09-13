@@ -43,10 +43,10 @@ public class EsTokTokenizer extends Tokenizer {
         }
 
         this.vocabStrategy = config.getVocabConfig().isUseVocab()
-                ? new VocabStrategy(config.getVocabConfig().getVocabs(), config.isIgnoreCase())
+                ? new VocabStrategy(config.getVocabConfig().getVocabs())
                 : null;
         this.categStrategy = config.getCategConfig().isUseCateg()
-                ? new CategStrategy(config.isIgnoreCase(), config.getCategConfig().isSplitWord())
+                ? new CategStrategy(config.getCategConfig().isSplitWord())
                 : null;
         this.ngramStrategy = config.getNgramConfig().hasAnyNgramEnabled() ? new NgramStrategy(config.getNgramConfig())
                 : null;
@@ -93,26 +93,32 @@ public class EsTokTokenizer extends Tokenizer {
         isInitialized = true;
     }
 
+    // Main processing function
     private List<TokenStrategy.TokenInfo> processText(String text) {
-        // Step 1: Generate base tokens from categ and vocab strategies
+        // apply ignore_case
+        if (config.isIgnoreCase()) {
+            text = text.toLowerCase();
+        }
+
+        // generate base tokens from categ and vocab strategies
         List<TokenStrategy.TokenInfo> baseTokens = generateBaseTokens(text);
 
-        // Step 2: Apply first deduplication on base tokens if enabled
+        // deduplicate base tokens
         if (config.isDropDuplicates()) {
             baseTokens = dropDuplicatedTokens(baseTokens);
         }
 
-        // Step 3: Sort base tokens
+        // sort base tokens
         baseTokens = sortTokens(baseTokens);
 
-        // Step 4: Generate n-grams if enabled
+        // generate n-grams
         List<TokenStrategy.TokenInfo> allTokens = new ArrayList<>(baseTokens);
         if (ngramStrategy != null) {
             List<TokenStrategy.TokenInfo> ngramTokens = ngramStrategy.generateNgrams(baseTokens);
             allTokens.addAll(ngramTokens);
         }
 
-        // Step 5: Apply final deduplication after n-gram generation if enabled
+        // deduplicate all tokens
         if (config.isDropDuplicates()) {
             allTokens = dropDuplicatedTokens(allTokens);
         }

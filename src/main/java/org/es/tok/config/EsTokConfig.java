@@ -20,20 +20,6 @@ public class EsTokConfig {
         this.dropDuplicates = dropDuplicates;
     }
 
-    // Constructor with default NgramConfig
-    public EsTokConfig(VocabConfig vocabConfig, CategConfig categConfig, boolean ignoreCase, boolean dropDuplicates) {
-        this(vocabConfig, categConfig, new NgramConfig(false, false, false, false, true), ignoreCase, dropDuplicates);
-    }
-
-    // Backward compatibility constructors
-    public EsTokConfig(VocabConfig vocabConfig, CategConfig categConfig, NgramConfig ngramConfig, boolean ignoreCase) {
-        this(vocabConfig, categConfig, ngramConfig, ignoreCase, false);
-    }
-
-    public EsTokConfig(VocabConfig vocabConfig, CategConfig categConfig, boolean ignoreCase) {
-        this(vocabConfig, categConfig, new NgramConfig(false, false, false, false, true), ignoreCase, false);
-    }
-
     public VocabConfig getVocabConfig() {
         return vocabConfig;
     }
