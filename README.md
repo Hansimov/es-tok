@@ -1,6 +1,6 @@
 # ES-TOK Plugin User Guide
 
-![](https://img.shields.io/badge/es__tok-0.6.0-blue)
+![](https://img.shields.io/badge/es__tok-0.7.0-blue)
 
 An ElasticSearch plugin for text analysis. Support tokenization by category, vocabulary, and ngram.
 
