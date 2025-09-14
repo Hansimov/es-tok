@@ -32,6 +32,7 @@ esplugin {
 
 dependencies {
     implementation "org.ahocorasick:ahocorasick:0.6.3"
+    implementation "com.fasterxml.jackson.core:jackson-databind:2.15.2"
     
     testImplementation "junit:junit:4.13.2"
     testImplementation "org.apache.lucene:lucene-test-framework:${luceneVersion}"
@@ -41,7 +42,42 @@ dependencies {
 }
 
 // Test tasks
-task testUnifiedAnalyzer(type: JavaExec) {
+task testRunner(type: JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.es.tok.TestUnifiedEsTokAnalyzer'
+    mainClass = 'org.es.tok.TestRunner'
+}
+
+task testBasic(type: JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.es.tok.BasicAnalyzerTest'
+}
+
+task testNgram(type: JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.es.tok.NgramAnalyzerTest'
+}
+
+task testDropDuplicates(type: JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.es.tok.DropDuplicatesTest'
+}
+
+task testCogram(type: JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.es.tok.CogramTest'
+}
+
+task testVocabFile(type: JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.es.tok.VocabFileTest'
+}
+
+task testPerformance(type: JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.es.tok.PerformanceTest'
+}
+
+task testExamples(type: JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.es.tok.ExampleUsage'
 }
