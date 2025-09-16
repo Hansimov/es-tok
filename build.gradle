@@ -81,3 +81,8 @@ task testExamples(type: JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'org.es.tok.ExampleUsage'
 }
+
+task testHantToHans(type: JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.es.tok.HantToHansTest'
+}

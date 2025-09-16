@@ -6,26 +6,17 @@ import org.es.tok.ngram.NgramConfig;
 import org.es.tok.vocab.VocabConfig;
 
 public class EsTokConfig {
-    private final VocabConfig vocabConfig;
-    private final CategConfig categConfig;
-    private final NgramConfig ngramConfig;
     private final ExtraConfig extraConfig;
+    private final CategConfig categConfig;
+    private final VocabConfig vocabConfig;
+    private final NgramConfig ngramConfig;
 
-    public EsTokConfig(VocabConfig vocabConfig, CategConfig categConfig, NgramConfig ngramConfig,
-            ExtraConfig extraConfig) {
+    public EsTokConfig(ExtraConfig extraConfig, CategConfig categConfig, VocabConfig vocabConfig,
+            NgramConfig ngramConfig) {
         this.extraConfig = extraConfig;
         this.categConfig = categConfig;
         this.vocabConfig = vocabConfig;
         this.ngramConfig = ngramConfig;
-    }
-
-    // Backward compatibility constructor
-    public EsTokConfig(VocabConfig vocabConfig, CategConfig categConfig, NgramConfig ngramConfig, boolean ignoreCase,
-            boolean dropDuplicates) {
-        this.vocabConfig = vocabConfig;
-        this.categConfig = categConfig;
-        this.ngramConfig = ngramConfig;
-        this.extraConfig = new ExtraConfig(ignoreCase, dropDuplicates);
     }
 
     public ExtraConfig getExtraConfig() {

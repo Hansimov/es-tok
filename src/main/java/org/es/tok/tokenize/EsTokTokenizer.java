@@ -6,6 +6,7 @@ import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
 import org.es.tok.config.EsTokConfig;
+import org.es.tok.extra.HantToHansConverter;
 import org.es.tok.strategy.CategStrategy;
 import org.es.tok.strategy.NgramStrategy;
 import org.es.tok.strategy.TokenStrategy;
@@ -29,6 +30,7 @@ public class EsTokTokenizer extends Tokenizer {
     private final VocabStrategy vocabStrategy;
     private final CategStrategy categStrategy;
     private final NgramStrategy ngramStrategy;
+    private final HantToHansConverter hantToHansConverter;
 
     private String inputText;
     private Iterator<TokenStrategy.TokenInfo> tokenIterator;
@@ -50,6 +52,17 @@ public class EsTokTokenizer extends Tokenizer {
                 : null;
         this.ngramStrategy = config.getNgramConfig().hasAnyNgramEnabled() ? new NgramStrategy(config.getNgramConfig())
                 : null;
+
+        // Initialize HantToHansConverter if needed
+        if (config.getExtraConfig().isIgnoreHant()) {
+            try {
+                this.hantToHansConverter = HantToHansConverter.getInstance();
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to initialize HantToHansConverter", e);
+            }
+        } else {
+            this.hantToHansConverter = null;
+        }
     }
 
     @Override
@@ -98,6 +111,11 @@ public class EsTokTokenizer extends Tokenizer {
         // apply ignore_case
         if (config.getExtraConfig().isIgnoreCase()) {
             text = text.toLowerCase();
+        }
+
+        // apply hant-to-hans conversion
+        if (config.getExtraConfig().isIgnoreHant() && hantToHansConverter != null) {
+            text = hantToHansConverter.convert(text);
         }
 
         // generate base tokens from categ and vocab strategies

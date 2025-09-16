@@ -60,6 +60,7 @@ public class RestAnalyzeAction extends BaseRestHandler {
         // Initialize config variables
         // extra_config
         boolean ignoreCase = true;
+        boolean ignoreHant = true;
         boolean dropDuplicates = true;
         // categ_config
         boolean splitWord = true;
@@ -106,7 +107,12 @@ public class RestAnalyzeAction extends BaseRestHandler {
                                 ignoreCase = (Boolean) ignoreCaseObj;
                             }
                         }
-
+                        if (extraConfigMap.containsKey("ignore_hant")) {
+                            Object ignoreHantObj = extraConfigMap.get("ignore_hant");
+                            if (ignoreHantObj instanceof Boolean) {
+                                ignoreHant = (Boolean) ignoreHantObj;
+                            }
+                        }
                         if (extraConfigMap.containsKey("drop_duplicates")) {
                             Object dropDuplicatesObj = extraConfigMap.get("drop_duplicates");
                             if (dropDuplicatesObj instanceof Boolean) {
@@ -219,6 +225,7 @@ public class RestAnalyzeAction extends BaseRestHandler {
         // Build extra_config settings
         if (useExtra) {
             settingsBuilder.put("extra_config.ignore_case", ignoreCase);
+            settingsBuilder.put("extra_config.ignore_hant", ignoreHant);
             settingsBuilder.put("extra_config.drop_duplicates", dropDuplicates);
         }
 

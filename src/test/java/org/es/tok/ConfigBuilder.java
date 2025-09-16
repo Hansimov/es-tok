@@ -23,6 +23,7 @@ public class ConfigBuilder {
     private boolean useVbgram = false;
     private boolean dropCogram = true;
     private boolean ignoreCase = false;
+    private boolean ignoreHant = false;
     private boolean dropDuplicates = false;
 
     public static ConfigBuilder create() {
@@ -92,17 +93,22 @@ public class ConfigBuilder {
         return this;
     }
 
+    public ConfigBuilder withIgnoreHant() {
+        this.ignoreHant = true;
+        return this;
+    }
+
     public ConfigBuilder withDropDuplicates() {
         this.dropDuplicates = true;
         return this;
     }
 
     public EsTokConfig build() {
-        VocabConfig vocabConfig = new VocabConfig(useVocab, vocabs);
+        ExtraConfig extraConfig = new ExtraConfig(ignoreCase, ignoreHant, dropDuplicates);
         CategConfig categConfig = new CategConfig(useCateg, splitWord);
+        VocabConfig vocabConfig = new VocabConfig(useVocab, vocabs);
         NgramConfig ngramConfig = new NgramConfig(useNgram, useBigram, useVcgram, useVbgram, dropCogram);
-        ExtraConfig extraConfig = new ExtraConfig(ignoreCase, dropDuplicates);
 
-        return new EsTokConfig(vocabConfig, categConfig, ngramConfig, extraConfig);
+        return new EsTokConfig(extraConfig, categConfig, vocabConfig, ngramConfig);
     }
 }

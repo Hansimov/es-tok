@@ -22,6 +22,6 @@ public class EsTokConfigLoader {
         VocabConfig vocabConfig = VocabLoader.loadVocabConfig(settings, environment, useCache);
         NgramConfig ngramConfig = NgramLoader.loadNgramConfig(settings);
 
-        return new EsTokConfig(vocabConfig, categConfig, ngramConfig, extraConfig);
+        return new EsTokConfig(extraConfig, categConfig, vocabConfig, ngramConfig);
     }
 }
