@@ -1,6 +1,6 @@
 # ES-TOK Plugin User Guide
 
-![](https://img.shields.io/badge/es__tok-0.7.0-blue)
+![](https://img.shields.io/badge/es__tok-0.7.1-blue)
 
 An ElasticSearch plugin for text analysis. Support tokenization by category, vocabulary, and ngram.
 
@@ -24,6 +24,7 @@ GET /_es_tok/analyze
     "use_ngram": true,
     "extra_config": {
       "ignore_case": true,
+      "ignore_hant": true,
       "drop_duplicates": true
     },
     "categ_config": {
@@ -58,6 +59,7 @@ PUT test
           "use_ngram": true,
           "extra_config": {
             "ignore_case": true,
+            "ignore_hant": true,
             "drop_duplicates": true
           },
           "categ_config": {
