@@ -13,7 +13,7 @@ import org.es.tok.vocab.VocabLoader;
 
 public class EsTokConfigLoader {
     public static EsTokConfig loadConfig(Settings settings, Environment environment) {
-        return loadConfig(settings, environment, false);
+        return loadConfig(settings, environment, true); // Enable cache by default for better performance
     }
 
     public static EsTokConfig loadConfig(Settings settings, Environment environment, boolean useCache) {

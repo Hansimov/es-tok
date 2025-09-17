@@ -65,6 +65,20 @@ public class EsTokTokenizer extends Tokenizer {
         }
     }
 
+    // Performance-optimized constructor using pre-built strategies
+    public EsTokTokenizer(EsTokConfig config, VocabStrategy vocabStrategy, CategStrategy categStrategy,
+            NgramStrategy ngramStrategy, HantToHansConverter hantToHansConverter) {
+        this.config = config;
+        this.vocabStrategy = vocabStrategy;
+        this.categStrategy = categStrategy;
+        this.ngramStrategy = ngramStrategy;
+        this.hantToHansConverter = hantToHansConverter;
+
+        if (vocabStrategy == null && categStrategy == null) {
+            throw new IllegalArgumentException("Must use at least one strategy: use_vocab, use_categ");
+        }
+    }
+
     @Override
     public boolean incrementToken() throws IOException {
         if (!isInitialized) {

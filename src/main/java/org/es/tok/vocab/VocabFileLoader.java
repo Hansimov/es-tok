@@ -30,11 +30,20 @@ public class VocabFileLoader {
             return new ArrayList<>();
         }
         Settings vocabConfig = settings.getAsSettings("vocab_config");
+        // If no vocab_config is provided, don't use vocab (graceful fallback)
+        if (vocabConfig == null || vocabConfig.isEmpty()) {
+            return new ArrayList<>();
+        }
         return loadVocabsFromConfigInEnv(vocabConfig, environment);
     }
 
     private static List<String> loadVocabsFromConfigInEnv(Settings vocabConfig, Environment environment) {
         List<String> allVocabs = new ArrayList<>();
+
+        // Handle case where no vocab_config is provided
+        if (vocabConfig == null) {
+            return allVocabs; // Return empty list
+        }
 
         // Load vocabs from "list"
         List<String> listVocabs = vocabConfig.getAsList("list", Arrays.asList());

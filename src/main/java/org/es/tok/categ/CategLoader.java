@@ -4,7 +4,7 @@ import org.elasticsearch.common.settings.Settings;
 
 public class CategLoader {
     public static CategConfig loadCategConfig(Settings settings) {
-        boolean useCateg = settings.getAsBoolean("use_categ", false);
+        boolean useCateg = settings.getAsBoolean("use_categ", true); // Default to true for fallback
         if (!useCateg) {
             return new CategConfig(false, false);
         }

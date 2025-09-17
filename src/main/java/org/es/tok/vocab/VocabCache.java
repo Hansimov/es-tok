@@ -57,7 +57,8 @@ public class VocabCache {
             int size = vocabConfig.getAsInt("size", -1);
             keyBuilder.append("size:").append(size).append("|");
         } else {
-            throw new IllegalArgumentException("Must set `vocab_config`");
+            // No vocab_config provided - use empty vocab list
+            keyBuilder.append("vocab_config:empty|");
         }
 
         return keyBuilder.toString();
