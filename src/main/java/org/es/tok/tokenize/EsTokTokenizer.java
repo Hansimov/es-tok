@@ -141,7 +141,7 @@ public class EsTokTokenizer extends Tokenizer {
         }
 
         // sort base tokens
-        baseTokens = sortTokens(baseTokens);
+        baseTokens = sortTokensByOffset(baseTokens);
 
         // generate n-grams
         List<TokenStrategy.TokenInfo> allTokens = new ArrayList<>(baseTokens);
@@ -154,6 +154,9 @@ public class EsTokTokenizer extends Tokenizer {
         if (config.getExtraConfig().isDropDuplicates()) {
             allTokens = dropDuplicatedTokens(allTokens);
         }
+
+        // sort all tokens to ensure proper offset ordering
+        allTokens = sortTokensByOffset(allTokens);
 
         return allTokens;
     }
@@ -177,7 +180,7 @@ public class EsTokTokenizer extends Tokenizer {
     }
 
     // Sort tokens by start_offset and end_offset, finally by token text
-    private List<TokenStrategy.TokenInfo> sortTokens(List<TokenStrategy.TokenInfo> tokens) {
+    private List<TokenStrategy.TokenInfo> sortTokensByOffset(List<TokenStrategy.TokenInfo> tokens) {
         List<TokenStrategy.TokenInfo> sortedTokens = new ArrayList<>(tokens);
         sortedTokens.sort((a, b) -> {
             // 1st, compare by start offset

@@ -33,17 +33,29 @@ public class HantToHansConverter {
 
     // traditional-to-simplified conversion
     public String convert(String text) {
+        // check if contain hant chars
         if (text == null || text.isEmpty()) {
             return text;
         }
+        boolean isContainHants = false;
+        for (int i = 0; i < text.length(); i++) {
+            String ch = text.substring(i, i + 1);
+            if (hantToHansMap.containsKey(ch)) {
+                isContainHants = true;
+                break;
+            }
+        }
+        if (!isContainHants) {
+            return text;
+        }
 
+        // apply conversion
         StringBuilder sb = new StringBuilder(text.length());
         for (int i = 0; i < text.length(); i++) {
             String ch = text.substring(i, i + 1);
             String simplified = hantToHansMap.get(ch);
             sb.append(simplified != null ? simplified : ch);
         }
-
         return sb.toString();
     }
 
