@@ -25,7 +25,8 @@ GET /_es_tok/analyze
     "extra_config": {
       "ignore_case": true,
       "ignore_hant": true,
-      "drop_duplicates": true
+      "drop_duplicates": true,
+      "drop_categs": true
     },
     "categ_config": {
       "split_word": true
@@ -60,7 +61,8 @@ PUT test
           "extra_config": {
             "ignore_case": true,
             "ignore_hant": true,
-            "drop_duplicates": true
+            "drop_duplicates": true,
+            "drop_categs": true
           },
           "categ_config": {
             "split_word": true
@@ -81,7 +83,6 @@ PUT test
         "es_tok_analyzer": {
           "type": "custom",
           "tokenizer": "es_tok_tokenizer",
-          "filter": ["lowercase"]
         }
       }
     }

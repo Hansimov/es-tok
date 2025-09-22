@@ -135,6 +135,11 @@ public class EsTokTokenizer extends Tokenizer {
         // generate base tokens from categ and vocab strategies
         List<TokenStrategy.TokenInfo> baseTokens = generateBaseTokens(text);
 
+        // drop categ tokens covered by multiple vocab tokens
+        if (config.getExtraConfig().isDropCategs()) {
+            baseTokens = dropCategTokens(baseTokens, 2);
+        }
+
         // deduplicate base tokens
         if (config.getExtraConfig().isDropDuplicates()) {
             baseTokens = dropDuplicatedTokens(baseTokens);
@@ -215,6 +220,81 @@ public class EsTokTokenizer extends Tokenizer {
         }
 
         return uniqueTokens;
+    }
+
+    // Drop categ tokens covered by multiple vocab tokens
+    private List<TokenStrategy.TokenInfo> dropCategTokens(List<TokenStrategy.TokenInfo> tokens,
+            int vocabFreqThreshold) {
+        // sort tokens by offset for efficient looping later
+        List<TokenStrategy.TokenInfo> sortedTokens = sortTokensByOffset(tokens);
+        // use iterator to remove elements efficiently
+        Iterator<TokenStrategy.TokenInfo> iterator = tokens.iterator();
+        while (iterator.hasNext()) {
+            TokenStrategy.TokenInfo token = iterator.next();
+            // only affect categ tokens
+            if (!isTokenGroup(token, "categ")) {
+                continue;
+            }
+
+            int vocabFreq = 0;
+            int categStart = token.getStartOffset();
+            // find start position for vocab token to check
+            int loopStart = findFirstTokenAtOrBefore(sortedTokens, categStart);
+            // count vocab tokens that cover this categ token
+            for (int i = loopStart; i < sortedTokens.size(); i++) {
+                TokenStrategy.TokenInfo vToken = sortedTokens.get(i);
+                // if exceed offset, break
+                if (vToken.getStartOffset() > categStart) {
+                    break;
+                }
+                // find matched vocab token
+                if (isTokenGroup(vToken, "vocab") && isContainedIn(token, vToken)) {
+                    vocabFreq++;
+                    if (vocabFreq >= vocabFreqThreshold) {
+                        break;
+                    }
+                }
+            }
+            // remove categ token if satisfy requirements
+            if (vocabFreq >= vocabFreqThreshold) {
+                iterator.remove();
+            }
+        }
+
+        return tokens;
+    }
+
+    // find min token idx with start_offset <= target_offset
+    private int findFirstTokenAtOrBefore(List<TokenStrategy.TokenInfo> sortedTokens, int targetStartOffset) {
+        int left = 0;
+        int right = sortedTokens.size() - 1;
+        int resIdx = 0;
+        // get rightmost token whose startOffset <= targetStartOffset
+        while (left <= right) {
+            int mid = left + (right - left) / 2;
+            if (sortedTokens.get(mid).getStartOffset() <= targetStartOffset) {
+                resIdx = mid;
+                left = mid + 1;
+            } else {
+                right = mid - 1;
+            }
+        }
+        // get leftmost token whose endOffset >= targetStartOffset
+        while (resIdx > 0 && sortedTokens.get(resIdx - 1).getEndOffset() >= targetStartOffset) {
+            resIdx--;
+        }
+        return resIdx;
+    }
+
+    // check if token belongs to give group
+    private boolean isTokenGroup(TokenStrategy.TokenInfo token, String group) {
+        return group.equals(token.getGroup());
+    }
+
+    // check if token1 is contained in token2 (L2<=L1<=R1<=R2)
+    private boolean isContainedIn(TokenStrategy.TokenInfo token1, TokenStrategy.TokenInfo token2) {
+        return token2.getStartOffset() <= token1.getStartOffset() &&
+                token1.getEndOffset() <= token2.getEndOffset();
     }
 
     // unique token by: (text, start_offset, end_offset)

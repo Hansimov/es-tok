@@ -62,6 +62,11 @@ task testDropDuplicates(type: JavaExec) {
     mainClass = 'org.es.tok.DropDuplicatesTest'
 }
 
+task testDropCategs(type: JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.es.tok.DropCategsTest'
+}
+
 task testCogram(type: JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'org.es.tok.CogramTest'
