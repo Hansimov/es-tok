@@ -17,8 +17,8 @@ public class DropCategsTest {
     public static void main(String[] args) throws IOException {
         System.out.println("=== Testing drop_categs functionality ===");
 
-        String text = "游戏我的世界的开发者是谁";
-        List<String> vocabs = Arrays.asList("游戏", "我的", "我的世界", "世界", "世界的", "界的", "开发", "开发者", "者是", "是谁");
+        String text = "玩机器看到天禄打赢a队";
+        List<String> vocabs = Arrays.asList("玩机器", "玩机器看", "看到", "天禄", "打赢", "a队");
 
         System.out.println("Input text: " + text);
         System.out.println("Vocabs: " + vocabs);
@@ -69,9 +69,9 @@ public class DropCategsTest {
             stream.end();
 
             // Print tokens grouped by type
-            System.out.println("Categ tokens:");
+            System.out.println("Non-vocab tokens:");
             tokens.stream()
-                    .filter(t -> "cjk".equals(t.type))
+                    .filter(t -> !"vocab".equals(t.type))
                     .forEach(t -> System.out.println("  " + t));
 
             System.out.println("Vocab tokens:");

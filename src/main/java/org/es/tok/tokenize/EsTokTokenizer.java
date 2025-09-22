@@ -238,10 +238,8 @@ public class EsTokTokenizer extends Tokenizer {
 
             int vocabFreq = 0;
             int categStart = token.getStartOffset();
-            // find start position for vocab token to check
-            int loopStart = findFirstTokenAtOrBefore(sortedTokens, categStart);
             // count vocab tokens that cover this categ token
-            for (int i = loopStart; i < sortedTokens.size(); i++) {
+            for (int i = 0; i < sortedTokens.size(); i++) {
                 TokenStrategy.TokenInfo vToken = sortedTokens.get(i);
                 // if exceed offset, break
                 if (vToken.getStartOffset() > categStart) {
@@ -262,28 +260,6 @@ public class EsTokTokenizer extends Tokenizer {
         }
 
         return tokens;
-    }
-
-    // find min token idx with start_offset <= target_offset
-    private int findFirstTokenAtOrBefore(List<TokenStrategy.TokenInfo> sortedTokens, int targetStartOffset) {
-        int left = 0;
-        int right = sortedTokens.size() - 1;
-        int resIdx = 0;
-        // get rightmost token whose startOffset <= targetStartOffset
-        while (left <= right) {
-            int mid = left + (right - left) / 2;
-            if (sortedTokens.get(mid).getStartOffset() <= targetStartOffset) {
-                resIdx = mid;
-                left = mid + 1;
-            } else {
-                right = mid - 1;
-            }
-        }
-        // get leftmost token whose endOffset >= targetStartOffset
-        while (resIdx > 0 && sortedTokens.get(resIdx - 1).getEndOffset() >= targetStartOffset) {
-            resIdx--;
-        }
-        return resIdx;
     }
 
     // check if token belongs to give group
