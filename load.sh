@@ -75,7 +75,7 @@ if [ "$IS_RESTART" = true ]; then
     echo "> Restart elastic node"
     docker compose -f "$ES_DOCKER_PATH/docker-compose.yml" restart $ES_NODE
     echo "> Waiting for ES to be ready ..."
-    sleep 35
+    sleep 45
     echo "> Test plugin loading"
     curl --cacert $HOME/elasticsearch-docker-9.1.3/certs/ca/ca.crt -u elastic:$ELASTIC_PASSWORD -X GET "https://localhost:19200/_cat/plugins?v"
 fi

@@ -267,6 +267,9 @@ public class EsTokTokenizer extends Tokenizer {
             }
         }
 
+        // remove separator categ tokens
+        tokens.removeIf(token -> isTokenGroup(token, "categ") && isSeparatorType(token.getType()));
+
         return tokens;
     }
 

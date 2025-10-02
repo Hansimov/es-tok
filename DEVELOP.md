@@ -68,7 +68,7 @@ See: [`load.sh`](./load.sh)
 Load plugin to elasticsearch:
 
 ```sh
-./load.sh
+./load.sh -a
 ```
 
 Check if plugin is loaded:
