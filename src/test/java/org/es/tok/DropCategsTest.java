@@ -17,8 +17,8 @@ public class DropCategsTest {
     public static void main(String[] args) throws IOException {
         System.out.println("=== Testing drop_categs functionality ===");
 
-        String text = "玩机器看到天禄打赢a队";
-        List<String> vocabs = Arrays.asList("玩机器", "玩机器看", "看到", "天禄", "打赢", "a队");
+        String text = "昨天晚上，我看到玩机器看到天禄打赢a队";
+        List<String> vocabs = Arrays.asList("昨天", "晚上", "我看到", "玩机器", "玩机器看", "看到", "天禄", "打赢", "a队");
 
         System.out.println("Input text: " + text);
         System.out.println("Vocabs: " + vocabs);

@@ -14,6 +14,7 @@ import org.es.tok.strategy.VocabStrategy;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -227,6 +228,7 @@ public class EsTokTokenizer extends Tokenizer {
             int vocabFreqThreshold) {
         // sort tokens by offset for efficient looping later
         List<TokenStrategy.TokenInfo> sortedTokens = sortTokensByOffset(tokens);
+        SeparatorOffsets separatorOffsets = computeSeparatorOffsets(tokens);
         // use iterator to remove elements efficiently
         Iterator<TokenStrategy.TokenInfo> iterator = tokens.iterator();
         while (iterator.hasNext()) {
@@ -238,6 +240,7 @@ public class EsTokTokenizer extends Tokenizer {
 
             int vocabFreq = 0;
             int categStart = token.getStartOffset();
+            boolean shouldRemoveToken = false;
             // count vocab tokens that cover this categ token
             for (int i = 0; i < sortedTokens.size(); i++) {
                 TokenStrategy.TokenInfo vToken = sortedTokens.get(i);
@@ -249,12 +252,17 @@ public class EsTokTokenizer extends Tokenizer {
                 if (isTokenGroup(vToken, "vocab") && isContainedIn(token, vToken)) {
                     vocabFreq++;
                     if (vocabFreq >= vocabFreqThreshold) {
+                        shouldRemoveToken = true;
+                        break;
+                    }
+                    if (isBoundaryToken(vToken, separatorOffsets)) {
+                        shouldRemoveToken = true;
                         break;
                     }
                 }
             }
             // remove categ token if satisfy requirements
-            if (vocabFreq >= vocabFreqThreshold) {
+            if (shouldRemoveToken) {
                 iterator.remove();
             }
         }
@@ -271,6 +279,42 @@ public class EsTokTokenizer extends Tokenizer {
     private boolean isContainedIn(TokenStrategy.TokenInfo token1, TokenStrategy.TokenInfo token2) {
         return token2.getStartOffset() <= token1.getStartOffset() &&
                 token1.getEndOffset() <= token2.getEndOffset();
+    }
+
+    private SeparatorOffsets computeSeparatorOffsets(List<TokenStrategy.TokenInfo> tokens) {
+        Set<Integer> sepStartOffsets = new HashSet<>();
+        Set<Integer> sepEndOffsets = new HashSet<>();
+        int maxEndOffset = 0;
+        boolean hasTokens = false;
+
+        for (TokenStrategy.TokenInfo token : tokens) {
+            hasTokens = true;
+            maxEndOffset = Math.max(maxEndOffset, token.getEndOffset());
+            if (isSeparatorType(token.getType())) {
+                int startOffset = token.getStartOffset();
+                int endOffset = token.getEndOffset();
+                sepEndOffsets.add(startOffset);
+                sepEndOffsets.add(startOffset + 1);
+                sepStartOffsets.add(endOffset);
+                sepStartOffsets.add(endOffset - 1);
+            }
+        }
+
+        sepStartOffsets.add(-1);
+        sepEndOffsets.add((hasTokens ? maxEndOffset : 0) + 1);
+
+        return new SeparatorOffsets(sepStartOffsets, sepEndOffsets);
+    }
+
+    private boolean isSeparatorType(String type) {
+        return "ws".equals(type) || "dash".equals(type) || "mask".equals(type) || "nord".equals(type);
+    }
+
+    private boolean isBoundaryToken(TokenStrategy.TokenInfo token, SeparatorOffsets separatorOffsets) {
+        int startBoundary = token.getStartOffset() - 1;
+        int endBoundary = token.getEndOffset() + 1;
+        return separatorOffsets.isSepStartOffset(startBoundary) ||
+                separatorOffsets.isSepEndOffset(endBoundary);
     }
 
     // unique token by: (text, start_offset, end_offset)
@@ -310,6 +354,24 @@ public class EsTokTokenizer extends Tokenizer {
         public String toString() {
             return String.format("TokenKey{text='%s', startOffset=%d, endOffset=%d}",
                     text, startOffset, endOffset);
+        }
+    }
+
+    private static class SeparatorOffsets {
+        private final Set<Integer> sepStartOffsets;
+        private final Set<Integer> sepEndOffsets;
+
+        private SeparatorOffsets(Set<Integer> sepStartOffsets, Set<Integer> sepEndOffsets) {
+            this.sepStartOffsets = sepStartOffsets;
+            this.sepEndOffsets = sepEndOffsets;
+        }
+
+        private boolean isSepStartOffset(int offset) {
+            return sepStartOffsets.contains(offset);
+        }
+
+        private boolean isSepEndOffset(int offset) {
+            return sepEndOffsets.contains(offset);
         }
     }
 
