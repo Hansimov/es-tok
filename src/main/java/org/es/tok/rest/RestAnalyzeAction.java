@@ -63,6 +63,7 @@ public class RestAnalyzeAction extends BaseRestHandler {
         boolean ignoreHant = true;
         boolean dropDuplicates = true;
         boolean dropCategs = false;
+        boolean dropVocabs = false;
         // categ_config
         boolean splitWord = true;
         // vocab_config
@@ -124,6 +125,12 @@ public class RestAnalyzeAction extends BaseRestHandler {
                             Object dropCategsObj = extraConfigMap.get("drop_categs");
                             if (dropCategsObj instanceof Boolean) {
                                 dropCategs = (Boolean) dropCategsObj;
+                            }
+                        }
+                        if (extraConfigMap.containsKey("drop_vocabs")) {
+                            Object dropVocabsObj = extraConfigMap.get("drop_vocabs");
+                            if (dropVocabsObj instanceof Boolean) {
+                                dropVocabs = (Boolean) dropVocabsObj;
                             }
                         }
                     }
@@ -235,6 +242,7 @@ public class RestAnalyzeAction extends BaseRestHandler {
             settingsBuilder.put("extra_config.ignore_hant", ignoreHant);
             settingsBuilder.put("extra_config.drop_duplicates", dropDuplicates);
             settingsBuilder.put("extra_config.drop_categs", dropCategs);
+            settingsBuilder.put("extra_config.drop_vocabs", dropVocabs);
         }
 
         // Build categ_config settings

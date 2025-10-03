@@ -26,7 +26,8 @@ GET /_es_tok/analyze
       "ignore_case": true,
       "ignore_hant": true,
       "drop_duplicates": true,
-      "drop_categs": true
+      "drop_categs": true,
+      "drop_vocabs": true
     },
     "categ_config": {
       "split_word": true
@@ -62,7 +63,8 @@ PUT test
             "ignore_case": true,
             "ignore_hant": true,
             "drop_duplicates": true,
-            "drop_categs": true
+            "drop_categs": true,
+            "drop_vocabs": true
           },
           "categ_config": {
             "split_word": true
