@@ -317,10 +317,12 @@ public class EsTokTokenizer extends Tokenizer {
                 // find matched vocab token
                 if (isTokenGroup(vToken, "vocab") && isContainedIn(token, vToken)) {
                     vocabFreq++;
+                    // remove categ token if vocab freq exceeds
                     if (vocabFreq >= vocabFreqThreshold) {
                         shouldRemoveToken = true;
                         break;
                     }
+                    // remove categ token if vocab token is at boundary
                     if (isBoundaryToken(vToken, separatorOffsets)) {
                         shouldRemoveToken = true;
                         break;
@@ -362,10 +364,10 @@ public class EsTokTokenizer extends Tokenizer {
             if (isSeparatorType(token.getType())) {
                 int startOffset = token.getStartOffset();
                 int endOffset = token.getEndOffset();
-                sepEndOffsets.add(startOffset);
-                sepEndOffsets.add(startOffset + 1);
-                sepStartOffsets.add(endOffset);
+                // sepStartOffsets.add(endOffset);
                 sepStartOffsets.add(endOffset - 1);
+                // sepEndOffsets.add(startOffset);
+                sepEndOffsets.add(startOffset + 1);
             }
         }
 
