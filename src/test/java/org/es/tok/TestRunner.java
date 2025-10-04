@@ -31,6 +31,9 @@ public class TestRunner {
                 case "vocab":
                     VocabFileTest.main(args);
                     return;
+                case "vocab_concat":
+                    VocabConcatTest.main(args);
+                    return;
                 case "performance":
                     PerformanceTest.main(args);
                     return;
@@ -57,6 +60,9 @@ public class TestRunner {
         System.out.println("5. Running Vocab File Tests...");
         VocabFileTest.main(args);
 
+        System.out.println("6. Running Vocab Concat Tests...");
+        VocabConcatTest.main(args);
+
         System.out.println("========================================");
         System.out.println("   All tests completed!");
         System.out.println("   Use './gradlew testPerformance' for performance tests");
@@ -71,6 +77,7 @@ public class TestRunner {
         System.out.println("  duplicates  - Drop duplicates tests");
         System.out.println("  cogram      - Cogram functionality tests");
         System.out.println("  vocab       - Vocabulary file tests");
+        System.out.println("  concat      - Vocab concatenation tests");
         System.out.println("  performance - Performance benchmarks");
         System.out.println("  examples    - Usage examples");
         System.out.println("  (no args)   - Run all tests except performance");
