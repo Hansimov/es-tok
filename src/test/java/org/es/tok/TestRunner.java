@@ -29,6 +29,9 @@ public class TestRunner {
                     CogramTest.main(args);
                     return;
                 case "vocab":
+                    VocabTest.main(args);
+                    return;
+                case "vocab_file":
                     VocabFileTest.main(args);
                     return;
                 case "vocab_concat":
@@ -57,10 +60,13 @@ public class TestRunner {
         System.out.println("4. Running Cogram Tests...");
         CogramTest.main(args);
 
-        System.out.println("5. Running Vocab File Tests...");
+        System.out.println("5. Running Vocab Boundary Tests...");
+        VocabTest.main(args);
+
+        System.out.println("6. Running Vocab File Tests...");
         VocabFileTest.main(args);
 
-        System.out.println("6. Running Vocab Concat Tests...");
+        System.out.println("7. Running Vocab Concat Tests...");
         VocabConcatTest.main(args);
 
         System.out.println("========================================");
@@ -76,8 +82,9 @@ public class TestRunner {
         System.out.println("  ngram       - N-gram specific tests");
         System.out.println("  duplicates  - Drop duplicates tests");
         System.out.println("  cogram      - Cogram functionality tests");
-        System.out.println("  vocab       - Vocabulary file tests");
-        System.out.println("  concat      - Vocab concatenation tests");
+        System.out.println("  vocab       - Vocabulary boundary filter tests");
+        System.out.println("  vocab_file  - Vocabulary file tests");
+        System.out.println("  vocab_concat - Vocab concatenation tests");
         System.out.println("  performance - Performance benchmarks");
         System.out.println("  examples    - Usage examples");
         System.out.println("  (no args)   - Run all tests except performance");

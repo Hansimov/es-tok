@@ -93,6 +93,7 @@ curl --cacert $HOME/elasticsearch-docker-9.1.3/certs/ca/ca.crt -u elastic:$ELAST
 ./gradlew testCogram         # Cogram (drop_cogram) functionality
 ./gradlew testVocabFile      # Vocabulary file loading tests
 ./gradlew testPerformance    # Performance benchmarks
+./gradlew testRunner --args=vocab        # vocab boundary tests
 ./gradlew testRunner --args=vocab_concat # vocab concat tests
 ```
 
