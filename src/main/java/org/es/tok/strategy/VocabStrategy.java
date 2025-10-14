@@ -123,10 +123,22 @@ public class VocabStrategy implements TokenStrategy {
         return c == '▂';
     }
 
-    // drop vocab token if both boundaries are same type of digit/letter
+    private boolean isAlpha(char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+    }
+
+    private boolean isNum(char c) {
+        return (c >= '0' && c <= '9');
+    }
+
+    private boolean isAlphaNum(char c) {
+        return isAlpha(c) || isNum(c);
+    }
+
+    // drop vocab token if both boundaries are same type of alpha-numeric
     private boolean shouldDropVocabToken(String tokenText, String text, int startOffset, int endOffset) {
-        // only check digit-letter-sep tokens
-        if (!isConsistOfDigitLetterSep(tokenText)) {
+        // only check alpha-numeric-separator tokens
+        if (!isConsistOfAlphaNumSep(tokenText)) {
             return false;
         }
 
@@ -134,38 +146,33 @@ public class VocabStrategy implements TokenStrategy {
         if (startOffset > 0) {
             char charBefore = text.charAt(startOffset - 1);
             char charStart = text.charAt(startOffset);
-            isStartSame = isSameTypeOfDigitLetter(charBefore, charStart);
+            isStartSame = isSameTypeOfAlphaNum(charBefore, charStart);
         }
 
         boolean isEndSame = false;
         if (endOffset < text.length()) {
             char charEnd = text.charAt(endOffset - 1);
             char charAfter = text.charAt(endOffset);
-            isEndSame = isSameTypeOfDigitLetter(charEnd, charAfter);
+            isEndSame = isSameTypeOfAlphaNum(charEnd, charAfter);
         }
 
         return isStartSame && isEndSame;
     }
 
-    private boolean isConsistOfDigitLetterSep(String str) {
+    private boolean isConsistOfAlphaNumSep(String str) {
         if (str == null || str.isEmpty()) {
             return false;
         }
-
-        boolean hasDigitLetter = false;
         for (int i = 0; i < str.length(); i++) {
             char c = str.charAt(i);
-            if (Character.isLetterOrDigit(c)) {
-                hasDigitLetter = true;
-            } else if (!isRemovableSeparator(c)) {
+            if (!isAlphaNum(c) && !isRemovableSeparator(c)) {
                 return false;
             }
         }
-
-        return hasDigitLetter;
+        return true;
     }
 
-    private boolean isSameTypeOfDigitLetter(char c1, char c2) {
-        return (Character.isDigit(c1) && Character.isDigit(c2)) || (Character.isLetter(c1) && Character.isLetter(c2));
+    private boolean isSameTypeOfAlphaNum(char c1, char c2) {
+        return (isNum(c1) && isNum(c2)) || (isAlpha(c1) && isAlpha(c2));
     }
 }

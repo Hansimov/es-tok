@@ -136,11 +136,6 @@ public class EsTokTokenizer extends Tokenizer {
         // generate base tokens from categ and vocab strategies
         List<TokenStrategy.TokenInfo> baseTokens = generateBaseTokens(text);
 
-        // drop vocab tokens surrounded by english/alphanumeric characters
-        if (config.getExtraConfig().isDropVocabs()) {
-            baseTokens = dropVocabTokens(baseTokens, text);
-        }
-
         // drop categ tokens covered by multiple vocab tokens
         if (config.getExtraConfig().isDropCategs()) {
             baseTokens = dropCategTokens(baseTokens, 2);
@@ -226,67 +221,6 @@ public class EsTokTokenizer extends Tokenizer {
         }
 
         return uniqueTokens;
-    }
-
-    private List<TokenStrategy.TokenInfo> dropVocabTokens(List<TokenStrategy.TokenInfo> tokens, String text) {
-        if (tokens.isEmpty() || text == null || text.isEmpty()) {
-            return tokens;
-        }
-
-        Iterator<TokenStrategy.TokenInfo> iterator = tokens.iterator();
-        while (iterator.hasNext()) {
-            TokenStrategy.TokenInfo token = iterator.next();
-            if (!isTokenGroup(token, "vocab")) {
-                continue;
-            }
-            if (shouldDropVocabToken(token, text)) {
-                iterator.remove();
-            }
-        }
-
-        return tokens;
-    }
-
-    private boolean shouldDropVocabToken(TokenStrategy.TokenInfo token, String text) {
-        if (!isEngArabDashWsMask(token.getText())) {
-            return false;
-        }
-
-        int start = token.getStartOffset();
-        int end = token.getEndOffset();
-
-        boolean leftIsEngArab = start > 0 && start - 1 < text.length() && isEngArab(text.charAt(start - 1));
-        boolean rightIsEngArab = end + 1 < text.length() && isEngArab(text.charAt(end + 1));
-
-        return leftIsEngArab || rightIsEngArab;
-    }
-
-    private boolean isEngArabDashWsMask(String tokenText) {
-        for (int i = 0; i < tokenText.length(); i++) {
-            char c = tokenText.charAt(i);
-            if (!isEngArab(c) && !isDash(c) && !isWs(c) && !isMask(c)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private boolean isEngArab(char c) {
-        return (c >= 'a' && c <= 'z') ||
-                (c >= 'A' && c <= 'Z') ||
-                (c >= '0' && c <= '9');
-    }
-
-    private boolean isDash(char c) {
-        return c == '-' || c == '+' || c == '_' || c == '.';
-    }
-
-    private boolean isMask(char c) {
-        return c == '▂';
-    }
-
-    private boolean isWs(char c) {
-        return Character.isWhitespace(c);
     }
 
     // Drop categ tokens covered by multiple vocab tokens

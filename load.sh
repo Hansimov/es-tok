@@ -6,7 +6,7 @@ export ES_DOCKER_PATH="$HOME/elasticsearch-docker-$ES_VERSION"
 export ES_NODE="es01"
 export ES_PLUGIN_PATH="$ES_DOCKER_PATH/plugins/$ES_NODE/$PLUGIN_NAME"
 export BUILT_ZIP_PATH="$HOME/repos/es-tok/build/distributions/$PLUGIN_NAME-$PLUGIN_VERSION.zip"
-export VOCAB_TXT="$HOME/repos/bili-search-algo/models/sentencepiece/checkpoints/sp_merged.txt"
+export VOCAB_TXT="$HOME/repos/bili-search-algo/models/sentencepiece/vocabs.txt"
 
 # parse cli args
 while getopts "adbcr" opt; do
