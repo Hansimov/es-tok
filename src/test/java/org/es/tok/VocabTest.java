@@ -168,12 +168,27 @@ public class VocabTest {
 
         String text4 = "abc12345def";
         EsTokConfig config4 = ConfigBuilder.create()
-                .withVocab("123", "234", "345")
+                .withVocab("123", "234", "345", "de", "def", "ab", "abc")
                 .build();
         List<TokenInfo> tokens4 = analyze(text4, config4);
-        assertHasToken(tokens4, "123", 3, 6, "vocab", "vocab");
+        assertNoToken(tokens4, "123");
         assertNoToken(tokens4, "234");
-        assertHasToken(tokens4, "345", 5, 8, "vocab", "vocab");
+        assertNoToken(tokens4, "345");
+        assertNoToken(tokens4, "ab");
+        assertHasToken(tokens4, "abc", 0, 3, "vocab", "vocab");
+        assertNoToken(tokens4, "de");
+        assertHasToken(tokens4, "def", 8, 11, "vocab", "vocab");
+
+        String text5 = "小米su7";
+        EsTokConfig config5 = ConfigBuilder.create()
+                .withVocab("小米", "小米su7", "su7", "su", "u7")
+                .build();
+        List<TokenInfo> tokens5 = analyze(text5, config5);
+        assertHasToken(tokens5, "小米su7", 0, 5, "vocab", "vocab");
+        assertHasToken(tokens5, "小米", 0, 2, "vocab", "vocab");
+        assertHasToken(tokens5, "su7", 2, 5, "vocab", "vocab");
+        assertHasToken(tokens5, "su", 2, 4, "vocab", "vocab");
+        assertNoToken(tokens5, "u7");
 
         System.out.println("  ✓ Pass\n");
     }

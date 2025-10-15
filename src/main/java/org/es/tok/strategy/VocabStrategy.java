@@ -135,25 +135,41 @@ public class VocabStrategy implements TokenStrategy {
         return isAlpha(c) || isNum(c);
     }
 
-    // drop vocab token if both boundaries are same type of alpha-numeric
+    // drop vocab token if both bounds are same type of alpha-num
     private boolean shouldDropVocabToken(String tokenText, String text, int startOffset, int endOffset) {
-        // only check alpha-numeric-separator tokens
+        // only check alpha-num-sep tokens
         if (!isConsistOfAlphaNumSep(tokenText)) {
             return false;
         }
 
         boolean isStartSame = false;
+        boolean isStartBothNum = false;
         if (startOffset > 0) {
             char charBefore = text.charAt(startOffset - 1);
             char charStart = text.charAt(startOffset);
+            isStartBothNum = bothNum(charBefore, charStart);
             isStartSame = isSameTypeOfAlphaNum(charBefore, charStart);
         }
 
         boolean isEndSame = false;
+        boolean isEndBothNum = false;
         if (endOffset < text.length()) {
             char charEnd = text.charAt(endOffset - 1);
             char charAfter = text.charAt(endOffset);
+            isEndBothNum = bothNum(charEnd, charAfter);
             isEndSame = isSameTypeOfAlphaNum(charEnd, charAfter);
+        }
+
+        // drop if either bound bothNum is true,
+        // as number should not be truncated in most cases
+        if (isStartBothNum || isEndBothNum) {
+            return true;
+        }
+
+        // drop if either bound of short tokens is same type of alpha-num,
+        // otherwise there would be too many false positives (unmeaningful segments)
+        if (tokenText.length() < 3) {
+            return isStartSame || isEndSame;
         }
 
         return isStartSame && isEndSame;
@@ -170,6 +186,10 @@ public class VocabStrategy implements TokenStrategy {
             }
         }
         return true;
+    }
+
+    private boolean bothNum(char c1, char c2) {
+        return isNum(c1) && isNum(c2);
     }
 
     private boolean isSameTypeOfAlphaNum(char c1, char c2) {
