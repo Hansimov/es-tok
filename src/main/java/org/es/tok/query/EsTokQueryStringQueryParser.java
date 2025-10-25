@@ -5,16 +5,20 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.DisjunctionMaxQuery;
 import org.apache.lucene.search.MatchNoDocsQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.MultiPhraseQuery;
+import org.apache.lucene.search.BoostQuery;
 import org.elasticsearch.index.query.SearchExecutionContext;
 import org.elasticsearch.index.search.QueryStringQueryParser;
+import org.elasticsearch.lucene.queries.BlendedTermQuery;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -96,6 +100,19 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
         return filterQuery(originalQuery, field);
     }
 
+    @Override
+    public Query parse(String query) throws ParseException {
+        // Get the original query from parent
+        Query originalQuery = super.parse(query);
+
+        if (originalQuery == null) {
+            return null;
+        }
+
+        // Apply deep filtering to the entire query tree
+        return filterQuery(originalQuery, null);
+    }
+
     /**
      * Filter query to remove ignored tokens and high-frequency tokens
      */
@@ -123,6 +140,62 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
             }
 
             return builder.build();
+        }
+
+        // Handle DisjunctionMaxQuery
+        if (query instanceof DisjunctionMaxQuery) {
+            DisjunctionMaxQuery disMaxQuery = (DisjunctionMaxQuery) query;
+            Collection<Query> disjuncts = disMaxQuery.getDisjuncts();
+            List<Query> filteredDisjuncts = new ArrayList<>();
+
+            for (Query disjunct : disjuncts) {
+                Query filteredDisjunct = filterQuery(disjunct, field);
+                if (filteredDisjunct != null && !(filteredDisjunct instanceof MatchNoDocsQuery)) {
+                    filteredDisjuncts.add(filteredDisjunct);
+                }
+            }
+
+            // If all disjuncts are filtered, return MatchNoDocsQuery
+            if (filteredDisjuncts.isEmpty()) {
+                return new MatchNoDocsQuery();
+            }
+
+            // If only one disjunct remains, return it directly
+            if (filteredDisjuncts.size() == 1) {
+                return filteredDisjuncts.get(0);
+            }
+
+            return new DisjunctionMaxQuery(filteredDisjuncts, disMaxQuery.getTieBreakerMultiplier());
+        }
+
+        // Handle BoostQuery - unwrap, filter, and re-wrap
+        if (query instanceof BoostQuery) {
+            BoostQuery boostQuery = (BoostQuery) query;
+            Query innerQuery = boostQuery.getQuery();
+            Query filteredInner = filterQuery(innerQuery, field);
+
+            if (filteredInner == null || filteredInner instanceof MatchNoDocsQuery) {
+                return new MatchNoDocsQuery();
+            }
+
+            return new BoostQuery(filteredInner, boostQuery.getBoost());
+        }
+
+        // Handle BlendedTermQuery - check all terms
+        if (query instanceof BlendedTermQuery) {
+            BlendedTermQuery blendedQuery = (BlendedTermQuery) query;
+            List<Term> terms = blendedQuery.getTerms();
+
+            // Check if any term should be filtered
+            for (Term term : terms) {
+                if (shouldFilterTerm(term)) {
+                    // If any term in the blended query should be filtered, filter the whole query
+                    // This prevents partial matches on high-frequency terms
+                    return new MatchNoDocsQuery();
+                }
+            }
+
+            return query;
         }
 
         // Handle TermQuery
