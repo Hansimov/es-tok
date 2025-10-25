@@ -8,12 +8,44 @@ import org.es.tok.tokenize.GroupAttribute;
 import org.es.tok.analysis.EsTokAnalyzer;
 import org.es.tok.config.EsTokConfig;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import java.io.IOException;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.X509Certificate;
 
 /**
  * Utility class for testing ES-TOK analyzer
  */
 public class TestUtils {
+
+    /**
+     * Create insecure SSL context for testing (accepts all certificates)
+     */
+    public static SSLContext createInsecureSSLContext() {
+        try {
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, new TrustManager[] { new X509TrustManager() {
+                @Override
+                public void checkClientTrusted(X509Certificate[] chain, String authType) {
+                }
+
+                @Override
+                public void checkServerTrusted(X509Certificate[] chain, String authType) {
+                }
+
+                @Override
+                public X509Certificate[] getAcceptedIssuers() {
+                    return new X509Certificate[0];
+                }
+            } }, null);
+            return sslContext;
+        } catch (NoSuchAlgorithmException | KeyManagementException e) {
+            throw new RuntimeException("Failed to create insecure SSL context", e);
+        }
+    }
 
     /**
      * Test analyzer with given configuration and print results

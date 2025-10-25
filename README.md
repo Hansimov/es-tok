@@ -101,3 +101,25 @@ GET /test/_analyze
     "analyzer": "es_tok_analyzer"
 }
 ```
+
+## Use es_tok_query_string Query
+
+The `es_tok_query_string` query extends standard `query_string` with token filtering:
+
+```json
+POST /test/_search
+{
+  "query": {
+    "es_tok_query_string": {
+      "query": "...",
+      "type": "cross_fields",
+      "fields": ["title.words^3", "tags.words^2.5"],
+      "ignored_tokens": ["的", "了"],
+      "max_freq": 1000000
+    }
+  }
+}
+```
+
+- `ignored_tokens`: list of tokens to ignore in analyzed tokens
+- `max_freq`: (working when `>0`) tokens with doc_freq higher than this will be ignored

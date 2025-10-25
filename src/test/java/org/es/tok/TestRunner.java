@@ -90,6 +90,16 @@ public class TestRunner {
                 case "hanttohans":
                     HantToHansTest.main(new String[0]);
                     return true;
+                case "querystring":
+                case "query":
+                    System.out.println("QueryString test requires a running Elasticsearch instance.");
+                    System.out.println("Please run: ./gradlew test --tests QueryStringTest");
+                    return true;
+                case "querystringbuilder":
+                case "querybuilder":
+                    System.out.println("Running QueryStringBuilder unit tests...");
+                    org.junit.runner.JUnitCore.main("org.es.tok.QueryStringBuilderTest");
+                    return true;
                 default:
                     return false;
             }
@@ -114,6 +124,8 @@ public class TestRunner {
         System.out.println("  VocabConcat / vocab_concat");
         System.out.println("  Performance / performance");
         System.out.println("  HantToHans / hant_to_hans");
+        System.out.println("  QueryStringBuilder / query_builder");
+        System.out.println("  QueryString / query (requires Elasticsearch)");
         System.out.println("  (no args) - Run all tests");
     }
 }

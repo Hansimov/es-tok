@@ -15,9 +15,11 @@ import org.elasticsearch.indices.analysis.AnalysisModule.AnalysisProvider;
 import org.elasticsearch.plugins.ActionPlugin;
 import org.elasticsearch.plugins.AnalysisPlugin;
 import org.elasticsearch.plugins.Plugin;
+import org.elasticsearch.plugins.SearchPlugin;
 import org.elasticsearch.rest.RestController;
 import org.elasticsearch.rest.RestHandler;
 import org.es.tok.analysis.EsTokAnalyzerProvider;
+import org.es.tok.query.EsTokQueryStringQueryBuilder;
 import org.es.tok.rest.RestInfoAction;
 import org.es.tok.tokenize.EsTokTokenizerFactory;
 import org.es.tok.rest.RestAnalyzeAction;
@@ -28,7 +30,7 @@ import java.util.Map;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin {
+public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin, SearchPlugin {
     public static final String VERSION = "0.7.2";
 
     @Override
@@ -59,5 +61,14 @@ public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin 
         return List.of(
                 new RestInfoAction(),
                 new RestAnalyzeAction());
+    }
+
+    @Override
+    public List<QuerySpec<?>> getQueries() {
+        return List.of(
+                new QuerySpec<>(
+                        EsTokQueryStringQueryBuilder.NAME,
+                        EsTokQueryStringQueryBuilder::new,
+                        EsTokQueryStringQueryBuilder::fromXContent));
     }
 }
