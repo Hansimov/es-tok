@@ -286,6 +286,7 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
 
     /**
      * Extract all terms from query recursively
+     * Skip terms in PhraseQuery/MultiPhraseQuery as they represent quoted strings
      */
     private List<Term> extractTermsFromQuery(Query query) {
         List<Term> terms = new ArrayList<>();
@@ -294,17 +295,10 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
             terms.add(((TermQuery) query).getTerm());
         } else if (query instanceof BlendedTermQuery) {
             terms.addAll(((BlendedTermQuery) query).getTerms());
-        } else if (query instanceof PhraseQuery) {
-            for (Term term : ((PhraseQuery) query).getTerms()) {
-                terms.add(term);
-            }
-        } else if (query instanceof MultiPhraseQuery) {
-            Term[][] termArrays = ((MultiPhraseQuery) query).getTermArrays();
-            for (Term[] termArray : termArrays) {
-                for (Term term : termArray) {
-                    terms.add(term);
-                }
-            }
+        } else if (query instanceof PhraseQuery || query instanceof MultiPhraseQuery) {
+            // Skip terms in phrase queries - they represent quoted strings
+            // and should not be counted for min_kept_tokens logic
+            return terms;
         } else if (query instanceof BoostQuery) {
             terms.addAll(extractTermsFromQuery(((BoostQuery) query).getQuery()));
         } else if (query instanceof BooleanQuery) {
@@ -345,29 +339,9 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
             return query;
         }
 
-        // Handle PhraseQuery
-        if (query instanceof PhraseQuery) {
-            PhraseQuery phraseQuery = (PhraseQuery) query;
-            Term[] terms = phraseQuery.getTerms();
-            for (Term term : terms) {
-                if (shouldFilterTermBasic(term)) {
-                    return new MatchNoDocsQuery();
-                }
-            }
-            return query;
-        }
-
-        // Handle MultiPhraseQuery
-        if (query instanceof MultiPhraseQuery) {
-            MultiPhraseQuery multiPhraseQuery = (MultiPhraseQuery) query;
-            Term[][] termArrays = multiPhraseQuery.getTermArrays();
-            for (Term[] terms : termArrays) {
-                for (Term term : terms) {
-                    if (shouldFilterTermBasic(term)) {
-                        return new MatchNoDocsQuery();
-                    }
-                }
-            }
+        // PhraseQuery and MultiPhraseQuery should NOT be filtered
+        // They represent explicit user intent (quoted strings)
+        if (query instanceof PhraseQuery || query instanceof MultiPhraseQuery) {
             return query;
         }
 
