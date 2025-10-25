@@ -18,7 +18,6 @@ import org.elasticsearch.lucene.queries.BlendedTermQuery;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -29,6 +28,8 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
 
     private List<String> ignoredTokens = new ArrayList<>();
     private int maxFreq = 0;
+    private int minKeptTokensCount = 1; // Default: keep at least 1 token
+    private float minKeptTokensRatio = -1.0f; // Default: disabled
     private SearchExecutionContext context;
 
     public EsTokQueryStringQueryParser(SearchExecutionContext context, String defaultField) {
@@ -74,30 +75,28 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
         this.maxFreq = maxFreq;
     }
 
+    public void setMinKeptTokensCount(int minKeptTokensCount) {
+        this.minKeptTokensCount = minKeptTokensCount;
+    }
+
+    public void setMinKeptTokensRatio(float minKeptTokensRatio) {
+        this.minKeptTokensRatio = minKeptTokensRatio;
+    }
+
     @Override
     public Query getFieldQuery(String field, String queryText, boolean quoted) throws ParseException {
-        // Get the original query from parent
+        // Get the original query from parent - DO NOT filter here
+        // Filtering will be done at top level in parse() method
         Query originalQuery = super.getFieldQuery(field, queryText, quoted);
-
-        if (originalQuery == null) {
-            return null;
-        }
-
-        // Apply token filtering
-        return filterQuery(originalQuery, field);
+        return originalQuery;
     }
 
     @Override
     protected Query getFieldQuery(String field, String queryText, int slop) throws ParseException {
-        // Get the original query from parent
+        // Get the original query from parent - DO NOT filter here
+        // Filtering will be done at top level in parse() method
         Query originalQuery = super.getFieldQuery(field, queryText, slop);
-
-        if (originalQuery == null) {
-            return null;
-        }
-
-        // Apply token filtering
-        return filterQuery(originalQuery, field);
+        return originalQuery;
     }
 
     @Override
@@ -110,65 +109,121 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
         }
 
         // Apply deep filtering to the entire query tree
-        return filterQuery(originalQuery, null);
+        Query filteredQuery = filterQueryWithTopLevelMinKept(originalQuery, null);
+
+        return filteredQuery;
     }
 
     /**
-     * Filter query to remove ignored tokens and high-frequency tokens
+     * Top-level filter with min_kept_tokens logic
+     */
+    private Query filterQueryWithTopLevelMinKept(Query query, String field) {
+        if (query == null || (ignoredTokens.isEmpty() && maxFreq <= 0)) {
+            return query;
+        }
+
+        Query filteredQuery = filterQuery(query, field);
+
+        // If completely filtered, check if min_kept requires keeping the original query
+        if (filteredQuery instanceof MatchNoDocsQuery) {
+            if (shouldKeepQueryDueToMinKept(query)) {
+                return query;
+            }
+        }
+
+        return filteredQuery;
+    }
+
+    /**
+     * Check if query should be kept due to min_kept_tokens constraints
+     */
+    private boolean shouldKeepQueryDueToMinKept(Query query) {
+        if (minKeptTokensCount <= 0 && (minKeptTokensRatio <= 0.0f || minKeptTokensRatio >= 1.0f)) {
+            return false;
+        }
+
+        List<Term> allTerms = extractUniqueTermsFromQuery(query);
+        if (allTerms.isEmpty()) {
+            return false;
+        }
+
+        // Check if each unique text would be filtered in any field
+        // filterAtomicQuery filters the entire query if any term should be filtered
+        List<Term> allTermsAllFields = extractTermsFromQuery(query);
+        int totalTerms = allTerms.size();
+        int wouldBeFiltered = 0;
+
+        for (Term uniqueTerm : allTerms) {
+            String text = uniqueTerm.text();
+            boolean shouldFilterThisText = false;
+
+            // Check if this text should be filtered in any field
+            for (Term term : allTermsAllFields) {
+                if (term.text().equals(text) && shouldFilterTermBasic(term)) {
+                    shouldFilterThisText = true;
+                    break;
+                }
+            }
+
+            if (shouldFilterThisText) {
+                wouldBeFiltered++;
+            }
+        }
+
+        int wouldBeKept = totalTerms - wouldBeFiltered;
+
+        // Calculate minimum tokens to keep
+        int minToKeepByCount = (minKeptTokensCount > 0) ? minKeptTokensCount : 0;
+        int minToKeepByRatio = 0;
+        if (minKeptTokensRatio > 0.0f && minKeptTokensRatio < 1.0f) {
+            minToKeepByRatio = Math.max(1, (int) Math.ceil(totalTerms * minKeptTokensRatio));
+        }
+        int minToKeep = Math.max(minToKeepByCount, minToKeepByRatio);
+        int effectiveMinToKeep = Math.min(minToKeep, totalTerms);
+
+        return wouldBeKept < effectiveMinToKeep;
+    }
+
+    /**
+     * Extract unique terms deduplicated by text only
+     * e.g., title.words:"影视" and tags.words:"影视" count as one unique token
+     */
+    private List<Term> extractUniqueTermsFromQuery(Query query) {
+        List<Term> allTerms = extractTermsFromQuery(query);
+        List<Term> uniqueTerms = new ArrayList<>();
+
+        for (Term term : allTerms) {
+            boolean isDuplicate = false;
+            for (Term existing : uniqueTerms) {
+                if (existing.text().equals(term.text())) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+            if (!isDuplicate) {
+                uniqueTerms.add(term);
+            }
+        }
+
+        return uniqueTerms;
+    }
+
+    /**
+     * Filter query recursively (min_kept logic handled at top level only)
      */
     private Query filterQuery(Query query, String field) {
         if (query == null || (ignoredTokens.isEmpty() && maxFreq <= 0)) {
             return query;
         }
 
-        // Handle BooleanQuery recursively
         if (query instanceof BooleanQuery) {
-            BooleanQuery boolQuery = (BooleanQuery) query;
-            BooleanQuery.Builder builder = new BooleanQuery.Builder();
-            boolean hasValidClause = false;
-
-            for (BooleanClause clause : boolQuery.clauses()) {
-                Query filteredSubQuery = filterQuery(clause.query(), field);
-                if (filteredSubQuery != null && !(filteredSubQuery instanceof MatchNoDocsQuery)) {
-                    builder.add(filteredSubQuery, clause.occur());
-                    hasValidClause = true;
-                }
-            }
-
-            if (!hasValidClause) {
-                return new MatchNoDocsQuery();
-            }
-
-            return builder.build();
+            return filterBooleanQuerySimple((BooleanQuery) query, field);
         }
 
-        // Handle DisjunctionMaxQuery
         if (query instanceof DisjunctionMaxQuery) {
-            DisjunctionMaxQuery disMaxQuery = (DisjunctionMaxQuery) query;
-            Collection<Query> disjuncts = disMaxQuery.getDisjuncts();
-            List<Query> filteredDisjuncts = new ArrayList<>();
-
-            for (Query disjunct : disjuncts) {
-                Query filteredDisjunct = filterQuery(disjunct, field);
-                if (filteredDisjunct != null && !(filteredDisjunct instanceof MatchNoDocsQuery)) {
-                    filteredDisjuncts.add(filteredDisjunct);
-                }
-            }
-
-            // If all disjuncts are filtered, return MatchNoDocsQuery
-            if (filteredDisjuncts.isEmpty()) {
-                return new MatchNoDocsQuery();
-            }
-
-            // If only one disjunct remains, return it directly
-            if (filteredDisjuncts.size() == 1) {
-                return filteredDisjuncts.get(0);
-            }
-
-            return new DisjunctionMaxQuery(filteredDisjuncts, disMaxQuery.getTieBreakerMultiplier());
+            return filterDisjunctionMaxQuerySimple((DisjunctionMaxQuery) query, field);
         }
 
-        // Handle BoostQuery - unwrap, filter, and re-wrap
         if (query instanceof BoostQuery) {
             BoostQuery boostQuery = (BoostQuery) query;
             Query innerQuery = boostQuery.getQuery();
@@ -181,27 +236,110 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
             return new BoostQuery(filteredInner, boostQuery.getBoost());
         }
 
-        // Handle BlendedTermQuery - check all terms
+        // For atomic queries, apply strict filtering
+        return filterAtomicQuery(query);
+    }
+
+    /**
+     * Simple filtering for BooleanQuery
+     */
+    private Query filterBooleanQuerySimple(BooleanQuery boolQuery, String field) {
+        BooleanQuery.Builder builder = new BooleanQuery.Builder();
+        boolean hasValidClause = false;
+
+        for (BooleanClause clause : boolQuery.clauses()) {
+            Query filtered = filterQuery(clause.query(), field);
+            if (filtered != null && !(filtered instanceof MatchNoDocsQuery)) {
+                builder.add(filtered, clause.occur());
+                hasValidClause = true;
+            }
+        }
+
+        if (!hasValidClause) {
+            return new MatchNoDocsQuery();
+        }
+
+        return builder.build();
+    }
+
+    /**
+     * Simple filtering for DisjunctionMaxQuery
+     */
+    private Query filterDisjunctionMaxQuerySimple(DisjunctionMaxQuery disMaxQuery, String field) {
+        List<Query> filteredDisjuncts = new ArrayList<>();
+        for (Query disjunct : disMaxQuery.getDisjuncts()) {
+            Query filtered = filterQuery(disjunct, field);
+            if (filtered != null && !(filtered instanceof MatchNoDocsQuery)) {
+                filteredDisjuncts.add(filtered);
+            }
+        }
+
+        if (filteredDisjuncts.isEmpty()) {
+            return new MatchNoDocsQuery();
+        }
+        if (filteredDisjuncts.size() == 1) {
+            return filteredDisjuncts.get(0);
+        }
+
+        return new DisjunctionMaxQuery(filteredDisjuncts, disMaxQuery.getTieBreakerMultiplier());
+    }
+
+    /**
+     * Extract all terms from query recursively
+     */
+    private List<Term> extractTermsFromQuery(Query query) {
+        List<Term> terms = new ArrayList<>();
+
+        if (query instanceof TermQuery) {
+            terms.add(((TermQuery) query).getTerm());
+        } else if (query instanceof BlendedTermQuery) {
+            terms.addAll(((BlendedTermQuery) query).getTerms());
+        } else if (query instanceof PhraseQuery) {
+            for (Term term : ((PhraseQuery) query).getTerms()) {
+                terms.add(term);
+            }
+        } else if (query instanceof MultiPhraseQuery) {
+            Term[][] termArrays = ((MultiPhraseQuery) query).getTermArrays();
+            for (Term[] termArray : termArrays) {
+                for (Term term : termArray) {
+                    terms.add(term);
+                }
+            }
+        } else if (query instanceof BoostQuery) {
+            terms.addAll(extractTermsFromQuery(((BoostQuery) query).getQuery()));
+        } else if (query instanceof BooleanQuery) {
+            for (BooleanClause clause : ((BooleanQuery) query).clauses()) {
+                terms.addAll(extractTermsFromQuery(clause.query()));
+            }
+        } else if (query instanceof DisjunctionMaxQuery) {
+            for (Query disjunct : ((DisjunctionMaxQuery) query).getDisjuncts()) {
+                terms.addAll(extractTermsFromQuery(disjunct));
+            }
+        }
+
+        return terms;
+    }
+
+    /**
+     * Filter atomic queries (if any term should be filtered, filter entire query)
+     */
+    private Query filterAtomicQuery(Query query) {
+        // Handle BlendedTermQuery
         if (query instanceof BlendedTermQuery) {
             BlendedTermQuery blendedQuery = (BlendedTermQuery) query;
             List<Term> terms = blendedQuery.getTerms();
-
-            // Check if any term should be filtered
             for (Term term : terms) {
-                if (shouldFilterTerm(term)) {
-                    // If any term in the blended query should be filtered, filter the whole query
-                    // This prevents partial matches on high-frequency terms
+                if (shouldFilterTermBasic(term)) {
                     return new MatchNoDocsQuery();
                 }
             }
-
             return query;
         }
 
         // Handle TermQuery
         if (query instanceof TermQuery) {
             TermQuery termQuery = (TermQuery) query;
-            if (shouldFilterTerm(termQuery.getTerm())) {
+            if (shouldFilterTermBasic(termQuery.getTerm())) {
                 return new MatchNoDocsQuery();
             }
             return query;
@@ -212,8 +350,7 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
             PhraseQuery phraseQuery = (PhraseQuery) query;
             Term[] terms = phraseQuery.getTerms();
             for (Term term : terms) {
-                if (shouldFilterTerm(term)) {
-                    // If any term in phrase should be filtered, filter the whole phrase
+                if (shouldFilterTermBasic(term)) {
                     return new MatchNoDocsQuery();
                 }
             }
@@ -226,7 +363,7 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
             Term[][] termArrays = multiPhraseQuery.getTermArrays();
             for (Term[] terms : termArrays) {
                 for (Term term : terms) {
-                    if (shouldFilterTerm(term)) {
+                    if (shouldFilterTermBasic(term)) {
                         return new MatchNoDocsQuery();
                     }
                 }
@@ -239,9 +376,9 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
     }
 
     /**
-     * Check if a term should be filtered based on ignored tokens and max frequency
+     * Check if a term should be filtered (ignoring min_kept constraints)
      */
-    private boolean shouldFilterTerm(Term term) {
+    private boolean shouldFilterTermBasic(Term term) {
         String termText = term.text();
 
         // Check against ignored tokens list

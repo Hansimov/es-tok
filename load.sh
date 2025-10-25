@@ -80,6 +80,10 @@ if [ "$IS_RESTART" = true ]; then
     curl --cacert $HOME/elasticsearch-docker-9.1.3/certs/ca/ca.crt -u elastic:$ELASTIC_PASSWORD -X GET "https://localhost:19200/_cat/plugins?v"
 fi
 
+# echo done and timestamp
+echo "+ All done! $(date)"
+
+
 # Common usages:
 # ./load.sh -a
 # ./load.sh -d

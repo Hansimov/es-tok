@@ -25,8 +25,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Extended QueryString query that supports filtering out high-frequency and
- * ignored tokens
+ * Extended QueryString query with token filtering support
  */
 public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQueryStringQueryBuilder> {
 
@@ -59,6 +58,8 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
 
     public static final ParseField IGNORED_TOKENS_FIELD = new ParseField("ignored_tokens");
     public static final ParseField MAX_FREQ_FIELD = new ParseField("max_freq");
+    public static final ParseField MIN_KEPT_TOKENS_COUNT_FIELD = new ParseField("min_kept_tokens_count");
+    public static final ParseField MIN_KEPT_TOKENS_RATIO_FIELD = new ParseField("min_kept_tokens_ratio");
 
     private final String queryString;
     private final Map<String, Float> fieldsAndWeights = new HashMap<>();
@@ -86,6 +87,8 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
 
     private List<String> ignoredTokens = new ArrayList<>();
     private int maxFreq = 0;
+    private int minKeptTokensCount = 1;
+    private float minKeptTokensRatio = -1.0f;
 
     public EsTokQueryStringQueryBuilder(String queryString) {
         if (queryString == null) {
@@ -124,6 +127,8 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         this.autoGenerateSynonymsPhraseQuery = in.readBoolean();
         this.ignoredTokens = in.readStringCollectionAsList();
         this.maxFreq = in.readVInt();
+        this.minKeptTokensCount = in.readVInt();
+        this.minKeptTokensRatio = in.readFloat();
     }
 
     @Override
@@ -157,6 +162,8 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         out.writeBoolean(autoGenerateSynonymsPhraseQuery);
         out.writeStringCollection(ignoredTokens);
         out.writeVInt(maxFreq);
+        out.writeVInt(minKeptTokensCount);
+        out.writeFloat(minKeptTokensRatio);
     }
 
     public String queryString() {
@@ -388,9 +395,6 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         return autoGenerateSynonymsPhraseQuery;
     }
 
-    /**
-     * Set list of tokens to be ignored during query analysis
-     */
     public EsTokQueryStringQueryBuilder ignoredTokens(List<String> ignoredTokens) {
         if (ignoredTokens == null) {
             throw new IllegalArgumentException("[ignored_tokens] cannot be null");
@@ -399,19 +403,10 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         return this;
     }
 
-    /**
-     * Get list of ignored tokens
-     */
     public List<String> ignoredTokens() {
         return ignoredTokens;
     }
 
-    /**
-     * Set maximum frequency threshold - tokens with frequency above this will be
-     * ignored
-     * 
-     * @param maxFreq Maximum document frequency (0 = disabled)
-     */
     public EsTokQueryStringQueryBuilder maxFreq(int maxFreq) {
         if (maxFreq < 0) {
             throw new IllegalArgumentException("[max_freq] cannot be negative");
@@ -420,11 +415,26 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         return this;
     }
 
-    /**
-     * Get maximum frequency threshold
-     */
     public int maxFreq() {
         return maxFreq;
+    }
+
+    public EsTokQueryStringQueryBuilder minKeptTokensCount(int minKeptTokensCount) {
+        this.minKeptTokensCount = minKeptTokensCount;
+        return this;
+    }
+
+    public int minKeptTokensCount() {
+        return minKeptTokensCount;
+    }
+
+    public EsTokQueryStringQueryBuilder minKeptTokensRatio(float minKeptTokensRatio) {
+        this.minKeptTokensRatio = minKeptTokensRatio;
+        return this;
+    }
+
+    public float minKeptTokensRatio() {
+        return minKeptTokensRatio;
     }
 
     @Override
@@ -439,6 +449,8 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         // Set ignored tokens and max frequency
         parser.setIgnoredTokens(ignoredTokens);
         parser.setMaxFreq(maxFreq);
+        parser.setMinKeptTokensCount(minKeptTokensCount);
+        parser.setMinKeptTokensRatio(minKeptTokensRatio);
 
         // Apply all standard QueryString settings
         parser.setDefaultOperator(
@@ -577,6 +589,12 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         if (maxFreq > 0) {
             builder.field(MAX_FREQ_FIELD.getPreferredName(), maxFreq);
         }
+        if (minKeptTokensCount != 1) { // Only output if not default value
+            builder.field(MIN_KEPT_TOKENS_COUNT_FIELD.getPreferredName(), minKeptTokensCount);
+        }
+        if (minKeptTokensRatio > 0.0f && minKeptTokensRatio < 1.0f) { // Only output if in valid range
+            builder.field(MIN_KEPT_TOKENS_RATIO_FIELD.getPreferredName(), minKeptTokensRatio);
+        }
 
         if (boost() != DEFAULT_BOOST) {
             builder.field(BOOST_FIELD.getPreferredName(), boost());
@@ -612,6 +630,8 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         boolean autoGenerateSynonymsPhraseQuery = true;
         List<String> ignoredTokens = new ArrayList<>();
         int maxFreq = 0;
+        int minKeptTokensCount = 1;
+        float minKeptTokensRatio = -1.0f;
         float boost = DEFAULT_BOOST;
         String queryName = null;
 
@@ -686,6 +706,10 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
                     autoGenerateSynonymsPhraseQuery = parser.booleanValue();
                 } else if (MAX_FREQ_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     maxFreq = parser.intValue();
+                } else if (MIN_KEPT_TOKENS_COUNT_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
+                    minKeptTokensCount = parser.intValue();
+                } else if (MIN_KEPT_TOKENS_RATIO_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
+                    minKeptTokensRatio = parser.floatValue();
                 } else if (AbstractQueryBuilder.BOOST_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     boost = parser.floatValue();
                 } else if (AbstractQueryBuilder.NAME_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
@@ -740,6 +764,8 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         queryBuilder.autoGenerateSynonymsPhraseQuery(autoGenerateSynonymsPhraseQuery);
         queryBuilder.ignoredTokens(ignoredTokens);
         queryBuilder.maxFreq(maxFreq);
+        queryBuilder.minKeptTokensCount(minKeptTokensCount);
+        queryBuilder.minKeptTokensRatio(minKeptTokensRatio);
         queryBuilder.boost(boost);
         queryBuilder.queryName(queryName);
 
@@ -782,7 +808,9 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
                 && maxDeterminizedStates == other.maxDeterminizedStates
                 && autoGenerateSynonymsPhraseQuery == other.autoGenerateSynonymsPhraseQuery
                 && Objects.equals(ignoredTokens, other.ignoredTokens)
-                && maxFreq == other.maxFreq;
+                && maxFreq == other.maxFreq
+                && minKeptTokensCount == other.minKeptTokensCount
+                && Float.compare(minKeptTokensRatio, other.minKeptTokensRatio) == 0;
     }
 
     @Override
@@ -792,6 +820,6 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
                 fuzzyPrefixLength, fuzzyMaxExpansions, fuzzyTranspositions, fuzzyRewrite,
                 lenient, analyzeWildcard, timeZone, type, tieBreaker, rewrite,
                 minimumShouldMatch, enablePositionIncrements, maxDeterminizedStates,
-                autoGenerateSynonymsPhraseQuery, ignoredTokens, maxFreq);
+                autoGenerateSynonymsPhraseQuery, ignoredTokens, maxFreq, minKeptTokensCount, minKeptTokensRatio);
     }
 }
