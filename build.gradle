@@ -17,7 +17,7 @@ apply plugin: 'elasticsearch.esplugin'
 apply plugin: 'elasticsearch.yaml-rest-test'
 
 group = 'org.es'
-version = '0.7.2'
+version = '0.8.0'
 
 repositories {
     mavenCentral()
