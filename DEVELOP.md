@@ -84,17 +84,19 @@ curl --cacert $HOME/elasticsearch-docker-9.1.3/certs/ca/ca.crt -u elastic:$ELAST
 ./gradlew testRunner
 ```
 
-### Run module tests
+### Run specific tests
 ```sh
-./gradlew testBasic          # Basic functionality tests
-./gradlew testNgram          # N-gram specific tests  
-./gradlew testDropDuplicates # Drop duplicates functionality
-./gradlew testHantToHans     # Chinese Traditional to Simplified
-./gradlew testCogram         # Cogram (drop_cogram) functionality
-./gradlew testVocabFile      # Vocabulary file loading tests
-./gradlew testPerformance    # Performance benchmarks
-./gradlew testRunner --args=vocab        # vocab boundary tests
-./gradlew testRunner --args=vocab_concat # vocab concat tests
+./gradlew testRunner --args=BasicAnalyzer     # or basic, basic_analyzer
+./gradlew testRunner --args=NgramAnalyzer     # or ngram, ngram_analyzer
+./gradlew testRunner --args=DropDuplicates    # or duplicates, drop_duplicates
+./gradlew testRunner --args=DropVocabs        # or drop_vocabs
+./gradlew testRunner --args=DropCategs        # or drop_categs
+./gradlew testRunner --args=Cogram            # or cogram
+./gradlew testRunner --args=Vocab             # or vocab
+./gradlew testRunner --args=VocabFile         # or vocabFile, vocab_file
+./gradlew testRunner --args=VocabConcat       # or vocabConcat, vocab_concat
+./gradlew testRunner --args=HantToHans        # or hantToHans, hant_to_hans
+./gradlew testRunner --args=Performance       # or performance
 ```
 
 ## References

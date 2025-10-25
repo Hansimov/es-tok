@@ -41,58 +41,7 @@ dependencies {
     yamlRestTestRuntimeOnly "org.apache.logging.log4j:log4j-core:${log4jVersion}"
 }
 
-// Test tasks
 task testRunner(type: JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'org.es.tok.TestRunner'
-}
-
-task testBasic(type: JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.es.tok.BasicAnalyzerTest'
-}
-
-task testNgram(type: JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.es.tok.NgramAnalyzerTest'
-}
-
-task testDropDuplicates(type: JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.es.tok.DropDuplicatesTest'
-}
-
-task testDropVocabs(type: JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.es.tok.DropVocabsTest'
-}
-
-task testDropCategs(type: JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.es.tok.DropCategsTest'
-}
-
-task testCogram(type: JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.es.tok.CogramTest'
-}
-
-task testVocabFile(type: JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.es.tok.VocabFileTest'
-}
-
-task testPerformance(type: JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.es.tok.PerformanceTest'
-}
-
-task testExamples(type: JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.es.tok.ExampleUsage'
-}
-
-task testHantToHans(type: JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.es.tok.HantToHansTest'
 }
