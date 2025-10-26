@@ -85,59 +85,42 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
 
     @Override
     public Query getFieldQuery(String field, String queryText, boolean quoted) throws ParseException {
-        // Get the original query from parent - DO NOT filter here
-        // Filtering will be done at top level in parse() method
-        Query originalQuery = super.getFieldQuery(field, queryText, quoted);
-        return originalQuery;
+        return super.getFieldQuery(field, queryText, quoted);
     }
 
     @Override
     protected Query getFieldQuery(String field, String queryText, int slop) throws ParseException {
-        // Get the original query from parent - DO NOT filter here
-        // Filtering will be done at top level in parse() method
-        Query originalQuery = super.getFieldQuery(field, queryText, slop);
-        return originalQuery;
+        return super.getFieldQuery(field, queryText, slop);
     }
 
     @Override
     public Query parse(String query) throws ParseException {
-        // Get the original query from parent
         Query originalQuery = super.parse(query);
-
         if (originalQuery == null) {
             return null;
         }
-
-        // Apply deep filtering to the entire query tree
-        Query filteredQuery = filterQueryWithTopLevelMinKept(originalQuery, null);
-
-        return filteredQuery;
+        return filterQueryWithTopLevelMinKept(originalQuery, null);
     }
 
     /**
-     * Top-level filter with min_kept_tokens logic
+     * Apply token filtering with min_kept_tokens protection
      */
     private Query filterQueryWithTopLevelMinKept(Query query, String field) {
         if (query == null || (ignoredTokens.isEmpty() && maxFreq <= 0)) {
             return query;
         }
 
-        Query filteredQuery = filterQuery(query, field);
-
-        // If completely filtered, check if min_kept requires keeping the original query
-        if (filteredQuery instanceof MatchNoDocsQuery) {
-            if (shouldKeepQueryDueToMinKept(query)) {
-                return query;
-            }
+        if (shouldSkipFilteringDueToMinKept(query)) {
+            return query;
         }
 
-        return filteredQuery;
+        return filterQuery(query, field);
     }
 
     /**
-     * Check if query should be kept due to min_kept_tokens constraints
+     * Check if filtering should be skipped to maintain minimum token count
      */
-    private boolean shouldKeepQueryDueToMinKept(Query query) {
+    private boolean shouldSkipFilteringDueToMinKept(Query query) {
         if (minKeptTokensCount <= 0 && (minKeptTokensRatio <= 0.0f || minKeptTokensRatio >= 1.0f)) {
             return false;
         }
@@ -147,8 +130,6 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
             return false;
         }
 
-        // Check if each unique text would be filtered in any field
-        // filterAtomicQuery filters the entire query if any term should be filtered
         List<Term> allTermsAllFields = extractTermsFromQuery(query);
         int totalTerms = allTerms.size();
         int wouldBeFiltered = 0;
@@ -157,7 +138,6 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
             String text = uniqueTerm.text();
             boolean shouldFilterThisText = false;
 
-            // Check if this text should be filtered in any field
             for (Term term : allTermsAllFields) {
                 if (term.text().equals(text) && shouldFilterTermBasic(term)) {
                     shouldFilterThisText = true;
@@ -172,7 +152,6 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
 
         int wouldBeKept = totalTerms - wouldBeFiltered;
 
-        // Calculate minimum tokens to keep
         int minToKeepByCount = (minKeptTokensCount > 0) ? minKeptTokensCount : 0;
         int minToKeepByRatio = 0;
         if (minKeptTokensRatio > 0.0f && minKeptTokensRatio < 1.0f) {
@@ -185,8 +164,7 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
     }
 
     /**
-     * Extract unique terms deduplicated by text only
-     * e.g., title.words:"影视" and tags.words:"影视" count as one unique token
+     * Extract unique terms by text (deduplicated across fields)
      */
     private List<Term> extractUniqueTermsFromQuery(Query query) {
         List<Term> allTerms = extractTermsFromQuery(query);
@@ -209,7 +187,7 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
     }
 
     /**
-     * Filter query recursively (min_kept logic handled at top level only)
+     * Recursively filter query tree
      */
     private Query filterQuery(Query query, String field) {
         if (query == null || (ignoredTokens.isEmpty() && maxFreq <= 0)) {
@@ -236,12 +214,11 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
             return new BoostQuery(filteredInner, boostQuery.getBoost());
         }
 
-        // For atomic queries, apply strict filtering
         return filterAtomicQuery(query);
     }
 
     /**
-     * Simple filtering for BooleanQuery
+     * Filter BooleanQuery clauses
      */
     private Query filterBooleanQuerySimple(BooleanQuery boolQuery, String field) {
         BooleanQuery.Builder builder = new BooleanQuery.Builder();
@@ -263,7 +240,7 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
     }
 
     /**
-     * Simple filtering for DisjunctionMaxQuery
+     * Filter DisjunctionMaxQuery disjuncts
      */
     private Query filterDisjunctionMaxQuerySimple(DisjunctionMaxQuery disMaxQuery, String field) {
         List<Query> filteredDisjuncts = new ArrayList<>();
@@ -285,8 +262,7 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
     }
 
     /**
-     * Extract all terms from query recursively
-     * Skip terms in PhraseQuery/MultiPhraseQuery as they represent quoted strings
+     * Extract all terms from query (including quoted strings)
      */
     private List<Term> extractTermsFromQuery(Query query) {
         List<Term> terms = new ArrayList<>();
@@ -296,8 +272,7 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
         } else if (query instanceof BlendedTermQuery) {
             terms.addAll(((BlendedTermQuery) query).getTerms());
         } else if (query instanceof PhraseQuery || query instanceof MultiPhraseQuery) {
-            // Skip terms in phrase queries - they represent quoted strings
-            // and should not be counted for min_kept_tokens logic
+            // Skip phrase query terms (quoted strings not counted in min_kept)
             return terms;
         } else if (query instanceof BoostQuery) {
             terms.addAll(extractTermsFromQuery(((BoostQuery) query).getQuery()));
@@ -315,10 +290,9 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
     }
 
     /**
-     * Filter atomic queries (if any term should be filtered, filter entire query)
+     * Filter atomic queries (TermQuery, BlendedTermQuery)
      */
     private Query filterAtomicQuery(Query query) {
-        // Handle BlendedTermQuery
         if (query instanceof BlendedTermQuery) {
             BlendedTermQuery blendedQuery = (BlendedTermQuery) query;
             List<Term> terms = blendedQuery.getTerms();
@@ -330,7 +304,6 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
             return query;
         }
 
-        // Handle TermQuery
         if (query instanceof TermQuery) {
             TermQuery termQuery = (TermQuery) query;
             if (shouldFilterTermBasic(termQuery.getTerm())) {
@@ -339,28 +312,24 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
             return query;
         }
 
-        // PhraseQuery and MultiPhraseQuery should NOT be filtered
-        // They represent explicit user intent (quoted strings)
+        // Preserve phrase queries (quoted strings)
         if (query instanceof PhraseQuery || query instanceof MultiPhraseQuery) {
             return query;
         }
 
-        // For other query types, return as is
         return query;
     }
 
     /**
-     * Check if a term should be filtered (ignoring min_kept constraints)
+     * Check if term should be filtered based on ignored list or frequency
      */
     private boolean shouldFilterTermBasic(Term term) {
         String termText = term.text();
 
-        // Check against ignored tokens list
         if (ignoredTokens.contains(termText)) {
             return true;
         }
 
-        // Check against max frequency threshold
         if (maxFreq > 0) {
             try {
                 IndexReader reader = context.getIndexReader();
@@ -371,7 +340,6 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
                     }
                 }
             } catch (IOException e) {
-                // If we can't get doc frequency, don't filter
                 return false;
             }
         }

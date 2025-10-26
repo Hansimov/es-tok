@@ -439,20 +439,17 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
 
     @Override
     protected Query doToQuery(SearchExecutionContext context) throws IOException {
-        // Use custom parser with token filtering
         EsTokQueryStringQueryParser parser = new EsTokQueryStringQueryParser(
                 context,
                 fieldsAndWeights.isEmpty() ? (defaultField != null ? defaultField : "*") : null,
                 fieldsAndWeights,
                 lenient != null ? lenient : false);
 
-        // Set ignored tokens and max frequency
         parser.setIgnoredTokens(ignoredTokens);
         parser.setMaxFreq(maxFreq);
         parser.setMinKeptTokensCount(minKeptTokensCount);
         parser.setMinKeptTokensRatio(minKeptTokensRatio);
 
-        // Apply all standard QueryString settings
         parser.setDefaultOperator(
                 defaultOperator == Operator.AND ? org.apache.lucene.queryparser.classic.QueryParser.Operator.AND
                         : org.apache.lucene.queryparser.classic.QueryParser.Operator.OR);
@@ -484,9 +481,6 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         if (timeZone != null) {
             parser.setTimeZone(timeZone);
         }
-        // Note: maxDeterminizedStates and rewriteMethod are not directly settable on
-        // QueryStringQueryParser
-        // They are handled internally by Elasticsearch
 
         parser.setAutoGenerateMultiTermSynonymsPhraseQuery(autoGenerateSynonymsPhraseQuery);
 
@@ -589,10 +583,8 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         if (maxFreq > 0) {
             builder.field(MAX_FREQ_FIELD.getPreferredName(), maxFreq);
         }
-        if (minKeptTokensCount != 1) { // Only output if not default value
-            builder.field(MIN_KEPT_TOKENS_COUNT_FIELD.getPreferredName(), minKeptTokensCount);
-        }
-        if (minKeptTokensRatio > 0.0f && minKeptTokensRatio < 1.0f) { // Only output if in valid range
+        builder.field(MIN_KEPT_TOKENS_COUNT_FIELD.getPreferredName(), minKeptTokensCount);
+        if (minKeptTokensRatio > 0.0f && minKeptTokensRatio < 1.0f) {
             builder.field(MIN_KEPT_TOKENS_RATIO_FIELD.getPreferredName(), minKeptTokensRatio);
         }
 
