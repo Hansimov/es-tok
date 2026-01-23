@@ -2,14 +2,12 @@
 export PLUGIN_NAME="es_tok"
 export PLUGIN_VERSION=0.8.0
 export ES_VERSION=9.1.3
-export ES_DOCKER_PATH="$HOME/elasticsearch-docker-$ES_VERSION"
 export ES_NODE="es01"
-export ES_PLUGIN_PATH="$ES_DOCKER_PATH/plugins/$ES_NODE/$PLUGIN_NAME"
 export BUILT_ZIP_PATH="$HOME/repos/es-tok/build/distributions/$PLUGIN_NAME-$PLUGIN_VERSION.zip"
 export VOCAB_TXT="$HOME/repos/bili-search-algo/models/sentencepiece/vocabs.txt"
 
 # parse cli args
-while getopts "adbcr" opt; do
+while getopts "adbcrp" opt; do
     case $opt in
         a)
             IS_RUN_ALL=true
@@ -26,8 +24,22 @@ while getopts "adbcr" opt; do
         r)
             IS_RESTART=true
             ;;
+        p)
+            IS_PRO=true
+            ;;
     esac
 done
+
+# set ES_DOCKER_PATH, ES_PLUGIN_PATH, ES_CERT_PATH, and ES_PORT based on `-p` flag
+if [ "$IS_PRO" = true ]; then
+    export ES_DOCKER_PATH="$HOME/elasticsearch-docker-$ES_VERSION-pro"
+    export ES_PORT=19202
+else
+    export ES_DOCKER_PATH="$HOME/elasticsearch-docker-$ES_VERSION"
+    export ES_PORT=19200
+fi
+export ES_PLUGIN_PATH="$ES_DOCKER_PATH/plugins/$ES_NODE/$PLUGIN_NAME"
+export ES_CERT_PATH="$ES_DOCKER_PATH/certs/ca/ca.crt"
 
 # `-a`: run all tasks
 if [ "$IS_RUN_ALL" = true ]; then
@@ -77,15 +89,24 @@ if [ "$IS_RESTART" = true ]; then
     echo "> Waiting for ES to be ready ..."
     sleep 45
     echo "> Test plugin loading"
-    curl --cacert $HOME/elasticsearch-docker-9.1.3/certs/ca/ca.crt -u elastic:$ELASTIC_PASSWORD -X GET "https://localhost:19200/_cat/plugins?v"
+    curl --cacert $ES_CERT_PATH -u elastic:$ELASTIC_PASSWORD -X GET "https://localhost:$ES_PORT/_cat/plugins?v"
 fi
 
 # echo done and timestamp
 echo "+ All done! $(date)"
 
 
-# Common usages:
+# Usages:
+
+# Case: run all tasks
 # ./load.sh -a
+
+# Case: run all tasks (in production environment)
+# ./load.sh -a -p
+
+# Case: delete plugin
 # ./load.sh -d
+
+# Case: restart elastic node and test plugin loading
 # ./load.sh -r
 

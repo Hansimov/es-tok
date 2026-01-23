@@ -25,7 +25,16 @@ Check version:
 
 ```sh
 java -version
+```
+```sh
+openjdk version "21.0.9" 2025-10-21
+```
+
+```sh
 javac -version
+```
+```sh
+javac 21.0.9
 ```
 
 ### Install gradle
@@ -48,6 +57,9 @@ Check version:
 
 ```sh
 gradle -v
+```
+```sh
+Gradle 9.0.0
 ```
 
 ## Build commands
@@ -75,6 +87,16 @@ Check if plugin is loaded:
 
 ```sh
 curl --cacert $HOME/elasticsearch-docker-9.1.3/certs/ca/ca.crt -u elastic:$ELASTIC_PASSWORD -X GET "https://localhost:19200/_cat/plugins?v"
+```
+
+For production environment:
+
+```sh
+./load.sh -a -p
+```
+
+```sh
+curl --cacert $HOME/elasticsearch-docker-9.1.3-pro/certs/ca/ca.crt -u elastic:$ELASTIC_PASSWORD -X GET "https://localhost:19202/_cat/plugins?v"
 ```
 
 ## Test commands
