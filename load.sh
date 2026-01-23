@@ -1,7 +1,7 @@
 #!/bin/bash
 export PLUGIN_NAME="es_tok"
 export PLUGIN_VERSION=0.8.0
-export ES_VERSION=9.1.3
+export ES_VERSION=9.2.4
 export ES_NODE="es01"
 export BUILT_ZIP_PATH="$HOME/repos/es-tok/build/distributions/$PLUGIN_NAME-$PLUGIN_VERSION.zip"
 export VOCAB_TXT="$HOME/repos/bili-search-algo/models/sentencepiece/vocabs.txt"

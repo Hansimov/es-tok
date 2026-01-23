@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        elasticVersion = '9.1.3'
+        elasticVersion = '9.2.4'
         luceneVersion = '10.2.2'
         log4jVersion = '2.25.1'
     }

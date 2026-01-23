@@ -80,13 +80,13 @@ See: [`load.sh`](./load.sh)
 Load plugin to elasticsearch:
 
 ```sh
-./load.sh -a
+./load.sh -a -p
 ```
 
 Check if plugin is loaded:
 
 ```sh
-curl --cacert $HOME/elasticsearch-docker-9.1.3/certs/ca/ca.crt -u elastic:$ELASTIC_PASSWORD -X GET "https://localhost:19200/_cat/plugins?v"
+curl --cacert $HOME/elasticsearch-docker-9.2.4-pro/certs/ca/ca.crt -u elastic:$ELASTIC_PASSWORD -X GET "https://localhost:19200/_cat/plugins?v"
 ```
 
 For production environment:
@@ -96,7 +96,7 @@ For production environment:
 ```
 
 ```sh
-curl --cacert $HOME/elasticsearch-docker-9.1.3-pro/certs/ca/ca.crt -u elastic:$ELASTIC_PASSWORD -X GET "https://localhost:19202/_cat/plugins?v"
+curl --cacert $HOME/elasticsearch-docker-9.2.4-pro/certs/ca/ca.crt -u elastic:$ELASTIC_PASSWORD -X GET "https://localhost:19202/_cat/plugins?v"
 ```
 
 ## Test commands
