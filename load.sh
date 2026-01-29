@@ -32,11 +32,11 @@ done
 
 # set ES_DOCKER_PATH, ES_PLUGIN_PATH, ES_CERT_PATH, and ES_PORT based on `-p` flag
 if [ "$IS_PRO" = true ]; then
-    export ES_DOCKER_PATH="$HOME/elasticsearch-docker-$ES_VERSION-pro"
+    export ES_DOCKER_PATH="/media/ssd/elasticsearch-docker-$ES_VERSION-pro"
     export ES_PORT=19202
 else
-    export ES_DOCKER_PATH="$HOME/elasticsearch-docker-$ES_VERSION"
-    export ES_PORT=19200
+    export ES_DOCKER_PATH="/media/ssd/elasticsearch-docker-$ES_VERSION-dev"
+    export ES_PORT=19203
 fi
 export ES_PLUGIN_PATH="$ES_DOCKER_PATH/plugins/$ES_NODE/$PLUGIN_NAME"
 export ES_CERT_PATH="$ES_DOCKER_PATH/certs/ca/ca.crt"
@@ -98,10 +98,10 @@ echo "+ All done! $(date)"
 
 # Usages:
 
-# Case: run all tasks
+# Case: run all tasks (in es instance for development)
 # ./load.sh -a
 
-# Case: run all tasks (in production environment)
+# Case: run all tasks (in es instance for production)
 # ./load.sh -a -p
 
 # Case: delete plugin
