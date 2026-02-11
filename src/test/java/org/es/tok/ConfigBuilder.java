@@ -4,9 +4,12 @@ import org.es.tok.config.EsTokConfig;
 import org.es.tok.extra.ExtraConfig;
 import org.es.tok.categ.CategConfig;
 import org.es.tok.ngram.NgramConfig;
+import org.es.tok.rules.RulesConfig;
+import org.es.tok.rules.SearchRules;
 import org.es.tok.vocab.VocabConfig;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -27,6 +30,8 @@ public class ConfigBuilder {
     private boolean dropDuplicates = false;
     private boolean dropCategs = false;
     private boolean dropVocabs = false;
+    private boolean useRules = false;
+    private SearchRules searchRules = SearchRules.EMPTY;
 
     public static ConfigBuilder create() {
         return new ConfigBuilder();
@@ -115,12 +120,35 @@ public class ConfigBuilder {
         return this;
     }
 
+    // Rules settings
+    public ConfigBuilder withRules(SearchRules rules) {
+        this.useRules = true;
+        this.searchRules = rules;
+        return this;
+    }
+
+    public ConfigBuilder withExcludeTokens(String... tokens) {
+        this.useRules = true;
+        this.searchRules = new SearchRules(
+                Arrays.asList(tokens),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList());
+        return this;
+    }
+
     public EsTokConfig build() {
         ExtraConfig extraConfig = new ExtraConfig(ignoreCase, ignoreHant, dropDuplicates, dropCategs, dropVocabs);
         CategConfig categConfig = new CategConfig(useCateg, splitWord);
         VocabConfig vocabConfig = new VocabConfig(useVocab, vocabs);
         NgramConfig ngramConfig = new NgramConfig(useNgram, useBigram, useVcgram, useVbgram, dropCogram);
 
-        return new EsTokConfig(extraConfig, categConfig, vocabConfig, ngramConfig);
+        RulesConfig rulesConfig = new RulesConfig(useRules, searchRules);
+
+        return new EsTokConfig(extraConfig, categConfig, vocabConfig, ngramConfig, rulesConfig);
     }
 }

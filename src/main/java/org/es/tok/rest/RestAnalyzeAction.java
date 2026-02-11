@@ -75,6 +75,21 @@ public class RestAnalyzeAction extends BaseRestHandler {
         boolean useVcgram = false;
         boolean useVbgram = false;
         boolean dropCogram = true;
+        // rules_config
+        boolean useRules = false;
+        String rulesFile = null;
+        List<String> excludeTokens = new ArrayList<>();
+        List<String> excludePrefixes = new ArrayList<>();
+        List<String> excludeSuffixes = new ArrayList<>();
+        List<String> excludeContains = new ArrayList<>();
+        List<String> excludePatterns = new ArrayList<>();
+        List<String> includeTokens = new ArrayList<>();
+        List<String> includePrefixes = new ArrayList<>();
+        List<String> includeSuffixes = new ArrayList<>();
+        List<String> includeContains = new ArrayList<>();
+        List<String> includePatterns = new ArrayList<>();
+        List<String> decludePrefixes = new ArrayList<>();
+        List<String> decludeSuffixes = new ArrayList<>();
 
         // Parse JSON body
         if (request.hasContent()) {
@@ -95,6 +110,9 @@ public class RestAnalyzeAction extends BaseRestHandler {
                 }
                 if (body.containsKey("use_ngram")) {
                     useNgram = (Boolean) body.get("use_ngram");
+                }
+                if (body.containsKey("use_rules")) {
+                    useRules = (Boolean) body.get("use_rules");
                 }
 
                 // Parse extra_config
@@ -221,6 +239,129 @@ public class RestAnalyzeAction extends BaseRestHandler {
                         }
                     }
                 }
+
+                // Parse rules_config
+                if (body.containsKey("rules_config")) {
+                    Object rulesConfigObj = body.get("rules_config");
+                    if (rulesConfigObj instanceof Map<?, ?>) {
+                        Map<?, ?> rulesConfigMap = (Map<?, ?>) rulesConfigObj;
+
+                        if (rulesConfigMap.containsKey("file")) {
+                            Object fileObj = rulesConfigMap.get("file");
+                            if (fileObj instanceof String) {
+                                rulesFile = (String) fileObj;
+                            }
+                        }
+                        if (rulesConfigMap.containsKey("exclude_tokens")) {
+                            Object listObj = rulesConfigMap.get("exclude_tokens");
+                            if (listObj instanceof List<?>) {
+                                for (Object item : (List<?>) listObj) {
+                                    if (item instanceof String)
+                                        excludeTokens.add((String) item);
+                                }
+                            }
+                        }
+                        if (rulesConfigMap.containsKey("exclude_prefixes")) {
+                            Object listObj = rulesConfigMap.get("exclude_prefixes");
+                            if (listObj instanceof List<?>) {
+                                for (Object item : (List<?>) listObj) {
+                                    if (item instanceof String)
+                                        excludePrefixes.add((String) item);
+                                }
+                            }
+                        }
+                        if (rulesConfigMap.containsKey("exclude_suffixes")) {
+                            Object listObj = rulesConfigMap.get("exclude_suffixes");
+                            if (listObj instanceof List<?>) {
+                                for (Object item : (List<?>) listObj) {
+                                    if (item instanceof String)
+                                        excludeSuffixes.add((String) item);
+                                }
+                            }
+                        }
+                        if (rulesConfigMap.containsKey("exclude_contains")) {
+                            Object listObj = rulesConfigMap.get("exclude_contains");
+                            if (listObj instanceof List<?>) {
+                                for (Object item : (List<?>) listObj) {
+                                    if (item instanceof String)
+                                        excludeContains.add((String) item);
+                                }
+                            }
+                        }
+                        if (rulesConfigMap.containsKey("exclude_patterns")) {
+                            Object listObj = rulesConfigMap.get("exclude_patterns");
+                            if (listObj instanceof List<?>) {
+                                for (Object item : (List<?>) listObj) {
+                                    if (item instanceof String)
+                                        excludePatterns.add((String) item);
+                                }
+                            }
+                        }
+                        if (rulesConfigMap.containsKey("include_tokens")) {
+                            Object listObj = rulesConfigMap.get("include_tokens");
+                            if (listObj instanceof List<?>) {
+                                for (Object item : (List<?>) listObj) {
+                                    if (item instanceof String)
+                                        includeTokens.add((String) item);
+                                }
+                            }
+                        }
+                        if (rulesConfigMap.containsKey("include_prefixes")) {
+                            Object listObj = rulesConfigMap.get("include_prefixes");
+                            if (listObj instanceof List<?>) {
+                                for (Object item : (List<?>) listObj) {
+                                    if (item instanceof String)
+                                        includePrefixes.add((String) item);
+                                }
+                            }
+                        }
+                        if (rulesConfigMap.containsKey("include_suffixes")) {
+                            Object listObj = rulesConfigMap.get("include_suffixes");
+                            if (listObj instanceof List<?>) {
+                                for (Object item : (List<?>) listObj) {
+                                    if (item instanceof String)
+                                        includeSuffixes.add((String) item);
+                                }
+                            }
+                        }
+                        if (rulesConfigMap.containsKey("include_contains")) {
+                            Object listObj = rulesConfigMap.get("include_contains");
+                            if (listObj instanceof List<?>) {
+                                for (Object item : (List<?>) listObj) {
+                                    if (item instanceof String)
+                                        includeContains.add((String) item);
+                                }
+                            }
+                        }
+                        if (rulesConfigMap.containsKey("include_patterns")) {
+                            Object listObj = rulesConfigMap.get("include_patterns");
+                            if (listObj instanceof List<?>) {
+                                for (Object item : (List<?>) listObj) {
+                                    if (item instanceof String)
+                                        includePatterns.add((String) item);
+                                }
+                            }
+                        }
+                        if (rulesConfigMap.containsKey("declude_prefixes")) {
+                            Object listObj = rulesConfigMap.get("declude_prefixes");
+                            if (listObj instanceof List<?>) {
+                                for (Object item : (List<?>) listObj) {
+                                    if (item instanceof String)
+                                        decludePrefixes.add((String) item);
+                                }
+                            }
+                        }
+                        if (rulesConfigMap.containsKey("declude_suffixes")) {
+                            Object listObj = rulesConfigMap.get("declude_suffixes");
+                            if (listObj instanceof List<?>) {
+                                for (Object item : (List<?>) listObj) {
+                                    if (item instanceof String)
+                                        decludeSuffixes.add((String) item);
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -272,6 +413,50 @@ public class RestAnalyzeAction extends BaseRestHandler {
             settingsBuilder.put("ngram_config.use_vcgram", useVcgram);
             settingsBuilder.put("ngram_config.use_vbgram", useVbgram);
             settingsBuilder.put("ngram_config.drop_cogram", dropCogram);
+        }
+
+        // Build rules_config settings
+        settingsBuilder.put("use_rules", useRules);
+        if (useRules) {
+            if (rulesFile != null) {
+                settingsBuilder.put("rules_config.file", rulesFile);
+            }
+            if (!excludeTokens.isEmpty()) {
+                settingsBuilder.putList("rules_config.exclude_tokens", excludeTokens);
+            }
+            if (!excludePrefixes.isEmpty()) {
+                settingsBuilder.putList("rules_config.exclude_prefixes", excludePrefixes);
+            }
+            if (!excludeSuffixes.isEmpty()) {
+                settingsBuilder.putList("rules_config.exclude_suffixes", excludeSuffixes);
+            }
+            if (!excludeContains.isEmpty()) {
+                settingsBuilder.putList("rules_config.exclude_contains", excludeContains);
+            }
+            if (!excludePatterns.isEmpty()) {
+                settingsBuilder.putList("rules_config.exclude_patterns", excludePatterns);
+            }
+            if (!includeTokens.isEmpty()) {
+                settingsBuilder.putList("rules_config.include_tokens", includeTokens);
+            }
+            if (!includePrefixes.isEmpty()) {
+                settingsBuilder.putList("rules_config.include_prefixes", includePrefixes);
+            }
+            if (!includeSuffixes.isEmpty()) {
+                settingsBuilder.putList("rules_config.include_suffixes", includeSuffixes);
+            }
+            if (!includeContains.isEmpty()) {
+                settingsBuilder.putList("rules_config.include_contains", includeContains);
+            }
+            if (!includePatterns.isEmpty()) {
+                settingsBuilder.putList("rules_config.include_patterns", includePatterns);
+            }
+            if (!decludePrefixes.isEmpty()) {
+                settingsBuilder.putList("rules_config.declude_prefixes", decludePrefixes);
+            }
+            if (!decludeSuffixes.isEmpty()) {
+                settingsBuilder.putList("rules_config.declude_suffixes", decludeSuffixes);
+            }
         }
 
         Settings finalSettings = settingsBuilder.build();

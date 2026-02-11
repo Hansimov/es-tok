@@ -15,6 +15,7 @@ import org.apache.lucene.search.BoostQuery;
 import org.elasticsearch.index.query.SearchExecutionContext;
 import org.elasticsearch.index.search.QueryStringQueryParser;
 import org.elasticsearch.lucene.queries.BlendedTermQuery;
+import org.es.tok.rules.SearchRules;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -22,11 +23,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Extended QueryStringQueryParser with token filtering capabilities
+ * Extended QueryStringQueryParser with token filtering capabilities via
+ * SearchRules
  */
 public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
 
-    private List<String> ignoredTokens = new ArrayList<>();
+    private SearchRules searchRules = SearchRules.EMPTY;
     private int maxFreq = 0;
     private int minKeptTokensCount = 1; // Default: keep at least 1 token
     private float minKeptTokensRatio = -1.0f; // Default: disabled
@@ -67,8 +69,8 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
         this.context = context;
     }
 
-    public void setIgnoredTokens(List<String> ignoredTokens) {
-        this.ignoredTokens = ignoredTokens != null ? new ArrayList<>(ignoredTokens) : new ArrayList<>();
+    public void setSearchRules(SearchRules searchRules) {
+        this.searchRules = searchRules != null ? searchRules : SearchRules.EMPTY;
     }
 
     public void setMaxFreq(int maxFreq) {
@@ -106,7 +108,7 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
      * Apply token filtering with min_kept_tokens protection
      */
     private Query filterQueryWithTopLevelMinKept(Query query, String field) {
-        if (query == null || (ignoredTokens.isEmpty() && maxFreq <= 0)) {
+        if (query == null || (searchRules.isEmpty() && maxFreq <= 0)) {
             return query;
         }
 
@@ -190,7 +192,7 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
      * Recursively filter query tree
      */
     private Query filterQuery(Query query, String field) {
-        if (query == null || (ignoredTokens.isEmpty() && maxFreq <= 0)) {
+        if (query == null || (searchRules.isEmpty() && maxFreq <= 0)) {
             return query;
         }
 
@@ -326,7 +328,8 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
     private boolean shouldFilterTermBasic(Term term) {
         String termText = term.text();
 
-        if (ignoredTokens.contains(termText)) {
+        // Check search rules (exact, prefix, suffix, contains, pattern)
+        if (searchRules.shouldExclude(termText)) {
             return true;
         }
 

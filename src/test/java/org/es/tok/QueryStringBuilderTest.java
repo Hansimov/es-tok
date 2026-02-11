@@ -1,10 +1,11 @@
 package org.es.tok;
 
 import org.es.tok.query.EsTokQueryStringQueryBuilder;
+import org.es.tok.rules.SearchRules;
 import org.junit.Test;
 
 import java.util.Arrays;
-import java.util.List;
+import java.util.Collections;
 
 import static org.junit.Assert.*;
 
@@ -17,17 +18,48 @@ public class QueryStringBuilderTest {
     public void testBasicConstruction() {
         EsTokQueryStringQueryBuilder builder = new EsTokQueryStringQueryBuilder("test query");
         assertEquals("test query", builder.queryString());
-        assertTrue(builder.ignoredTokens().isEmpty());
+        assertTrue(builder.searchRules().isEmpty());
         assertEquals(0, builder.maxFreq());
     }
 
     @Test
-    public void testIgnoredTokens() {
-        List<String> ignored = Arrays.asList("token1", "token2", "token3");
+    public void testSearchRulesExcludeTokens() {
+        SearchRules rules = new SearchRules(
+                Arrays.asList("token1", "token2", "token3"),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList());
         EsTokQueryStringQueryBuilder builder = new EsTokQueryStringQueryBuilder("test query")
-                .ignoredTokens(ignored);
+                .searchRules(rules);
 
-        assertEquals(ignored, builder.ignoredTokens());
+        assertEquals(rules, builder.searchRules());
+        assertFalse(builder.searchRules().isEmpty());
+        assertEquals(3, builder.searchRules().getExcludeTokens().size());
+    }
+
+    @Test
+    public void testSearchRulesAllFields() {
+        SearchRules rules = new SearchRules(
+                Arrays.asList("的", "了"),
+                Arrays.asList("pre_"),
+                Arrays.asList("_suf"),
+                Arrays.asList("mid"),
+                Arrays.asList("^test.*$"),
+                Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList());
+        EsTokQueryStringQueryBuilder builder = new EsTokQueryStringQueryBuilder("test query")
+                .searchRules(rules);
+
+        assertEquals(2, builder.searchRules().getExcludeTokens().size());
+        assertEquals(1, builder.searchRules().getExcludePrefixes().size());
+        assertEquals(1, builder.searchRules().getExcludeSuffixes().size());
+        assertEquals(1, builder.searchRules().getExcludeContains().size());
+        assertEquals(1, builder.searchRules().getExcludePatterns().size());
     }
 
     @Test
@@ -40,17 +72,25 @@ public class QueryStringBuilderTest {
 
     @Test
     public void testCombinedSettings() {
-        List<String> ignored = Arrays.asList("的", "了", "是");
+        SearchRules rules = new SearchRules(
+                Arrays.asList("的", "了", "是"),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList());
         EsTokQueryStringQueryBuilder builder = new EsTokQueryStringQueryBuilder("测试 查询 文档")
                 .field("content")
                 .defaultField("content")
-                .ignoredTokens(ignored)
+                .searchRules(rules)
                 .maxFreq(50)
                 .lenient(true)
                 .boost(2.0f);
 
         assertEquals("测试 查询 文档", builder.queryString());
-        assertEquals(ignored, builder.ignoredTokens());
+        assertEquals(rules, builder.searchRules());
         assertEquals(50, builder.maxFreq());
         assertTrue(builder.lenient());
         assertEquals(2.0f, builder.boost(), 0.001f);
@@ -68,18 +108,12 @@ public class QueryStringBuilderTest {
                 .maxFreq(-1);
     }
 
-    @Test(expected = IllegalArgumentException.class)
-    public void testNullIgnoredTokens() {
-        new EsTokQueryStringQueryBuilder("test")
-                .ignoredTokens(null);
-    }
-
     @Test
-    public void testEmptyIgnoredTokens() {
+    public void testEmptySearchRules() {
         EsTokQueryStringQueryBuilder builder = new EsTokQueryStringQueryBuilder("test")
-                .ignoredTokens(Arrays.asList());
+                .searchRules(SearchRules.EMPTY);
 
-        assertTrue(builder.ignoredTokens().isEmpty());
+        assertTrue(builder.searchRules().isEmpty());
     }
 
     @Test
@@ -98,14 +132,22 @@ public class QueryStringBuilderTest {
 
     @Test
     public void testEquality() {
-        List<String> ignored = Arrays.asList("a", "b", "c");
+        SearchRules rules = new SearchRules(
+                Arrays.asList("a", "b", "c"),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList());
 
         EsTokQueryStringQueryBuilder builder1 = new EsTokQueryStringQueryBuilder("test query")
-                .ignoredTokens(ignored)
+                .searchRules(rules)
                 .maxFreq(50);
 
         EsTokQueryStringQueryBuilder builder2 = new EsTokQueryStringQueryBuilder("test query")
-                .ignoredTokens(ignored)
+                .searchRules(rules)
                 .maxFreq(50);
 
         assertEquals(builder1, builder2);
@@ -124,12 +166,51 @@ public class QueryStringBuilderTest {
     }
 
     @Test
+    public void testInequalityDifferentRules() {
+        SearchRules rules1 = new SearchRules(
+                Arrays.asList("a"),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList());
+        SearchRules rules2 = new SearchRules(
+                Arrays.asList("b"),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList());
+
+        EsTokQueryStringQueryBuilder builder1 = new EsTokQueryStringQueryBuilder("test")
+                .searchRules(rules1);
+
+        EsTokQueryStringQueryBuilder builder2 = new EsTokQueryStringQueryBuilder("test")
+                .searchRules(rules2);
+
+        assertNotEquals(builder1, builder2);
+    }
+
+    @Test
     public void testFluentAPI() {
+        SearchRules rules = new SearchRules(
+                Arrays.asList("token1"),
+                Arrays.asList("pre_"),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList());
         EsTokQueryStringQueryBuilder builder = new EsTokQueryStringQueryBuilder("test")
                 .field("field1")
                 .field("field2", 2.0f)
                 .defaultField("content")
-                .ignoredTokens(Arrays.asList("token1"))
+                .searchRules(rules)
                 .maxFreq(100)
                 .phraseSlop(2)
                 .lenient(true)
@@ -140,6 +221,6 @@ public class QueryStringBuilderTest {
         assertTrue(builder.fields().containsKey("field1"));
         assertTrue(builder.fields().containsKey("field2"));
         assertEquals(100, builder.maxFreq());
-        assertFalse(builder.ignoredTokens().isEmpty());
+        assertFalse(builder.searchRules().isEmpty());
     }
 }

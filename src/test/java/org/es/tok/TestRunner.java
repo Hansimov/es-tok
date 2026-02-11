@@ -41,6 +41,12 @@ public class TestRunner {
         System.out.println("7. Running Vocab Concat Tests...");
         VocabConcatTest.main(args);
 
+        System.out.println("8. Running Search Rules Tests...");
+        runJUnitTests(SearchRulesTest.class);
+
+        System.out.println("9. Running Declude (Drop Deles) Tests...");
+        DropDelesTest.main(args);
+
         System.out.println("========================================");
         System.out.println("   All tests completed!");
         System.out.println("========================================");
@@ -90,6 +96,15 @@ public class TestRunner {
                 case "hanttohans":
                     HantToHansTest.main(new String[0]);
                     return true;
+                case "searchrules":
+                case "rules":
+                    System.out.println("Running SearchRules unit tests...");
+                    runJUnitTests(SearchRulesTest.class);
+                    return true;
+                case "dropdeles":
+                case "deles":
+                    DropDelesTest.main(new String[0]);
+                    return true;
                 case "querystring":
                 case "query":
                     System.out.println("QueryString test requires a running Elasticsearch instance.");
@@ -98,7 +113,7 @@ public class TestRunner {
                 case "querystringbuilder":
                 case "querybuilder":
                     System.out.println("Running QueryStringBuilder unit tests...");
-                    org.junit.runner.JUnitCore.main("org.es.tok.QueryStringBuilderTest");
+                    runJUnitTests(QueryStringBuilderTest.class);
                     return true;
                 default:
                     return false;
@@ -107,6 +122,22 @@ public class TestRunner {
             System.err.println("Error running test: " + e.getMessage());
             e.printStackTrace();
             return false;
+        }
+    }
+
+    /**
+     * Run JUnit tests without calling System.exit() (unlike JUnitCore.main).
+     */
+    private static void runJUnitTests(Class<?>... testClasses) {
+        org.junit.runner.Result result = org.junit.runner.JUnitCore.runClasses(testClasses);
+        System.out.printf("Tests run: %d, Failures: %d, Time: %.3fs%n",
+                result.getRunCount(), result.getFailureCount(),
+                result.getRunTime() / 1000.0);
+        for (org.junit.runner.notification.Failure failure : result.getFailures()) {
+            System.out.println("FAIL: " + failure.toString());
+        }
+        if (!result.wasSuccessful()) {
+            throw new RuntimeException("JUnit tests failed");
         }
     }
 
@@ -124,6 +155,8 @@ public class TestRunner {
         System.out.println("  VocabConcat / vocab_concat");
         System.out.println("  Performance / performance");
         System.out.println("  HantToHans / hant_to_hans");
+        System.out.println("  SearchRules / rules / search_rules");
+        System.out.println("  DropDeles / deles / drop_deles");
         System.out.println("  QueryStringBuilder / query_builder");
         System.out.println("  QueryString / query (requires Elasticsearch)");
         System.out.println("  (no args) - Run all tests");

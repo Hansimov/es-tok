@@ -11,6 +11,7 @@ import org.es.tok.strategy.CategStrategy;
 import org.es.tok.strategy.NgramStrategy;
 import org.es.tok.strategy.TokenStrategy;
 import org.es.tok.strategy.VocabStrategy;
+import org.es.tok.rules.SearchRules;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -164,7 +165,31 @@ public class EsTokTokenizer extends Tokenizer {
         // sort all tokens to ensure proper offset ordering
         allTokens = sortTokensByOffset(allTokens);
 
+        // apply rules-based token filtering
+        if (config.getRulesConfig() != null && config.getRulesConfig().hasActiveRules()) {
+            allTokens = applyRulesFilter(allTokens);
+        }
+
         return allTokens;
+    }
+
+    // Filter tokens based on SearchRules exclusion and declude rules
+    private List<TokenStrategy.TokenInfo> applyRulesFilter(List<TokenStrategy.TokenInfo> tokens) {
+        SearchRules rules = config.getRulesConfig().getSearchRules();
+
+        // Build set of all token texts for context-dependent declude lookups
+        Set<String> allTokenTexts = new HashSet<>();
+        for (TokenStrategy.TokenInfo token : tokens) {
+            allTokenTexts.add(token.getText());
+        }
+
+        List<TokenStrategy.TokenInfo> filtered = new ArrayList<>();
+        for (TokenStrategy.TokenInfo token : tokens) {
+            if (!rules.shouldExclude(token.getText(), allTokenTexts)) {
+                filtered.add(token);
+            }
+        }
+        return filtered;
     }
 
     // Generate base tokens from categ and vocab strategies

@@ -4,4 +4,5 @@ bin
 build
 *.log
 *.lm
+*.chats
 _temp

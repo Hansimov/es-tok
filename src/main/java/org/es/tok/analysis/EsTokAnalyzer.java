@@ -25,7 +25,7 @@ public class EsTokAnalyzer extends Analyzer {
         this.hantToHansConverter = hantToHansConverter;
     }
 
-    // Legacy constructor for backward compatibility (used in tests)
+    // Constructor that auto-initializes strategies (used in tests and REST handler)
     public EsTokAnalyzer(EsTokConfig config) {
         this.config = config;
 
