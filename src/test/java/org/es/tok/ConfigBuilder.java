@@ -5,7 +5,7 @@ import org.es.tok.extra.ExtraConfig;
 import org.es.tok.categ.CategConfig;
 import org.es.tok.ngram.NgramConfig;
 import org.es.tok.rules.RulesConfig;
-import org.es.tok.rules.SearchRules;
+import org.es.tok.rules.AnalyzeRules;
 import org.es.tok.vocab.VocabConfig;
 
 import java.util.Arrays;
@@ -31,7 +31,7 @@ public class ConfigBuilder {
     private boolean dropCategs = false;
     private boolean dropVocabs = false;
     private boolean useRules = false;
-    private SearchRules searchRules = SearchRules.EMPTY;
+    private AnalyzeRules analyzeRules = AnalyzeRules.EMPTY;
 
     public static ConfigBuilder create() {
         return new ConfigBuilder();
@@ -121,15 +121,15 @@ public class ConfigBuilder {
     }
 
     // Rules settings
-    public ConfigBuilder withRules(SearchRules rules) {
+    public ConfigBuilder withRules(AnalyzeRules rules) {
         this.useRules = true;
-        this.searchRules = rules;
+        this.analyzeRules = rules;
         return this;
     }
 
     public ConfigBuilder withExcludeTokens(String... tokens) {
         this.useRules = true;
-        this.searchRules = new SearchRules(
+        this.analyzeRules = new AnalyzeRules(
                 Arrays.asList(tokens),
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -147,7 +147,7 @@ public class ConfigBuilder {
         VocabConfig vocabConfig = new VocabConfig(useVocab, vocabs);
         NgramConfig ngramConfig = new NgramConfig(useNgram, useBigram, useVcgram, useVbgram, dropCogram);
 
-        RulesConfig rulesConfig = new RulesConfig(useRules, searchRules);
+        RulesConfig rulesConfig = new RulesConfig(useRules, analyzeRules);
 
         return new EsTokConfig(extraConfig, categConfig, vocabConfig, ngramConfig, rulesConfig);
     }

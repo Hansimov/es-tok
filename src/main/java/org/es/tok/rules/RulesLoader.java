@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Loads {@link SearchRules} from Settings (inline) or from a JSON file.
+ * Loads {@link AnalyzeRules} from Settings (inline) or from a JSON file.
  * <p>
  * File locations are resolved under the ES plugin directory.
  */
@@ -36,11 +36,11 @@ public class RulesLoader {
     public static RulesConfig loadRulesConfig(Settings settings) {
         boolean useRules = settings.getAsBoolean("use_rules", false);
         if (!useRules) {
-            return new RulesConfig(false, SearchRules.EMPTY);
+            return new RulesConfig(false, AnalyzeRules.EMPTY);
         }
 
         Settings rulesSettings = settings.getAsSettings("rules_config");
-        SearchRules rules;
+        AnalyzeRules rules;
 
         if (rulesSettings != null && !rulesSettings.isEmpty()) {
             // Check for file reference first
@@ -58,18 +58,18 @@ public class RulesLoader {
 
         // If no valid rules loaded, return inactive
         if (rules == null || rules.isEmpty()) {
-            return new RulesConfig(false, SearchRules.EMPTY);
+            return new RulesConfig(false, AnalyzeRules.EMPTY);
         }
 
         return new RulesConfig(true, rules);
     }
 
     /**
-     * Load SearchRules from a Settings object (inline rules).
+     * Load AnalyzeRules from a Settings object (inline rules).
      */
-    public static SearchRules loadFromSettings(Settings settings) {
+    public static AnalyzeRules loadFromSettings(Settings settings) {
         if (settings == null || settings.isEmpty()) {
-            return SearchRules.EMPTY;
+            return AnalyzeRules.EMPTY;
         }
 
         List<String> excludeTokens = settings.getAsList("exclude_tokens", Collections.emptyList());
@@ -87,34 +87,34 @@ public class RulesLoader {
         List<String> decludePrefixes = settings.getAsList("declude_prefixes", Collections.emptyList());
         List<String> decludeSuffixes = settings.getAsList("declude_suffixes", Collections.emptyList());
 
-        return new SearchRules(excludeTokens, excludePrefixes, excludeSuffixes, excludeContains, excludePatterns,
+        return new AnalyzeRules(excludeTokens, excludePrefixes, excludeSuffixes, excludeContains, excludePatterns,
                 includeTokens, includePrefixes, includeSuffixes, includeContains, includePatterns,
                 decludePrefixes, decludeSuffixes);
     }
 
     /**
-     * Load SearchRules from a JSON file using the default plugin directory.
+     * Load AnalyzeRules from a JSON file using the default plugin directory.
      */
-    public static SearchRules loadFromFile(String filename) {
+    public static AnalyzeRules loadFromFile(String filename) {
         return loadFromFile(filename, DEFAULT_PLUGIN_DIR);
     }
 
     /**
-     * Load SearchRules from a JSON file under the given base directory.
+     * Load AnalyzeRules from a JSON file under the given base directory.
      *
      * @param filename the rules JSON file name
      * @param baseDir  the directory containing the file
-     * @return the loaded rules, or {@link SearchRules#EMPTY} if loading fails
+     * @return the loaded rules, or {@link AnalyzeRules#EMPTY} if loading fails
      */
     @SuppressWarnings("unchecked")
-    public static SearchRules loadFromFile(String filename, Path baseDir) {
+    public static AnalyzeRules loadFromFile(String filename, Path baseDir) {
         if (filename == null || filename.isEmpty()) {
-            return SearchRules.EMPTY;
+            return AnalyzeRules.EMPTY;
         }
 
         Path filePath = baseDir.resolve(filename);
         if (!Files.exists(filePath)) {
-            return SearchRules.EMPTY;
+            return AnalyzeRules.EMPTY;
         }
 
         try {
@@ -122,17 +122,17 @@ public class RulesLoader {
             Map<String, Object> data = mapper.readValue(filePath.toFile(), Map.class);
             return loadFromMap(data);
         } catch (IOException e) {
-            return SearchRules.EMPTY;
+            return AnalyzeRules.EMPTY;
         }
     }
 
     /**
-     * Parse SearchRules from a parsed JSON map (used by query builder and REST
+     * Parse AnalyzeRules from a parsed JSON map (used by query builder and REST
      * handler).
      */
-    public static SearchRules loadFromMap(Map<?, ?> rulesMap) {
+    public static AnalyzeRules loadFromMap(Map<?, ?> rulesMap) {
         if (rulesMap == null || rulesMap.isEmpty()) {
-            return SearchRules.EMPTY;
+            return AnalyzeRules.EMPTY;
         }
 
         // Check for file reference
@@ -140,7 +140,7 @@ public class RulesLoader {
         if (fileObj instanceof String) {
             String file = (String) fileObj;
             if (!file.isEmpty()) {
-                SearchRules fromFile = loadFromFile(file);
+                AnalyzeRules fromFile = loadFromFile(file);
                 if (!fromFile.isEmpty()) {
                     return fromFile;
                 }
@@ -163,7 +163,7 @@ public class RulesLoader {
         List<String> decludePrefixes = getStringList(rulesMap, "declude_prefixes");
         List<String> decludeSuffixes = getStringList(rulesMap, "declude_suffixes");
 
-        return new SearchRules(excludeTokens, excludePrefixes, excludeSuffixes, excludeContains, excludePatterns,
+        return new AnalyzeRules(excludeTokens, excludePrefixes, excludeSuffixes, excludeContains, excludePatterns,
                 includeTokens, includePrefixes, includeSuffixes, includeContains, includePatterns,
                 decludePrefixes, decludeSuffixes);
     }

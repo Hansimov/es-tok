@@ -1,6 +1,6 @@
 package org.es.tok;
 
-import org.es.tok.rules.SearchRules;
+import org.es.tok.rules.AnalyzeRules;
 import org.es.tok.rules.RulesConfig;
 import org.es.tok.rules.RulesLoader;
 import org.elasticsearch.common.settings.Settings;
@@ -12,15 +12,15 @@ import static org.junit.Assert.*;
 
 
 /**
- * Unit tests for SearchRules, RulesConfig, and RulesLoader
+ * Unit tests for AnalyzeRules, RulesConfig, and RulesLoader
  */
-public class SearchRulesTest {
+public class AnalyzeRulesTest {
 
-    // ===== SearchRules basic tests =====
+    // ===== AnalyzeRules basic tests =====
 
     @Test
     public void testEmptyRules() {
-        SearchRules rules = SearchRules.EMPTY;
+        AnalyzeRules rules = AnalyzeRules.EMPTY;
         assertTrue(rules.isEmpty());
         assertFalse(rules.shouldExclude("anything"));
         assertFalse(rules.shouldExclude(""));
@@ -28,7 +28,7 @@ public class SearchRulesTest {
 
     @Test
     public void testExcludeTokensExactMatch() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Arrays.asList("的", "了", "是"),
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -47,7 +47,7 @@ public class SearchRulesTest {
 
     @Test
     public void testExcludePrefixes() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(),
                 Arrays.asList("pre_", "test_"),
                 Collections.emptyList(),
@@ -66,7 +66,7 @@ public class SearchRulesTest {
 
     @Test
     public void testExcludeSuffixes() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(),
                 Collections.emptyList(),
                 Arrays.asList("_end", "_test"),
@@ -85,7 +85,7 @@ public class SearchRulesTest {
 
     @Test
     public void testExcludeContains() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(),
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -105,7 +105,7 @@ public class SearchRulesTest {
 
     @Test
     public void testExcludePatterns() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(),
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -126,7 +126,7 @@ public class SearchRulesTest {
     @Test
     public void testInvalidPatternIsIgnored() {
         // Invalid regex should be silently ignored
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(),
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -142,7 +142,7 @@ public class SearchRulesTest {
 
     @Test
     public void testCombinedRules() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Arrays.asList("stop"),
                 Arrays.asList("pre_"),
                 Arrays.asList("_suf"),
@@ -170,7 +170,7 @@ public class SearchRulesTest {
 
     @Test
     public void testNullTokenDoesNotCrash() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Arrays.asList("test"),
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -185,7 +185,7 @@ public class SearchRulesTest {
 
     @Test
     public void testEmptyTokenString() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Arrays.asList(""),
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -207,7 +207,7 @@ public class SearchRulesTest {
         List<String> contains = Arrays.asList("mid");
         List<String> patterns = Arrays.asList("^x$");
 
-        SearchRules rules = new SearchRules(tokens, prefixes, suffixes, contains, patterns,
+        AnalyzeRules rules = new AnalyzeRules(tokens, prefixes, suffixes, contains, patterns,
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList());
@@ -221,7 +221,7 @@ public class SearchRulesTest {
 
     @Test
     public void testGettersReturnUnmodifiable() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Arrays.asList("a"),
                 Arrays.asList("b"),
                 Arrays.asList("c"),
@@ -241,7 +241,7 @@ public class SearchRulesTest {
 
     @Test
     public void testEqualsAndHashCode() {
-        SearchRules rules1 = new SearchRules(
+        AnalyzeRules rules1 = new AnalyzeRules(
                 Arrays.asList("a", "b"),
                 Arrays.asList("pre_"),
                 Collections.emptyList(),
@@ -250,7 +250,7 @@ public class SearchRulesTest {
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList());
-        SearchRules rules2 = new SearchRules(
+        AnalyzeRules rules2 = new AnalyzeRules(
                 Arrays.asList("a", "b"),
                 Arrays.asList("pre_"),
                 Collections.emptyList(),
@@ -259,7 +259,7 @@ public class SearchRulesTest {
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList());
-        SearchRules rules3 = new SearchRules(
+        AnalyzeRules rules3 = new AnalyzeRules(
                 Arrays.asList("c"),
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -276,7 +276,7 @@ public class SearchRulesTest {
 
     @Test
     public void testToString() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Arrays.asList("a"),
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -294,21 +294,21 @@ public class SearchRulesTest {
 
     @Test
     public void testRulesConfigDisabled() {
-        RulesConfig config = new RulesConfig(false, SearchRules.EMPTY);
+        RulesConfig config = new RulesConfig(false, AnalyzeRules.EMPTY);
         assertFalse(config.hasActiveRules());
         assertFalse(config.isUseRules());
     }
 
     @Test
     public void testRulesConfigEnabledButEmpty() {
-        RulesConfig config = new RulesConfig(true, SearchRules.EMPTY);
+        RulesConfig config = new RulesConfig(true, AnalyzeRules.EMPTY);
         assertFalse(config.hasActiveRules());
         assertTrue(config.isUseRules());
     }
 
     @Test
     public void testRulesConfigActive() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Arrays.asList("stop"),
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -320,7 +320,7 @@ public class SearchRulesTest {
         RulesConfig config = new RulesConfig(true, rules);
         assertTrue(config.hasActiveRules());
         assertTrue(config.isUseRules());
-        assertEquals(rules, config.getSearchRules());
+        assertEquals(rules, config.getAnalyzeRules());
     }
 
     // ===== RulesLoader tests =====
@@ -350,7 +350,7 @@ public class SearchRulesTest {
         assertTrue(config.isUseRules());
         assertTrue(config.hasActiveRules());
 
-        SearchRules rules = config.getSearchRules();
+        AnalyzeRules rules = config.getAnalyzeRules();
         assertEquals(2, rules.getExcludeTokens().size());
         assertEquals(1, rules.getExcludePrefixes().size());
         assertEquals(1, rules.getExcludeSuffixes().size());
@@ -379,7 +379,7 @@ public class SearchRulesTest {
     @Test
     public void testLoadFromMapEmpty() {
         Map<String, Object> map = new HashMap<>();
-        SearchRules rules = RulesLoader.loadFromMap(map);
+        AnalyzeRules rules = RulesLoader.loadFromMap(map);
         assertTrue(rules.isEmpty());
     }
 
@@ -388,7 +388,7 @@ public class SearchRulesTest {
         Map<String, Object> map = new HashMap<>();
         map.put("exclude_tokens", Arrays.asList("stop1", "stop2"));
 
-        SearchRules rules = RulesLoader.loadFromMap(map);
+        AnalyzeRules rules = RulesLoader.loadFromMap(map);
         assertFalse(rules.isEmpty());
         assertTrue(rules.shouldExclude("stop1"));
         assertTrue(rules.shouldExclude("stop2"));
@@ -404,7 +404,7 @@ public class SearchRulesTest {
         map.put("exclude_contains", Arrays.asList("mid"));
         map.put("exclude_patterns", Arrays.asList("^\\d+$"));
 
-        SearchRules rules = RulesLoader.loadFromMap(map);
+        AnalyzeRules rules = RulesLoader.loadFromMap(map);
         assertTrue(rules.shouldExclude("exact"));
         assertTrue(rules.shouldExclude("pre_test"));
         assertTrue(rules.shouldExclude("test_suf"));
@@ -418,7 +418,7 @@ public class SearchRulesTest {
         Map<String, Object> map = new HashMap<>();
         map.put("exclude_tokens", null);
 
-        SearchRules rules = RulesLoader.loadFromMap(map);
+        AnalyzeRules rules = RulesLoader.loadFromMap(map);
         assertTrue(rules.isEmpty());
     }
 
@@ -426,7 +426,7 @@ public class SearchRulesTest {
 
     @Test
     public void testConfigBuilderWithRules() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Arrays.asList("stop"),
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -441,8 +441,8 @@ public class SearchRulesTest {
                 .build();
 
         assertTrue(config.getRulesConfig().hasActiveRules());
-        assertTrue(config.getRulesConfig().getSearchRules().shouldExclude("stop"));
-        assertFalse(config.getRulesConfig().getSearchRules().shouldExclude("keep"));
+        assertTrue(config.getRulesConfig().getAnalyzeRules().shouldExclude("stop"));
+        assertFalse(config.getRulesConfig().getAnalyzeRules().shouldExclude("keep"));
     }
 
     @Test
@@ -452,8 +452,8 @@ public class SearchRulesTest {
                 .build();
 
         assertTrue(config.getRulesConfig().hasActiveRules());
-        assertTrue(config.getRulesConfig().getSearchRules().shouldExclude("a"));
-        assertFalse(config.getRulesConfig().getSearchRules().shouldExclude("d"));
+        assertTrue(config.getRulesConfig().getAnalyzeRules().shouldExclude("a"));
+        assertFalse(config.getRulesConfig().getAnalyzeRules().shouldExclude("d"));
     }
 
     @Test
@@ -467,7 +467,7 @@ public class SearchRulesTest {
 
     @Test
     public void testChineseExcludeTokens() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Arrays.asList("的", "了", "是", "在", "和"),
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -486,7 +486,7 @@ public class SearchRulesTest {
 
     @Test
     public void testChineseExcludePrefixes() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(),
                 Arrays.asList("不"),
                 Collections.emptyList(),
@@ -503,7 +503,7 @@ public class SearchRulesTest {
 
     @Test
     public void testChineseExcludeContains() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(),
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -521,7 +521,7 @@ public class SearchRulesTest {
 
     @Test
     public void testChineseExcludePatterns() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(),
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -546,7 +546,7 @@ public class SearchRulesTest {
         for (int i = 0; i < 1000; i++) {
             tokens.add("token_" + i);
         }
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 tokens,
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -563,7 +563,7 @@ public class SearchRulesTest {
 
     @Test
     public void testSpecialCharactersInTokens() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Arrays.asList("hello.world", "test[0]", "a+b"),
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -580,7 +580,7 @@ public class SearchRulesTest {
 
     @Test
     public void testEmptyStringsInLists() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(),
                 Arrays.asList(""),
                 Collections.emptyList(),
@@ -596,7 +596,7 @@ public class SearchRulesTest {
 
     @Test
     public void testMultiplePatternsOnSameToken() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Arrays.asList("exact_match"),
                 Arrays.asList("exact"), // also matches by prefix
                 Collections.emptyList(),
@@ -615,7 +615,7 @@ public class SearchRulesTest {
 
     @Test
     public void testIncludeTokensOverrideExclude() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Arrays.asList("的", "了", "是"),
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -636,7 +636,7 @@ public class SearchRulesTest {
     @Test
     public void testIncludePrefixesOverrideExcludePrefixes() {
         // exclude prefix "的" but include prefix "的确","的哥"
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(),
                 Arrays.asList("的"),
                 Collections.emptyList(),
@@ -662,7 +662,7 @@ public class SearchRulesTest {
 
     @Test
     public void testIncludeSuffixesOverrideExclude() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(),
                 Collections.emptyList(),
                 Arrays.asList("了"),
@@ -681,7 +681,7 @@ public class SearchRulesTest {
 
     @Test
     public void testIncludeContainsOverrideExclude() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(),
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -701,7 +701,7 @@ public class SearchRulesTest {
 
     @Test
     public void testIncludePatternsOverrideExclude() {
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(),
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -721,7 +721,7 @@ public class SearchRulesTest {
     @Test
     public void testIncludeOnlyDoesNotFilter() {
         // Only include rules, no exclude rules → isEmpty() returns true
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(),
                 Collections.emptyList(),
                 Collections.emptyList(),
@@ -739,7 +739,7 @@ public class SearchRulesTest {
     @Test
     public void testChineseIncludeOverrideExclude() {
         // Real-world rule: exclude prefix "的" and "了", include specific exceptions
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(),
                 Arrays.asList("的", "了"),
                 Collections.emptyList(),
@@ -779,7 +779,7 @@ public class SearchRulesTest {
         List<String> iContains = Arrays.asList("d");
         List<String> iPatterns = Arrays.asList("e");
 
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(),
@@ -794,21 +794,21 @@ public class SearchRulesTest {
 
     @Test
     public void testEqualsWithIncludeFields() {
-        SearchRules rules1 = new SearchRules(
+        AnalyzeRules rules1 = new AnalyzeRules(
                 Arrays.asList("x"),
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(), Collections.emptyList(),
                 Arrays.asList("y"),
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(), Collections.emptyList());
-        SearchRules rules2 = new SearchRules(
+        AnalyzeRules rules2 = new AnalyzeRules(
                 Arrays.asList("x"),
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(), Collections.emptyList(),
                 Arrays.asList("y"),
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(), Collections.emptyList());
-        SearchRules rules3 = new SearchRules(
+        AnalyzeRules rules3 = new AnalyzeRules(
                 Arrays.asList("x"),
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(), Collections.emptyList(),
@@ -833,7 +833,7 @@ public class SearchRulesTest {
         assertTrue(config.isUseRules());
         assertTrue(config.hasActiveRules());
 
-        SearchRules rules = config.getSearchRules();
+        AnalyzeRules rules = config.getAnalyzeRules();
         assertFalse(rules.shouldExclude("的确"));
         assertTrue(rules.shouldExclude("的人"));
     }
@@ -844,7 +844,7 @@ public class SearchRulesTest {
         map.put("exclude_prefixes", Arrays.asList("的"));
         map.put("include_prefixes", Arrays.asList("的确", "的士"));
 
-        SearchRules rules = RulesLoader.loadFromMap(map);
+        AnalyzeRules rules = RulesLoader.loadFromMap(map);
         assertFalse(rules.shouldExclude("的确"));
         assertFalse(rules.shouldExclude("的士"));
         assertTrue(rules.shouldExclude("的人"));
@@ -855,7 +855,7 @@ public class SearchRulesTest {
     @Test
     public void testDecludeSuffixes() {
         // "安静的" should be excluded when "安静" exists in allTokenTexts
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(),
@@ -879,7 +879,7 @@ public class SearchRulesTest {
     @Test
     public void testDecludePrefixes() {
         // "不安静" should be excluded when "安静" exists in allTokenTexts
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(),
@@ -903,7 +903,7 @@ public class SearchRulesTest {
     @Test
     public void testDecludeWithIncludeOverride() {
         // Include rules take priority over declude
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(),
@@ -932,7 +932,7 @@ public class SearchRulesTest {
         List<String> dPrefixes = Arrays.asList("不", "没");
         List<String> dSuffixes = Arrays.asList("的", "了");
 
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(),
@@ -947,7 +947,7 @@ public class SearchRulesTest {
 
     @Test
     public void testEqualsWithDecludeFields() {
-        SearchRules rules1 = new SearchRules(
+        AnalyzeRules rules1 = new AnalyzeRules(
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(),
@@ -955,7 +955,7 @@ public class SearchRulesTest {
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(),
                 Arrays.asList("不"), Arrays.asList("的"));
-        SearchRules rules2 = new SearchRules(
+        AnalyzeRules rules2 = new AnalyzeRules(
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(),
@@ -963,7 +963,7 @@ public class SearchRulesTest {
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(),
                 Arrays.asList("不"), Arrays.asList("的"));
-        SearchRules rules3 = new SearchRules(
+        AnalyzeRules rules3 = new AnalyzeRules(
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(),
@@ -980,7 +980,7 @@ public class SearchRulesTest {
     @Test
     public void testIsEmptyWithDecludeFields() {
         // Declude-only rules: isEmpty() should return false
-        SearchRules rules = new SearchRules(
+        AnalyzeRules rules = new AnalyzeRules(
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(),
@@ -990,7 +990,7 @@ public class SearchRulesTest {
                 Collections.emptyList(), Arrays.asList("的"));
         assertFalse(rules.isEmpty());
 
-        SearchRules rules2 = new SearchRules(
+        AnalyzeRules rules2 = new AnalyzeRules(
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyList(),
@@ -1014,7 +1014,7 @@ public class SearchRulesTest {
         assertTrue(config.isUseRules());
         assertTrue(config.hasActiveRules());
 
-        SearchRules rules = config.getSearchRules();
+        AnalyzeRules rules = config.getAnalyzeRules();
         assertEquals(Arrays.asList("的"), rules.getDecludeSuffixes());
         assertEquals(Arrays.asList("不"), rules.getDecludePrefixes());
 
@@ -1032,7 +1032,7 @@ public class SearchRulesTest {
         map.put("declude_suffixes", Arrays.asList("的", "了"));
         map.put("declude_prefixes", Arrays.asList("不"));
 
-        SearchRules rules = RulesLoader.loadFromMap(map);
+        AnalyzeRules rules = RulesLoader.loadFromMap(map);
         assertEquals(Arrays.asList("的", "了"), rules.getDecludeSuffixes());
         assertEquals(Arrays.asList("不"), rules.getDecludePrefixes());
 

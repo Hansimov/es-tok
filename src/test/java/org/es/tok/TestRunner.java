@@ -41,8 +41,8 @@ public class TestRunner {
         System.out.println("7. Running Vocab Concat Tests...");
         VocabConcatTest.main(args);
 
-        System.out.println("8. Running Search Rules Tests...");
-        runJUnitTests(SearchRulesTest.class);
+        System.out.println("8. Running Analyze Rules Tests...");
+        runJUnitTests(AnalyzeRulesTest.class);
 
         System.out.println("9. Running Declude (Drop Deles) Tests...");
         DropDelesTest.main(args);
@@ -102,10 +102,11 @@ public class TestRunner {
                 case "hanttohans":
                     HantToHansTest.main(new String[0]);
                     return true;
-                case "searchrules":
+                case "searchrules": // backward compat alias
+                case "analyzerules":
                 case "rules":
-                    System.out.println("Running SearchRules unit tests...");
-                    runJUnitTests(SearchRulesTest.class);
+                    System.out.println("Running AnalyzeRules unit tests...");
+                    runJUnitTests(AnalyzeRulesTest.class);
                     return true;
                 case "dropdeles":
                 case "deles":
@@ -166,7 +167,7 @@ public class TestRunner {
         System.out.println("  VocabConcat / vocab_concat");
         System.out.println("  Performance / performance");
         System.out.println("  HantToHans / hant_to_hans");
-        System.out.println("  SearchRules / rules / search_rules");
+        System.out.println("  AnalyzeRules / rules / analyze_rules");
         System.out.println("  DropDeles / deles / drop_deles");
         System.out.println("  QueryStringBuilder / query_builder");
         System.out.println("  Constraint / constraints");

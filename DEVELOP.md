@@ -118,7 +118,7 @@ curl --cacert $HOME/elasticsearch-docker-9.2.4-pro/certs/ca/ca.crt -u elastic:$E
 ./gradlew testRunner --args=VocabFile         # or vocabFile, vocab_file
 ./gradlew testRunner --args=VocabConcat       # or vocabConcat, vocab_concat
 ./gradlew testRunner --args=HantToHans        # or hantToHans, hant_to_hans
-./gradlew testRunner --args=SearchRules       # or rules, search_rules
+./gradlew testRunner --args=AnalyzeRules      # or rules, analyze_rules
 ./gradlew testRunner --args=DropDeles         # or deles, drop_deles (tests declude_suffixes rules)
 ./gradlew testRunner --args=Performance       # or performance
 ./gradlew testRunner --args=QueryStringBuilder # or query_builder

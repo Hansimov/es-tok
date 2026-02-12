@@ -66,7 +66,7 @@ org.es.tok
 │   ├── NgramLoader.java
 │   └── NgramTextBuilder.java
 ├── rules/                        # 规则过滤
-│   ├── SearchRules.java
+│   ├── AnalyzeRules.java
 │   ├── RulesConfig.java
 │   └── RulesLoader.java
 ├── extra/                        # 预处理与额外配置
@@ -211,7 +211,7 @@ EsTokConfig
 | 字段 | 类型 | 默认值 | 配置键 | 说明 |
 |------|------|--------|--------|------|
 | `useRules` | `boolean` | `false` | `use_rules` | 启用规则过滤 |
-| `searchRules` | `SearchRules` | `EMPTY` | 由 `rules_config` 派生 | 规则对象 |
+| `analyzeRules` | `AnalyzeRules` | `EMPTY` | 由 `rules_config` 派生 | 规则对象 |
 
 **规则加载优先级：**
 
@@ -262,7 +262,7 @@ EsTokConfig
 │ 阶段 9：再次排序                                    │
 ├──────────────────────────────────────────────────┤
 │ 阶段 10：规则过滤 (applyRulesFilter)                │
-│   根据 SearchRules 执行 include/exclude/declude     │
+│   根据 AnalyzeRules 执行 include/exclude/declude     │
 └──────────────────────────────────────────────────┘
   │
   ▼
@@ -338,9 +338,9 @@ public interface TokenStrategy {
 
 ## 6. 规则过滤系统
 
-### SearchRules 字段
+### AnalyzeRules 字段
 
-SearchRules 包含 **12 个规则列表**，分为 3 类：
+AnalyzeRules 包含 **12 个规则列表**，分为 3 类：
 
 | 类别 | 字段 | 匹配方式 |
 |------|------|---------|
@@ -380,7 +380,7 @@ Include（保留） > Exclude（排除） > Declude（去附） > 默认保留
 
 ### isEmpty() 语义
 
-`SearchRules.isEmpty()` 仅在所有 `exclude_*` 和 `declude_*` 列表都为空时返回 `true`。仅有 `include_*` 规则不算"有规则"——保留规则本身不会导致任何过滤行为。
+`AnalyzeRules.isEmpty()` 仅在所有 `exclude_*` 和 `declude_*` 列表都为空时返回 `true`。仅有 `include_*` 规则不算"有规则"——保留规则本身不会导致任何过滤行为。
 
 ### 规则加载方式
 
@@ -546,8 +546,8 @@ es_tok_query_string 查询 DSL
 - **HantToHansConverter**：单例模式 + 双重检查锁定，`ConcurrentHashMap` 存储映射
 - **VocabCache**：`ConcurrentHashMap<String, CachedVocab>` + `computeIfAbsent` 原子操作，按配置键缓存，防止多线程重复加载。基于文件修改时间自动失效
 - **VocabStrategy 全局缓存**：`VocabStrategy.getOrCreate(vocabs)` 使用 `ConcurrentHashMap.computeIfAbsent()`，基于词表内容哈希（`hashCode()`）缓存。所有索引和 REST 接口共享同一 Trie 实例，避免多索引重复构建导致 OOM
-- **SearchRules**：`exclude_tokens` 和 `include_tokens` 在构造时转换为 `HashSet`，确保 O(1) 精确匹配
-- **SearchRules**：`exclude_patterns` 和 `include_patterns` 在构造时预编译为 `Pattern` 对象
+- **AnalyzeRules**：`exclude_tokens` 和 `include_tokens` 在构造时转换为 `HashSet`，确保 O(1) 精确匹配
+- **AnalyzeRules**：`exclude_patterns` 和 `include_patterns` 在构造时预编译为 `Pattern` 对象
 
 ---
 

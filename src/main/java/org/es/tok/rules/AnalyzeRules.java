@@ -11,8 +11,11 @@ import java.util.regex.PatternSyntaxException;
 
 /**
  * Defines token exclusion, inclusion, and context-dependent exclusion (declude)
- * rules
- * for search and analysis.
+ * rules for the index/analyze phase.
+ * <p>
+ * These rules filter tokens during analysis (indexing and REST analyze),
+ * not during search. The name "AnalyzeRules" reflects this: rules are
+ * applied at tokenization time to control which tokens are kept or excluded.
  * <p>
  * Evaluation order:
  * <ol>
@@ -29,16 +32,14 @@ import java.util.regex.PatternSyntaxException;
  * exists.
  * <ul>
  * <li>{@code declude_prefixes}: if token starts with a prefix AND token without
- * that
- * prefix exists in all tokens → exclude</li>
+ * that prefix exists in all tokens → exclude</li>
  * <li>{@code declude_suffixes}: if token ends with a suffix AND token without
- * that
- * suffix exists in all tokens → exclude</li>
+ * that suffix exists in all tokens → exclude</li>
  * </ul>
  */
-public class SearchRules {
+public class AnalyzeRules {
 
-    public static final SearchRules EMPTY = new SearchRules(
+    public static final AnalyzeRules EMPTY = new AnalyzeRules(
             Collections.emptyList(), Collections.emptyList(),
             Collections.emptyList(), Collections.emptyList(),
             Collections.emptyList(),
@@ -72,7 +73,7 @@ public class SearchRules {
     /**
      * Constructor with exclude and include rules (declude defaults to empty).
      */
-    public SearchRules(List<String> excludeTokens, List<String> excludePrefixes,
+    public AnalyzeRules(List<String> excludeTokens, List<String> excludePrefixes,
             List<String> excludeSuffixes, List<String> excludeContains,
             List<String> excludePatterns,
             List<String> includeTokens, List<String> includePrefixes,
@@ -86,7 +87,7 @@ public class SearchRules {
     /**
      * Full constructor with exclude, include, and declude rules.
      */
-    public SearchRules(List<String> excludeTokens, List<String> excludePrefixes,
+    public AnalyzeRules(List<String> excludeTokens, List<String> excludePrefixes,
             List<String> excludeSuffixes, List<String> excludeContains,
             List<String> excludePatterns,
             List<String> includeTokens, List<String> includePrefixes,
@@ -391,7 +392,7 @@ public class SearchRules {
             return true;
         if (o == null || getClass() != o.getClass())
             return false;
-        SearchRules that = (SearchRules) o;
+        AnalyzeRules that = (AnalyzeRules) o;
         return Objects.equals(excludeTokens, that.excludeTokens)
                 && Objects.equals(excludePrefixes, that.excludePrefixes)
                 && Objects.equals(excludeSuffixes, that.excludeSuffixes)
@@ -416,7 +417,7 @@ public class SearchRules {
     @Override
     public String toString() {
         return String.format(
-                "SearchRules{excludeTokens=%s, excludePrefixes=%s, excludeSuffixes=%s, excludeContains=%s, excludePatterns=%s, "
+                "AnalyzeRules{excludeTokens=%s, excludePrefixes=%s, excludeSuffixes=%s, excludeContains=%s, excludePatterns=%s, "
                         + "includeTokens=%s, includePrefixes=%s, includeSuffixes=%s, includeContains=%s, includePatterns=%s, "
                         + "decludePrefixes=%s, decludeSuffixes=%s}",
                 excludeTokens, excludePrefixes, excludeSuffixes, excludeContains, excludePatterns,
