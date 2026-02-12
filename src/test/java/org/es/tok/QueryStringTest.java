@@ -176,16 +176,16 @@ public class QueryStringTest {
     String resultWithout = performSearch(queryWithout);
     int hitsWithout = extractHitCount(resultWithout);
 
-    // Search with rules - exclude "文档"
+    // Search with constraints - exclude "文档" using NOT
     String queryWith = """
         {
           "query": {
             "es_tok_query_string": {
               "query": "测试 文档",
               "default_field": "content",
-              "rules": {
-                "exclude_tokens": ["文档"]
-              }
+              "constraints": [
+                { "NOT": { "have_token": ["文档"] } }
+              ]
             }
           }
         }
@@ -194,11 +194,11 @@ public class QueryStringTest {
     String resultWith = performSearch(queryWith);
     int hitsWith = extractHitCount(resultWith);
 
-    // With excluded token "文档", we should get different (likely fewer or same)
+    // With constraint NOT on "文档", we should get different (likely fewer or same)
     // results
     assertTrue("Results should change when excluding tokens", hitsWithout >= 0 && hitsWith >= 0);
-    System.out.println("Hits without rules: " + hitsWithout);
-    System.out.println("Hits with exclude_tokens ['文档']: " + hitsWith);
+    System.out.println("Hits without constraints: " + hitsWithout);
+    System.out.println("Hits with NOT have_token ['文档']: " + hitsWith);
   }
 
   @Test
@@ -242,16 +242,16 @@ public class QueryStringTest {
 
   @Test
   public void testCombinedFiltering() throws Exception {
-    // Test with both exclude_tokens and max_freq
+    // Test with both constraints and max_freq
     String query = """
         {
           "query": {
             "es_tok_query_string": {
               "query": "这是 一个 测试 文档",
               "default_field": "content",
-              "rules": {
-                "exclude_tokens": ["这是"]
-              },
+              "constraints": [
+                { "NOT": { "have_token": ["这是"] } }
+              ],
               "max_freq": 3
             }
           }
@@ -267,16 +267,16 @@ public class QueryStringTest {
 
   @Test
   public void testBooleanQuery() throws Exception {
-    // Test boolean operators with ignored tokens
+    // Test boolean operators with constraints
     String query = """
         {
           "query": {
             "es_tok_query_string": {
               "query": "测试 AND 文档",
               "default_field": "content",
-              "rules": {
-                "exclude_tokens": ["一个"]
-              }
+              "constraints": [
+                { "NOT": { "have_token": ["一个"] } }
+              ]
             }
           }
         }
@@ -295,9 +295,9 @@ public class QueryStringTest {
             "es_tok_query_string": {
               "query": "测试",
               "fields": ["content^2"],
-              "rules": {
-                "exclude_tokens": ["一个", "这是"]
-              }
+              "constraints": [
+                { "NOT": { "have_token": ["一个", "这是"] } }
+              ]
             }
           }
         }
@@ -309,16 +309,16 @@ public class QueryStringTest {
 
   @Test
   public void testPhraseQuery() throws Exception {
-    // Test phrase queries with token filtering
+    // Test phrase queries with constraint filtering
     String query = """
         {
           "query": {
             "es_tok_query_string": {
-              "query": "\\"测试 文档\\"",
+              "query": "\"测试 文档\"",
               "default_field": "content",
-              "rules": {
-                "exclude_tokens": ["一个"]
-              }
+              "constraints": [
+                { "NOT": { "have_token": ["一个"] } }
+              ]
             }
           }
         }
@@ -330,23 +330,21 @@ public class QueryStringTest {
 
   @Test
   public void testEmptyExcludeTokens() throws Exception {
-    // Test with empty exclude tokens list
+    // Test with empty constraints list
     String query = """
         {
           "query": {
             "es_tok_query_string": {
               "query": "测试 文档",
               "default_field": "content",
-              "rules": {
-                "exclude_tokens": []
-              }
+              "constraints": []
             }
           }
         }
         """;
 
     String result = performSearch(query);
-    assertTrue("Should work with empty exclude_tokens", result.contains("\"total\""));
+    assertTrue("Should work with empty constraints", result.contains("\"total\""));
   }
 
   @Test

@@ -396,13 +396,12 @@ public class RestAnalyzeAction extends BaseRestHandler {
         }
 
         // Build vocab_config settings
-        // REST endpoint: when no vocab_config is explicitly provided, disable vocab
-        // tokenization. Default vocabs (2.68M words) are designed for index-time use;
-        // loading them per REST request builds a ~1-4GB Aho-Corasick Trie which causes
-        // OOM.
+        // When no vocab_config is explicitly provided, default to the built-in
+        // vocabs.txt. The Aho-Corasick Trie is globally cached via
+        // VocabStrategy.getOrCreate(), so it's only built once and shared across
+        // all REST requests, avoiding OOM.
         if (useVocab && vocabFile == null && vocabList.isEmpty() && vocabSize < 0) {
-            useVocab = false;
-            settingsBuilder.put("use_vocab", false);
+            vocabFile = "vocabs.txt";
         }
         if (vocabFile != null || !vocabList.isEmpty() || vocabSize >= 0) {
             if (vocabFile != null) {

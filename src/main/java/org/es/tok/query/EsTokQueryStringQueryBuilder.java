@@ -15,48 +15,38 @@ import org.elasticsearch.index.query.Operator;
 import org.elasticsearch.xcontent.ParseField;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentParser;
-import org.es.tok.rules.RulesLoader;
-import org.es.tok.rules.SearchRules;
 
 import java.io.IOException;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
 /**
- * Extended QueryString query with token filtering support via SearchRules.
+ * Extended QueryString query with constraint-based document filtering and
+ * frequency-based token filtering.
  * <p>
- * Supports a {@code rules} object containing:
+ * Supports:
  * <ul>
- * <li>{@code exclude_tokens} - exact token match exclusion</li>
- * <li>{@code exclude_prefixes} - prefix match exclusion</li>
- * <li>{@code exclude_suffixes} - suffix match exclusion</li>
- * <li>{@code exclude_contains} - substring match exclusion</li>
- * <li>{@code exclude_patterns} - regex pattern match exclusion</li>
- * <li>{@code include_tokens} - exact token match inclusion (overrides
- * exclude)</li>
- * <li>{@code include_prefixes} - prefix match inclusion (overrides
- * exclude)</li>
- * <li>{@code include_suffixes} - suffix match inclusion (overrides
- * exclude)</li>
- * <li>{@code include_contains} - substring match inclusion (overrides
- * exclude)</li>
- * <li>{@code include_patterns} - regex pattern match inclusion (overrides
- * exclude)</li>
- * <li>{@code declude_prefixes} - context-dependent prefix exclusion (when base
- * form exists)</li>
- * <li>{@code declude_suffixes} - context-dependent suffix exclusion (when base
- * form exists)</li>
- * <li>{@code file} - load rules from a JSON file</li>
+ * <li>{@code constraints} — boolean constraint conditions (AND/OR/NOT) on
+ * indexed tokens</li>
+ * <li>{@code max_freq} — filter tokens by document frequency (dynamic
+ * stopwords)</li>
  * </ul>
+ * <p>
+ * Constraints allow precise control over which documents match based on their
+ * indexed tokens, using match conditions: {@code have_token},
+ * {@code with_prefixes},
+ * {@code with_suffixes}, {@code with_contains}, {@code with_patterns}.
  */
 public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQueryStringQueryBuilder> {
 
     public static final String NAME = "es_tok_query_string";
 
+    // Standard query_string fields
     public static final ParseField QUERY_FIELD = new ParseField("query");
     public static final ParseField FIELDS_FIELD = new ParseField("fields");
     public static final ParseField DEFAULT_FIELD_FIELD = new ParseField("default_field");
@@ -82,25 +72,11 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
     public static final ParseField AUTO_GENERATE_SYNONYMS_PHRASE_QUERY_FIELD = new ParseField(
             "auto_generate_synonyms_phrase_query");
 
-    public static final ParseField RULES_FIELD = new ParseField("rules");
+    // ES-TOK extension fields
+    public static final ParseField CONSTRAINTS_FIELD = new ParseField("constraints");
     public static final ParseField MAX_FREQ_FIELD = new ParseField("max_freq");
-    public static final ParseField MIN_KEPT_TOKENS_COUNT_FIELD = new ParseField("min_kept_tokens_count");
-    public static final ParseField MIN_KEPT_TOKENS_RATIO_FIELD = new ParseField("min_kept_tokens_ratio");
 
-    // Rules sub-fields
-    public static final ParseField EXCLUDE_TOKENS_FIELD = new ParseField("exclude_tokens");
-    public static final ParseField EXCLUDE_PREFIXES_FIELD = new ParseField("exclude_prefixes");
-    public static final ParseField EXCLUDE_SUFFIXES_FIELD = new ParseField("exclude_suffixes");
-    public static final ParseField EXCLUDE_CONTAINS_FIELD = new ParseField("exclude_contains");
-    public static final ParseField EXCLUDE_PATTERNS_FIELD = new ParseField("exclude_patterns");
-    public static final ParseField INCLUDE_TOKENS_FIELD = new ParseField("include_tokens");
-    public static final ParseField INCLUDE_PREFIXES_FIELD = new ParseField("include_prefixes");
-    public static final ParseField INCLUDE_SUFFIXES_FIELD = new ParseField("include_suffixes");
-    public static final ParseField INCLUDE_CONTAINS_FIELD = new ParseField("include_contains");
-    public static final ParseField INCLUDE_PATTERNS_FIELD = new ParseField("include_patterns");
-    public static final ParseField DECLUDE_PREFIXES_FIELD = new ParseField("declude_prefixes");
-    public static final ParseField DECLUDE_SUFFIXES_FIELD = new ParseField("declude_suffixes");
-    public static final ParseField FILE_FIELD = new ParseField("file");
+    // ===== Instance fields =====
 
     private final String queryString;
     private final Map<String, Float> fieldsAndWeights = new HashMap<>();
@@ -126,10 +102,11 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
     private int maxDeterminizedStates = 10000;
     private boolean autoGenerateSynonymsPhraseQuery = true;
 
-    private SearchRules searchRules = SearchRules.EMPTY;
+    // ES-TOK extension: constraints and max_freq
+    private List<SearchConstraint> constraints = Collections.emptyList();
     private int maxFreq = 0;
-    private int minKeptTokensCount = 1;
-    private float minKeptTokensRatio = -1.0f;
+
+    // ===== Constructors =====
 
     public EsTokQueryStringQueryBuilder(String queryString) {
         if (queryString == null) {
@@ -166,27 +143,29 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         this.enablePositionIncrements = in.readBoolean();
         this.maxDeterminizedStates = in.readVInt();
         this.autoGenerateSynonymsPhraseQuery = in.readBoolean();
-        // Read SearchRules (12 lists: 5 exclude + 5 include + 2 declude)
-        List<String> excludeTokens = in.readStringCollectionAsList();
-        List<String> excludePrefixes = in.readStringCollectionAsList();
-        List<String> excludeSuffixes = in.readStringCollectionAsList();
-        List<String> excludeContains = in.readStringCollectionAsList();
-        List<String> excludePatterns = in.readStringCollectionAsList();
-        List<String> includeTokens = in.readStringCollectionAsList();
-        List<String> includePrefixes = in.readStringCollectionAsList();
-        List<String> includeSuffixes = in.readStringCollectionAsList();
-        List<String> includeContains = in.readStringCollectionAsList();
-        List<String> includePatterns = in.readStringCollectionAsList();
-        List<String> decludePrefixes = in.readStringCollectionAsList();
-        List<String> decludeSuffixes = in.readStringCollectionAsList();
-        this.searchRules = new SearchRules(excludeTokens, excludePrefixes, excludeSuffixes,
-                excludeContains, excludePatterns,
-                includeTokens, includePrefixes, includeSuffixes,
-                includeContains, includePatterns,
-                decludePrefixes, decludeSuffixes);
+
+        // Read constraints
+        int constraintCount = in.readVInt();
+        if (constraintCount > 0) {
+            List<SearchConstraint> readConstraints = new ArrayList<>(constraintCount);
+            for (int i = 0; i < constraintCount; i++) {
+                SearchConstraint.BoolType boolType = SearchConstraint.BoolType.values()[in.readVInt()];
+                int condCount = in.readVInt();
+                List<MatchCondition> conditions = new ArrayList<>(condCount);
+                for (int j = 0; j < condCount; j++) {
+                    conditions.add(new MatchCondition(
+                            in.readStringCollectionAsList(),
+                            in.readStringCollectionAsList(),
+                            in.readStringCollectionAsList(),
+                            in.readStringCollectionAsList(),
+                            in.readStringCollectionAsList()));
+                }
+                readConstraints.add(new SearchConstraint(boolType, conditions));
+            }
+            this.constraints = readConstraints;
+        }
+
         this.maxFreq = in.readVInt();
-        this.minKeptTokensCount = in.readVInt();
-        this.minKeptTokensRatio = in.readFloat();
     }
 
     @Override
@@ -218,23 +197,26 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         out.writeBoolean(enablePositionIncrements);
         out.writeVInt(maxDeterminizedStates);
         out.writeBoolean(autoGenerateSynonymsPhraseQuery);
-        // Write SearchRules (12 lists: 5 exclude + 5 include + 2 declude)
-        out.writeStringCollection(searchRules.getExcludeTokens());
-        out.writeStringCollection(searchRules.getExcludePrefixes());
-        out.writeStringCollection(searchRules.getExcludeSuffixes());
-        out.writeStringCollection(searchRules.getExcludeContains());
-        out.writeStringCollection(searchRules.getExcludePatterns());
-        out.writeStringCollection(searchRules.getIncludeTokens());
-        out.writeStringCollection(searchRules.getIncludePrefixes());
-        out.writeStringCollection(searchRules.getIncludeSuffixes());
-        out.writeStringCollection(searchRules.getIncludeContains());
-        out.writeStringCollection(searchRules.getIncludePatterns());
-        out.writeStringCollection(searchRules.getDecludePrefixes());
-        out.writeStringCollection(searchRules.getDecludeSuffixes());
+
+        // Write constraints
+        out.writeVInt(constraints.size());
+        for (SearchConstraint constraint : constraints) {
+            out.writeVInt(constraint.getBoolType().ordinal());
+            List<MatchCondition> conds = constraint.getConditions();
+            out.writeVInt(conds.size());
+            for (MatchCondition cond : conds) {
+                out.writeStringCollection(cond.getHaveToken());
+                out.writeStringCollection(cond.getWithPrefixes());
+                out.writeStringCollection(cond.getWithSuffixes());
+                out.writeStringCollection(cond.getWithContains());
+                out.writeStringCollection(cond.getWithPatterns());
+            }
+        }
+
         out.writeVInt(maxFreq);
-        out.writeVInt(minKeptTokensCount);
-        out.writeFloat(minKeptTokensRatio);
     }
+
+    // ===== Getters and setters (fluent API) =====
 
     public String queryString() {
         return queryString;
@@ -466,21 +448,18 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
     }
 
     /**
-     * Set the search rules for token exclusion.
+     * Set search constraints for document-level filtering.
      */
-    public EsTokQueryStringQueryBuilder searchRules(SearchRules searchRules) {
-        if (searchRules == null) {
-            throw new IllegalArgumentException("[rules] cannot be null");
-        }
-        this.searchRules = searchRules;
+    public EsTokQueryStringQueryBuilder constraints(List<SearchConstraint> constraints) {
+        this.constraints = constraints != null ? constraints : Collections.emptyList();
         return this;
     }
 
     /**
-     * Get the search rules for token exclusion.
+     * Get the search constraints.
      */
-    public SearchRules searchRules() {
-        return searchRules;
+    public List<SearchConstraint> constraints() {
+        return constraints;
     }
 
     public EsTokQueryStringQueryBuilder maxFreq(int maxFreq) {
@@ -495,23 +474,7 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         return maxFreq;
     }
 
-    public EsTokQueryStringQueryBuilder minKeptTokensCount(int minKeptTokensCount) {
-        this.minKeptTokensCount = minKeptTokensCount;
-        return this;
-    }
-
-    public int minKeptTokensCount() {
-        return minKeptTokensCount;
-    }
-
-    public EsTokQueryStringQueryBuilder minKeptTokensRatio(float minKeptTokensRatio) {
-        this.minKeptTokensRatio = minKeptTokensRatio;
-        return this;
-    }
-
-    public float minKeptTokensRatio() {
-        return minKeptTokensRatio;
-    }
+    // ===== Query building =====
 
     @Override
     protected Query doToQuery(SearchExecutionContext context) throws IOException {
@@ -521,10 +484,7 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
                 fieldsAndWeights,
                 lenient != null ? lenient : false);
 
-        parser.setSearchRules(searchRules);
         parser.setMaxFreq(maxFreq);
-        parser.setMinKeptTokensCount(minKeptTokensCount);
-        parser.setMinKeptTokensRatio(minKeptTokensRatio);
 
         parser.setDefaultOperator(
                 defaultOperator == Operator.AND ? org.apache.lucene.queryparser.classic.QueryParser.Operator.AND
@@ -567,11 +527,33 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
                         (BooleanQuery) query,
                         minimumShouldMatch);
             }
+
+            // Apply constraints as additional boolean clauses
+            if (constraints != null && !constraints.isEmpty()) {
+                List<String> queryFields = resolveQueryFields();
+                query = ConstraintBuilder.buildConstrainedQuery(query, constraints, queryFields);
+            }
+
             return query;
         } catch (org.apache.lucene.queryparser.classic.ParseException e) {
             throw new IOException("Failed to parse query [" + queryString + "]", e);
         }
     }
+
+    /**
+     * Resolve the list of fields to use for constraint queries.
+     */
+    private List<String> resolveQueryFields() {
+        if (!fieldsAndWeights.isEmpty()) {
+            return new ArrayList<>(fieldsAndWeights.keySet());
+        }
+        if (defaultField != null) {
+            return List.of(defaultField);
+        }
+        return List.of("*");
+    }
+
+    // ===== XContent serialization =====
 
     @Override
     protected void doXContent(XContentBuilder builder, Params params) throws IOException {
@@ -653,54 +635,14 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
                     autoGenerateSynonymsPhraseQuery);
         }
 
-        // Serialize rules object
-        if (!searchRules.isEmpty()) {
-            builder.startObject(RULES_FIELD.getPreferredName());
-            if (!searchRules.getExcludeTokens().isEmpty()) {
-                builder.field(EXCLUDE_TOKENS_FIELD.getPreferredName(), searchRules.getExcludeTokens());
-            }
-            if (!searchRules.getExcludePrefixes().isEmpty()) {
-                builder.field(EXCLUDE_PREFIXES_FIELD.getPreferredName(), searchRules.getExcludePrefixes());
-            }
-            if (!searchRules.getExcludeSuffixes().isEmpty()) {
-                builder.field(EXCLUDE_SUFFIXES_FIELD.getPreferredName(), searchRules.getExcludeSuffixes());
-            }
-            if (!searchRules.getExcludeContains().isEmpty()) {
-                builder.field(EXCLUDE_CONTAINS_FIELD.getPreferredName(), searchRules.getExcludeContains());
-            }
-            if (!searchRules.getExcludePatterns().isEmpty()) {
-                builder.field(EXCLUDE_PATTERNS_FIELD.getPreferredName(), searchRules.getExcludePatterns());
-            }
-            if (!searchRules.getIncludeTokens().isEmpty()) {
-                builder.field(INCLUDE_TOKENS_FIELD.getPreferredName(), searchRules.getIncludeTokens());
-            }
-            if (!searchRules.getIncludePrefixes().isEmpty()) {
-                builder.field(INCLUDE_PREFIXES_FIELD.getPreferredName(), searchRules.getIncludePrefixes());
-            }
-            if (!searchRules.getIncludeSuffixes().isEmpty()) {
-                builder.field(INCLUDE_SUFFIXES_FIELD.getPreferredName(), searchRules.getIncludeSuffixes());
-            }
-            if (!searchRules.getIncludeContains().isEmpty()) {
-                builder.field(INCLUDE_CONTAINS_FIELD.getPreferredName(), searchRules.getIncludeContains());
-            }
-            if (!searchRules.getIncludePatterns().isEmpty()) {
-                builder.field(INCLUDE_PATTERNS_FIELD.getPreferredName(), searchRules.getIncludePatterns());
-            }
-            if (!searchRules.getDecludePrefixes().isEmpty()) {
-                builder.field(DECLUDE_PREFIXES_FIELD.getPreferredName(), searchRules.getDecludePrefixes());
-            }
-            if (!searchRules.getDecludeSuffixes().isEmpty()) {
-                builder.field(DECLUDE_SUFFIXES_FIELD.getPreferredName(), searchRules.getDecludeSuffixes());
-            }
-            builder.endObject();
+        // Serialize constraints
+        if (constraints != null && !constraints.isEmpty()) {
+            builder.field(CONSTRAINTS_FIELD.getPreferredName(),
+                    ConstraintBuilder.constraintsToMaps(constraints));
         }
 
         if (maxFreq > 0) {
             builder.field(MAX_FREQ_FIELD.getPreferredName(), maxFreq);
-        }
-        builder.field(MIN_KEPT_TOKENS_COUNT_FIELD.getPreferredName(), minKeptTokensCount);
-        if (minKeptTokensRatio > 0.0f && minKeptTokensRatio < 1.0f) {
-            builder.field(MIN_KEPT_TOKENS_RATIO_FIELD.getPreferredName(), minKeptTokensRatio);
         }
 
         if (boost() != DEFAULT_BOOST) {
@@ -710,6 +652,8 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
             builder.field(NAME_FIELD.getPreferredName(), queryName());
         }
     }
+
+    // ===== XContent parsing =====
 
     public static EsTokQueryStringQueryBuilder fromXContent(XContentParser parser) throws IOException {
         String queryString = null;
@@ -735,10 +679,8 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         boolean enablePositionIncrements = true;
         int maxDeterminizedStates = 10000;
         boolean autoGenerateSynonymsPhraseQuery = true;
-        SearchRules searchRules = SearchRules.EMPTY;
+        List<SearchConstraint> constraints = Collections.emptyList();
         int maxFreq = 0;
-        int minKeptTokensCount = 1;
-        float minKeptTokensRatio = -1.0f;
         float boost = DEFAULT_BOOST;
         String queryName = null;
 
@@ -748,13 +690,6 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         while ((token = parser.nextToken()) != XContentParser.Token.END_OBJECT) {
             if (token == XContentParser.Token.FIELD_NAME) {
                 currentFieldName = parser.currentName();
-            } else if (token == XContentParser.Token.START_OBJECT) {
-                if (RULES_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    searchRules = parseRulesObject(parser);
-                } else {
-                    throw new ParsingException(parser.getTokenLocation(),
-                            "[" + NAME + "] query does not support object [" + currentFieldName + "]");
-                }
             } else if (token == XContentParser.Token.START_ARRAY) {
                 if (FIELDS_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     while ((token = parser.nextToken()) != XContentParser.Token.END_ARRAY) {
@@ -767,6 +702,11 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
                         }
                         fieldsAndWeights.put(fieldName, weight);
                     }
+                } else if (CONSTRAINTS_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
+                    constraints = ConstraintBuilder.parseConstraints(parser);
+                } else {
+                    throw new ParsingException(parser.getTokenLocation(),
+                            "[" + NAME + "] query does not support array [" + currentFieldName + "]");
                 }
             } else if (token.isValue()) {
                 if (QUERY_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
@@ -807,7 +747,8 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
                     rewrite = parser.text();
                 } else if (MINIMUM_SHOULD_MATCH_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     minimumShouldMatch = parser.text();
-                } else if (ENABLE_POSITION_INCREMENTS_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
+                } else if (ENABLE_POSITION_INCREMENTS_FIELD.match(currentFieldName,
+                        parser.getDeprecationHandler())) {
                     enablePositionIncrements = parser.booleanValue();
                 } else if (MAX_DETERMINIZED_STATES_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     maxDeterminizedStates = parser.intValue();
@@ -816,18 +757,19 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
                     autoGenerateSynonymsPhraseQuery = parser.booleanValue();
                 } else if (MAX_FREQ_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     maxFreq = parser.intValue();
-                } else if (MIN_KEPT_TOKENS_COUNT_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    minKeptTokensCount = parser.intValue();
-                } else if (MIN_KEPT_TOKENS_RATIO_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    minKeptTokensRatio = parser.floatValue();
-                } else if (AbstractQueryBuilder.BOOST_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
+                } else if (AbstractQueryBuilder.BOOST_FIELD.match(currentFieldName,
+                        parser.getDeprecationHandler())) {
                     boost = parser.floatValue();
-                } else if (AbstractQueryBuilder.NAME_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
+                } else if (AbstractQueryBuilder.NAME_FIELD.match(currentFieldName,
+                        parser.getDeprecationHandler())) {
                     queryName = parser.text();
                 } else {
                     throw new ParsingException(parser.getTokenLocation(),
                             "[" + NAME + "] query does not support [" + currentFieldName + "]");
                 }
+            } else {
+                throw new ParsingException(parser.getTokenLocation(),
+                        "[" + NAME + "] unexpected token [" + token + "] for [" + currentFieldName + "]");
             }
         }
 
@@ -872,97 +814,15 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         queryBuilder.enablePositionIncrements(enablePositionIncrements);
         queryBuilder.maxDeterminizedStates(maxDeterminizedStates);
         queryBuilder.autoGenerateSynonymsPhraseQuery(autoGenerateSynonymsPhraseQuery);
-        queryBuilder.searchRules(searchRules);
+        queryBuilder.constraints(constraints);
         queryBuilder.maxFreq(maxFreq);
-        queryBuilder.minKeptTokensCount(minKeptTokensCount);
-        queryBuilder.minKeptTokensRatio(minKeptTokensRatio);
         queryBuilder.boost(boost);
         queryBuilder.queryName(queryName);
 
         return queryBuilder;
     }
 
-    /**
-     * Parse the "rules" object from XContent.
-     * Supports inline rules or file reference.
-     */
-    private static SearchRules parseRulesObject(XContentParser parser) throws IOException {
-        List<String> excludeTokens = new ArrayList<>();
-        List<String> excludePrefixes = new ArrayList<>();
-        List<String> excludeSuffixes = new ArrayList<>();
-        List<String> excludeContains = new ArrayList<>();
-        List<String> excludePatterns = new ArrayList<>();
-        List<String> includeTokens = new ArrayList<>();
-        List<String> includePrefixes = new ArrayList<>();
-        List<String> includeSuffixes = new ArrayList<>();
-        List<String> includeContains = new ArrayList<>();
-        List<String> includePatterns = new ArrayList<>();
-        List<String> decludePrefixes = new ArrayList<>();
-        List<String> decludeSuffixes = new ArrayList<>();
-        String file = null;
-
-        String currentFieldName = null;
-        XContentParser.Token token;
-
-        while ((token = parser.nextToken()) != XContentParser.Token.END_OBJECT) {
-            if (token == XContentParser.Token.FIELD_NAME) {
-                currentFieldName = parser.currentName();
-            } else if (token == XContentParser.Token.START_ARRAY) {
-                List<String> targetList;
-                if (EXCLUDE_TOKENS_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    targetList = excludeTokens;
-                } else if (EXCLUDE_PREFIXES_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    targetList = excludePrefixes;
-                } else if (EXCLUDE_SUFFIXES_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    targetList = excludeSuffixes;
-                } else if (EXCLUDE_CONTAINS_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    targetList = excludeContains;
-                } else if (EXCLUDE_PATTERNS_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    targetList = excludePatterns;
-                } else if (INCLUDE_TOKENS_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    targetList = includeTokens;
-                } else if (INCLUDE_PREFIXES_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    targetList = includePrefixes;
-                } else if (INCLUDE_SUFFIXES_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    targetList = includeSuffixes;
-                } else if (INCLUDE_CONTAINS_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    targetList = includeContains;
-                } else if (INCLUDE_PATTERNS_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    targetList = includePatterns;
-                } else if (DECLUDE_PREFIXES_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    targetList = decludePrefixes;
-                } else if (DECLUDE_SUFFIXES_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    targetList = decludeSuffixes;
-                } else {
-                    throw new ParsingException(parser.getTokenLocation(),
-                            "[rules] does not support array [" + currentFieldName + "]");
-                }
-                while ((token = parser.nextToken()) != XContentParser.Token.END_ARRAY) {
-                    targetList.add(parser.text());
-                }
-            } else if (token.isValue()) {
-                if (FILE_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    file = parser.text();
-                } else {
-                    throw new ParsingException(parser.getTokenLocation(),
-                            "[rules] does not support [" + currentFieldName + "]");
-                }
-            }
-        }
-
-        // If file is specified, load from file
-        if (file != null && !file.isEmpty()) {
-            SearchRules fromFile = RulesLoader.loadFromFile(file);
-            if (!fromFile.isEmpty()) {
-                return fromFile;
-            }
-        }
-
-        // Use inline rules
-        return new SearchRules(excludeTokens, excludePrefixes, excludeSuffixes, excludeContains, excludePatterns,
-                includeTokens, includePrefixes, includeSuffixes, includeContains, includePatterns,
-                decludePrefixes, decludeSuffixes);
-    }
+    // ===== Standard overrides =====
 
     @Override
     public String getWriteableName() {
@@ -999,10 +859,8 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
                 && enablePositionIncrements == other.enablePositionIncrements
                 && maxDeterminizedStates == other.maxDeterminizedStates
                 && autoGenerateSynonymsPhraseQuery == other.autoGenerateSynonymsPhraseQuery
-                && Objects.equals(searchRules, other.searchRules)
-                && maxFreq == other.maxFreq
-                && minKeptTokensCount == other.minKeptTokensCount
-                && Float.compare(minKeptTokensRatio, other.minKeptTokensRatio) == 0;
+                && Objects.equals(constraints, other.constraints)
+                && maxFreq == other.maxFreq;
     }
 
     @Override
@@ -1012,6 +870,6 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
                 fuzzyPrefixLength, fuzzyMaxExpansions, fuzzyTranspositions, fuzzyRewrite,
                 lenient, analyzeWildcard, timeZone, type, tieBreaker, rewrite,
                 minimumShouldMatch, enablePositionIncrements, maxDeterminizedStates,
-                autoGenerateSynonymsPhraseQuery, searchRules, maxFreq, minKeptTokensCount, minKeptTokensRatio);
+                autoGenerateSynonymsPhraseQuery, constraints, maxFreq);
     }
 }

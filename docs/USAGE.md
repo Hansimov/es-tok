@@ -133,7 +133,7 @@ GET /_es_tok/analyze
 }
 ```
 
-> REST 接口未提供 `vocab_config` 时不启用词表分词（`use_vocab` 自动设为 `false`），仅使用分类分词。如需词表分词，请显式提供 `vocab_config`（`list` 或 `file`）。索引设置中可通过 `vocab_config.file: "vocabs.txt"` 使用内置词表。
+> REST 接口未提供 `vocab_config` 时，自动使用内置 `vocabs.txt` 词表（通过全局缓存共享，不会重复加载）。如需自定义词表，请通过 `vocab_config` 显式指定 `list` 或 `file`。
 
 ---
 
@@ -250,7 +250,9 @@ PUT test/_mapping
 
 ## 4. 搜索查询 (es_tok_query_string)
 
-`es_tok_query_string` 是 ES-TOK 提供的自定义查询类型，继承标准 `query_string` 的所有功能，额外支持**查询时 token 过滤**。
+`es_tok_query_string` 是 ES-TOK 提供的自定义查询类型，继承标准 `query_string` 的所有功能，额外支持**约束过滤（constraints）** 和**频率过滤（max_freq）**。
+
+> **注意**：搜索查询不再支持 `rules` 参数。规则过滤仅用于索引/分析阶段。查询时使用 `constraints` 进行文档级别的约束过滤。
 
 ### 基本查询
 
@@ -266,7 +268,25 @@ POST /test/_search
 }
 ```
 
-### 使用规则过滤
+### 使用约束过滤（Constraints）
+
+`constraints` 是一个数组，每个元素可以是：
+- **裸条件**（等同于 AND）— 文档必须包含匹配的 token
+- `{"AND": {...}}` — 文档必须包含匹配的 token
+- `{"OR": [{...}, {...}]}` — 文档至少匹配一个条件
+- `{"NOT": {...}}` — 文档不能包含匹配的 token
+
+每个条件支持 5 种匹配规则：
+
+| 字段 | 匹配方式 | 说明 |
+|------|---------|------|
+| `have_token` | 精确匹配 | 文档包含指定 token |
+| `with_prefixes` | 前缀匹配 | 文档包含以指定前缀开头的 token |
+| `with_suffixes` | 后缀匹配 | 文档包含以指定后缀结尾的 token |
+| `with_contains` | 子串匹配 | 文档包含包含指定子串的 token |
+| `with_patterns` | 正则匹配 | 文档包含匹配指定正则的 token |
+
+#### 排除特定 token
 
 ```json
 POST /test/_search
@@ -275,33 +295,75 @@ POST /test/_search
     "es_tok_query_string": {
       "query": "搜索引擎的实现原理",
       "default_field": "content",
-      "rules": {
-        "exclude_tokens": ["的", "了", "是", "和"],
-        "include_prefixes": ["的确", "的士"]
-      }
+      "constraints": [
+        { "NOT": { "have_token": ["的", "了", "是", "和"] } }
+      ]
     }
   }
 }
 ```
 
-### 从文件加载规则
+#### 要求文档包含特定 token
 
 ```json
 POST /test/_search
 {
   "query": {
     "es_tok_query_string": {
-      "query": "搜索引擎的实现原理",
+      "query": "机器学习",
       "default_field": "content",
-      "rules": {
-        "file": "rules.json"
-      }
+      "constraints": [
+        { "have_token": ["算法"] }
+      ]
     }
   }
 }
 ```
 
-> 如果没有指定 `rules`，插件会自动尝试加载插件目录下的 `rules.json`。如果文件不存在，则不应用任何规则。
+#### OR 约束（至少匹配一个条件）
+
+```json
+POST /test/_search
+{
+  "query": {
+    "es_tok_query_string": {
+      "query": "人工智能",
+      "default_field": "content",
+      "constraints": [
+        { "OR": [
+          { "have_token": ["深度学习"] },
+          { "with_prefixes": ["神经"] }
+        ]}
+      ]
+    }
+  }
+}
+```
+
+#### 组合多个约束
+
+```json
+POST /test/_search
+{
+  "query": {
+    "es_tok_query_string": {
+      "query": "数据分析",
+      "default_field": "content",
+      "constraints": [
+        { "have_token": ["统计"] },
+        { "NOT": { "have_token": ["的", "了"] } },
+        { "OR": [
+          { "with_prefixes": ["机器"] },
+          { "with_contains": ["学习"] }
+        ]}
+      ],
+      "max_freq": 50,
+      "default_operator": "AND",
+      "lenient": true
+    }
+  }
+}
+```
 
 ### 频率过滤
 
@@ -330,42 +392,11 @@ POST /test/_search
       "query": "机器学习算法",
       "type": "cross_fields",
       "fields": ["title.words^3", "tags.words^2.5", "content"],
-      "rules": {
-        "file": "rules.json"
-      },
+      "constraints": [
+        { "NOT": { "have_token": ["的", "了"] } }
+      ],
       "max_freq": 1000000,
       "default_operator": "AND"
-    }
-  }
-}
-```
-
-### 完整规则示例
-
-```json
-POST /test/_search
-{
-  "query": {
-    "es_tok_query_string": {
-      "query": "重要的文档内容分析",
-      "default_field": "content",
-      "rules": {
-        "exclude_tokens": ["的", "了"],
-        "exclude_prefixes": [],
-        "exclude_suffixes": [],
-        "exclude_contains": [],
-        "exclude_patterns": [],
-        "include_tokens": [],
-        "include_prefixes": ["的确", "的士"],
-        "include_suffixes": [],
-        "include_contains": [],
-        "include_patterns": [],
-        "declude_prefixes": [],
-        "declude_suffixes": ["的", "了"]
-      },
-      "max_freq": 50,
-      "default_operator": "AND",
-      "lenient": true
     }
   }
 }
@@ -380,36 +411,15 @@ POST /test/_search
     "es_tok_query_string": {
       "query": "(重要 AND 文档) OR 关键",
       "default_field": "content",
-      "rules": {
-        "exclude_tokens": ["的", "了"]
-      }
+      "constraints": [
+        { "NOT": { "have_token": ["的", "了"] } }
+      ]
     }
   }
 }
 ```
 
-> **注意**：引号短语查询（如 `"精确匹配"`）**不会被规则过滤**，始终保留完整短语。
-
-### 防止过度过滤
-
-```json
-POST /test/_search
-{
-  "query": {
-    "es_tok_query_string": {
-      "query": "这是一个测试",
-      "default_field": "content",
-      "rules": {
-        "exclude_tokens": ["这是", "一个", "测试"]
-      },
-      "min_kept_tokens_count": 2,
-      "min_kept_tokens_ratio": 0.3
-    }
-  }
-}
-```
-
-当过滤后保留的 token 数低于 `min_kept_tokens_count` 或低于 `总数 × min_kept_tokens_ratio` 时，跳过**所有**过滤。
+> **注意**：引号短语查询（如 `"精确匹配"`）不受频率过滤影响，始终保留完整短语。
 
 ---
 
@@ -417,10 +427,12 @@ POST /test/_search
 
 ### 概述
 
-规则过滤是 ES-TOK 的核心特性之一，允许精细控制哪些 token 参与索引和搜索。规则可以在两个层面使用：
+规则过滤是 ES-TOK 的核心特性之一，允许精细控制哪些 token 参与索引。规则**仅在索引/分析阶段使用**：
 
 - **索引时**：通过分词器配置 `use_rules` + `rules_config`
-- **查询时**：通过 `es_tok_query_string` 查询的 `rules` 参数
+- **REST 分析时**：通过 `/_es_tok/analyze` 的 `use_rules` + `rules_config`
+
+> **注意**：查询时的文档约束使用 `constraints` 参数（见第 4 节），不再使用 `rules`。
 
 ### 三类规则
 
@@ -486,12 +498,13 @@ ES-TOK 支持两个独立的过滤层：
 | 层 | 配置位置 | 执行时机 | 特点 |
 |----|---------|---------|------|
 | **分词器层** | `use_rules` + `rules_config`（索引设置或 REST 参数） | 分词时（索引和分析） | 拥有完整上下文，declude 生效 |
-| **查询层** | `es_tok_query_string` 的 `rules` + `max_freq` | 查询解析后 | 支持频率过滤，declude 不生效 |
+| **查询层** | `es_tok_query_string` 的 `constraints` + `max_freq` | 查询解析后 | 约束过滤 + 频率过滤 |
 
 ### 索引时特有功能
 
 | 功能 | 说明 |
 |------|------|
+| `rules` 规则过滤 | include/exclude/declude 三类规则 |
 | `declude_*` 去附规则 | 依赖完整 token 集合上下文 |
 | 完整分词流水线 | 经过全部 10 个处理阶段 |
 
@@ -499,21 +512,19 @@ ES-TOK 支持两个独立的过滤层：
 
 | 功能 | 说明 |
 |------|------|
+| `constraints` 约束过滤 | AND/OR/NOT 布尔约束，基于 Lucene Query |
 | `max_freq` 频率过滤 | 基于 `IndexReader.docFreq()` |
-| `min_kept_tokens_count` | 防止过度过滤（最少保留数） |
-| `min_kept_tokens_ratio` | 防止过度过滤（最少保留比例） |
-| 短语查询保护 | `"引号短语"` 不被过滤 |
+| 短语查询保护 | `"引号短语"` 不被频率过滤 |
 
 ### 建议的配置策略
 
 1. **索引时**：配置 `use_rules: true` + `rules_config.file: "rules.json"`，利用 declude 规则在索引阶段精确过滤冗余 token
-2. **查询时**：使用 `es_tok_query_string` 的 `rules.file: "rules.json"` 确保查询侧也应用排除和保留规则
-3. **频率过滤**：仅在查询时使用 `max_freq`，作为动态停用词的补充策略
-4. **规则文件复用**：索引和查询使用同一个 `rules.json` 文件，保持一致性
+2. **查询时**：使用 `es_tok_query_string` 的 `constraints` 进行文档级别约束（如排除包含特定 token 的文档、要求包含特定前缀的 token）
+3. **频率过滤**：在查询时使用 `max_freq`，作为动态停用词的补充策略
 
 ### REST 接口默认值
 
-REST 分析接口 (`/_es_tok/analyze`) 的大多数参数默认值与索引设置一致。**关键差异**：未提供 `vocab_config` 时，REST 接口自动禁用词表分词（`use_vocab=false`），避免加载大型默认词表导致 OOM。如需词表分词，请通过 `vocab_config` 显式指定词表。
+REST 分析接口 (`/_es_tok/analyze`) 的大多数参数默认值与索引设置一致。未提供 `vocab_config` 时，REST 接口自动使用内置 `vocabs.txt` 词表（通过全局缓存共享，不会重复加载）。如需自定义词表，请通过 `vocab_config` 显式指定。
 
 ---
 
@@ -622,10 +633,28 @@ REST 分析接口 (`/_es_tok/analyze`) 的大多数参数默认值与索引设�
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `rules` | `object` | 空 | 规则对象（同 A.6 中所有字段 + `file`） |
+| `constraints` | `array` | `[]` | 约束条件数组（AND/OR/NOT 布尔约束） |
 | `max_freq` | `int` | `0`（禁用） | 文档频率上限。超出阈值的 token 被过滤 |
-| `min_kept_tokens_count` | `int` | `1` | 过滤后最少保留 token 数。达不到则跳过所有过滤 |
-| `min_kept_tokens_ratio` | `float` | `-1.0`（禁用） | 过滤后最少保留 token 比例 (0.0, 1.0) |
+
+##### constraints 约束条件格式
+
+每个约束条件可包含以下匹配规则：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `have_token` | `string[]` | 精确匹配 token |
+| `with_prefixes` | `string[]` | 前缀匹配 |
+| `with_suffixes` | `string[]` | 后缀匹配 |
+| `with_contains` | `string[]` | 子串匹配 |
+| `with_patterns` | `string[]` | 正则匹配 |
+
+约束布尔包装：
+
+| 包装 | Lucene 映射 | 说明 |
+|------|------------|------|
+| 裸条件 / `AND` | `MUST` | 文档必须匹配 |
+| `OR` | `SHOULD` | 文档至少匹配一个 |
+| `NOT` | `MUST_NOT` | 文档不能匹配 |
 
 ---
 

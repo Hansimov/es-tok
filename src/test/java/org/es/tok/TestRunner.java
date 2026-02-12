@@ -47,6 +47,12 @@ public class TestRunner {
         System.out.println("9. Running Declude (Drop Deles) Tests...");
         DropDelesTest.main(args);
 
+        System.out.println("10. Running Constraint Tests...");
+        runJUnitTests(ConstraintTest.class);
+
+        System.out.println("11. Running QueryStringBuilder Tests...");
+        runJUnitTests(QueryStringBuilderTest.class);
+
         System.out.println("========================================");
         System.out.println("   All tests completed!");
         System.out.println("========================================");
@@ -115,6 +121,11 @@ public class TestRunner {
                     System.out.println("Running QueryStringBuilder unit tests...");
                     runJUnitTests(QueryStringBuilderTest.class);
                     return true;
+                case "constraint":
+                case "constraints":
+                    System.out.println("Running Constraint unit tests...");
+                    runJUnitTests(ConstraintTest.class);
+                    return true;
                 default:
                     return false;
             }
@@ -158,6 +169,7 @@ public class TestRunner {
         System.out.println("  SearchRules / rules / search_rules");
         System.out.println("  DropDeles / deles / drop_deles");
         System.out.println("  QueryStringBuilder / query_builder");
+        System.out.println("  Constraint / constraints");
         System.out.println("  QueryString / query (requires Elasticsearch)");
         System.out.println("  (no args) - Run all tests");
     }

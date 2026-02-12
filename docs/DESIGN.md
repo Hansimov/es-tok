@@ -80,7 +80,10 @@ org.es.tok
 │   └── NgramStrategy.java
 ├── query/                        # 自定义查询
 │   ├── EsTokQueryStringQueryBuilder.java
-│   └── EsTokQueryStringQueryParser.java
+│   ├── EsTokQueryStringQueryParser.java
+│   ├── MatchCondition.java
+│   ├── SearchConstraint.java
+│   └── ConstraintBuilder.java
 └── rest/                         # REST 接口
     ├── RestAnalyzeAction.java
     └── RestInfoAction.java
@@ -373,7 +376,7 @@ Include（保留） > Exclude（排除） > Declude（去附） > 默认保留
 - `declude_suffixes: ["的"]`：若 token `"简单的"` 存在，且 `"简单"` 也在 token 集合中 → `"简单的"` 被排除
 - `declude_prefixes: ["不"]`：若 token `"不好"` 存在，且 `"好"` 也在 token 集合中 → `"不好"` 被排除
 
-此机制**仅在索引时生效**，因为只有在分词器阶段才拥有完整的 token 集合上下文。查询时的 `es_tok_query_string` 使用的是无上下文的 `shouldExclude(token)` 方法。
+此机制**仅在索引时生效**，因为只有在分词器阶段才拥有完整的 token 集合上下文。
 
 ### isEmpty() 语义
 
@@ -385,8 +388,7 @@ Include（保留） > Exclude（排除） > Declude（去附） > 默认保留
 |------|------|---------|
 | ES Settings | `RulesLoader.loadFromSettings()` | 创建索引时的分词器设置 |
 | JSON 文件 | `RulesLoader.loadFromFile()` | `rules_config.file` |
-| JSON Map | `RulesLoader.loadFromMap()` | REST 接口、查询构建器 |
-| XContent 解析 | `parseRulesObject()` | 查询 DSL 解析 |
+| JSON Map | `RulesLoader.loadFromMap()` | REST 接口 |
 | StreamInput | 构造函数序列化 | 跨节点传输 |
 
 文件路径相对于 `/usr/share/elasticsearch/plugins/es_tok/`。
@@ -403,10 +405,34 @@ Include（保留） > Exclude（排除） > Declude（去附） > 默认保留
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `rules` | Object | `EMPTY` | 规则对象（见规则过滤系统） |
+| `constraints` | `array` | `[]` | 约束条件数组（AND/OR/NOT 布尔约束） |
 | `max_freq` | `int` | `0`（禁用） | 文档频率阈值，超出则过滤 |
-| `min_kept_tokens_count` | `int` | `1` | 过滤后最少保留的 token 数 |
-| `min_kept_tokens_ratio` | `float` | `-1.0`（禁用） | 过滤后最少保留的 token 比例 |
+
+### 约束系统（Constraints）
+
+约束系统由三个类组成：
+
+- **`MatchCondition`**：定义匹配条件（`have_token`、`with_prefixes`、`with_suffixes`、`with_contains`、`with_patterns`）
+- **`SearchConstraint`**：布尔包装器（`BoolType`: AND/OR/NOT）around `MatchCondition`(s)
+- **`ConstraintBuilder`**：静态工具类，解析 XContent → `SearchConstraint` + 构建 Lucene Query
+
+约束到 Lucene 的映射：
+
+| 约束类型 | Lucene BooleanClause | 说明 |
+|---------|---------------------|------|
+| AND（裸条件） | `MUST` | 文档必须匹配所有条件 |
+| OR | `SHOULD` | 文档至少匹配一个条件 |
+| NOT | `MUST_NOT` | 文档不能匹配条件 |
+
+匹配条件到 Lucene Query 的映射：
+
+| 匹配条件 | Lucene Query | 说明 |
+|---------|-------------|------|
+| `have_token` | `TermQuery` | 精确 term 匹配 |
+| `with_prefixes` | `PrefixQuery` | 前缀匹配 |
+| `with_suffixes` | `WildcardQuery(*suffix)` | 后缀通配 |
+| `with_contains` | `WildcardQuery(*sub*)` | 子串通配 |
+| `with_patterns` | `RegexpQuery` | 正则匹配 |
 
 ### 查询执行流程
 
@@ -415,31 +441,34 @@ es_tok_query_string 查询 DSL
   │
   ▼
 1. doToQuery() 创建 EsTokQueryStringQueryParser
+   设置 maxFreq
   │
   ▼
 2. 标准 query_string 解析 → Lucene Query 树
+   parser.parse(queryString)
   │
   ▼
-3. 最少保留检查 (min_kept_tokens_count / min_kept_tokens_ratio)
-   如果过滤后保留的 token 数不足 → 跳过所有过滤
-  │
-  ▼
-4. 递归遍历 Query 树
-   BooleanQuery → DisjunctionMaxQuery → BoostQuery → 原子查询
-  │
-  ▼
-5. 原子查询过滤
+3. maxFreq 过滤（在 parser 内部）
+   递归遍历 Query 树
    TermQuery / BlendedTermQuery:
-   - searchRules.shouldExclude(text) → MatchNoDocsQuery
-   - maxFreq > 0 且 docFreq > maxFreq → MatchNoDocsQuery
-   PhraseQuery / MultiPhraseQuery（引号短语）→ 始终保留
+   - docFreq > maxFreq → MatchNoDocsQuery
+   PhraseQuery / MultiPhraseQuery → 始终保留
   │
   ▼
-6. 应用 minimum_should_match
+4. 应用 minimum_should_match
   │
   ▼
-7. 返回过滤后的查询
+5. 约束过滤
+   ConstraintBuilder.buildConstrainedQuery(query, constraints, fields)
+   → 包装为 BooleanQuery(MUST: original, MUST/SHOULD/MUST_NOT: constraint queries)
+  │
+  ▼
+6. 返回最终查询
 ```
+
+### EsTokQueryStringQueryParser
+
+简化的查询解析器，仅负责频率过滤（`max_freq`）。解析后递归遍历 Query 树，将文档频率超过阈值的 term 替换为 `MatchNoDocsQuery`。
 
 ---
 
@@ -449,7 +478,7 @@ es_tok_query_string 查询 DSL
 
 由 `RestAnalyzeAction` 处理。接受文本和完整配置参数，返回分词结果。大多数参数默认值与索引设置一致。
 
-**关键差异**：未提供 `vocab_config` 时，REST 接口自动禁用词表分词（`use_vocab=false`），避免加载大型词表（数百万词条 → Aho-Corasick Trie 需 1-4GB 内存）导致 OOM。如需词表分词，请通过 `vocab_config` 显式指定。词表加载后的 `VocabStrategy`（Trie）通过全局缓存共享。
+**关键差异**：未提供 `vocab_config` 时，REST 接口自动使用内置 `vocabs.txt` 词表（通过全局缓存共享，不会重复加载）。如需自定义词表，请通过 `vocab_config` 显式指定。
 
 **响应格式：**
 
@@ -488,16 +517,16 @@ es_tok_query_string 查询 DSL
 | N-gram 生成 | ✅ 完整生成 | ✅ 通过 analyzer 对查询文本生成 |
 | 预处理 | ✅ 所有阶段 | ✅ 通过 analyzer 执行 |
 | 规则过滤（Tokenizer） | ✅ `use_rules` | ✅ 通过 analyzer 执行 |
-| `es_tok_query_string` | ❌ | ✅ 查询树级别的 token 过滤 |
+| `es_tok_query_string` | ❌ | ✅ 约束过滤 + 频率过滤 |
+| `constraints` 约束过滤 | ❌ | ✅ AND/OR/NOT Lucene BooleanQuery |
 | `max_freq` 频率过滤 | ❌ | ✅ 基于 `IndexReader.docFreq()` |
-| `min_kept_tokens_*` | ❌ | ✅ 防止过度过滤 |
-| `declude_*` 上下文去附 | ✅ 完整上下文 | ⚠️ 无上下文（仅在分词器中生效） |
+| `declude_*` 上下文去附 | ✅ 完整上下文 | ❌ 仅在分词器中生效 |
 
 **关键差异**：
 
 - **索引时**：规则在分词器内部（阶段 10）执行，拥有所有 token 的完整上下文，`declude` 规则可以正确判断基本形式是否存在。
-- **查询时**：`es_tok_query_string` 的规则在查询解析后的 Lucene Query 树上执行，对每个 `TermQuery` 独立判断，`declude` 规则因缺乏上下文而不生效。
-- **两层过滤**：索引设置中的 `use_rules` + `rules_config` 和查询 DSL 中的 `rules` 是**独立**的两层过滤，可以配合使用。
+- **查询时**：`es_tok_query_string` 使用 `constraints`（约束）进行文档级别的过滤，通过 Lucene BooleanQuery 实现。频率过滤通过 `max_freq` 字段控制，在查询解析阶段过滤高频 term。
+- **两层过滤**：索引设置中的 `use_rules` + `rules_config` 处理索引时 token 过滤，查询 DSL 中的 `constraints` + `max_freq` 处理查询时文档约束。
 
 ---
 

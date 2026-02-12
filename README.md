@@ -80,7 +80,9 @@ POST /test/_search
     "es_tok_query_string": {
       "query": "搜索引擎的实现原理",
       "fields": ["title^3", "content"],
-      "rules": { "file": "rules.json" },
+      "constraints": [
+        { "NOT": { "have_token": ["的", "了"] } }
+      ],
       "max_freq": 1000000
     }
   }
