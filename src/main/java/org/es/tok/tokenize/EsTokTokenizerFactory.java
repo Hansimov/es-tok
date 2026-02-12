@@ -28,10 +28,9 @@ public class EsTokTokenizerFactory extends AbstractTokenizerFactory {
         // Load config with cache enabled for better performance
         this.config = EsTokConfigLoader.loadConfig(settings, environment, true);
 
-        // Pre-initialize expensive strategies once during factory creation
-        this.vocabStrategy = config.getVocabConfig().isUseVocab()
-                ? new VocabStrategy(config.getVocabConfig().getVocabs())
-                : null;
+        // Use global VocabStrategy cache — all indexes share the same Trie
+        // for the same vocab list, avoiding duplicate multi-GB Trie construction.
+        this.vocabStrategy = config.getVocabConfig().getOrCreateStrategy();
         this.categStrategy = config.getCategConfig().isUseCateg()
                 ? new CategStrategy(config.getCategConfig().isSplitWord())
                 : null;

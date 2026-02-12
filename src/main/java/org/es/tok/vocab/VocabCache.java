@@ -18,19 +18,22 @@ public class VocabCache {
         // Create a cache key based on the vocab configuration
         String cacheKey = createCacheKey(settings, environment);
 
-        CachedVocab cached = cache.get(cacheKey);
+        // Use computeIfAbsent for thread-safe atomic check-and-load
+        // This prevents multiple concurrent requests from all loading vocabs
+        // simultaneously
+        CachedVocab cached = cache.computeIfAbsent(cacheKey,
+                k -> new CachedVocab(VocabFileLoader.loadVocabsInternal(settings, environment), settings,
+                        environment));
 
-        // Check if we have a valid cached entry
-        if (cached != null && cached.isValid(settings, environment)) {
-            return cached.vocabs;
+        // Check if the cached entry is still valid (e.g., file not modified)
+        if (!cached.isValid(settings, environment)) {
+            CachedVocab newCached = new CachedVocab(VocabFileLoader.loadVocabsInternal(settings, environment),
+                    settings, environment);
+            cache.put(cacheKey, newCached);
+            return newCached.vocabs;
         }
 
-        // Load new vocabs, and then cache them
-        List<String> vocabs = VocabFileLoader.loadVocabsInternal(settings, environment);
-        CachedVocab newCached = new CachedVocab(vocabs, settings, environment);
-        cache.put(cacheKey, newCached);
-
-        return vocabs;
+        return cached.vocabs;
     }
 
     private static String createCacheKey(Settings settings, Environment environment) {

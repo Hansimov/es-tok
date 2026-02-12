@@ -86,7 +86,7 @@ GET /_es_tok/analyze
   },
   "vocab_config": {
     "file": "vocabs.txt",
-    "size": 800000
+    "size": 2680000
   },
   "ngram_config": {
     "use_bigram": true,
@@ -133,7 +133,7 @@ GET /_es_tok/analyze
 }
 ```
 
-> **REST 接口的默认值差异**：REST 接口中 `split_word` 默认为 `true`，`drop_categs` 默认为 `false`。这与索引设置的默认值不同，以方便进行调试和测试。
+> REST 接口未提供 `vocab_config` 时不启用词表分词（`use_vocab` 自动设为 `false`），仅使用分类分词。如需词表分词，请显式提供 `vocab_config`（`list` 或 `file`）。索引设置中可通过 `vocab_config.file: "vocabs.txt"` 使用内置词表。
 
 ---
 
@@ -194,7 +194,7 @@ PUT test
           },
           "vocab_config": {
             "file": "vocabs.txt",
-            "size": 800000
+            "size": 2680000
           },
           "ngram_config": {
             "use_bigram": true,
@@ -511,16 +511,9 @@ ES-TOK 支持两个独立的过滤层：
 3. **频率过滤**：仅在查询时使用 `max_freq`，作为动态停用词的补充策略
 4. **规则文件复用**：索引和查询使用同一个 `rules.json` 文件，保持一致性
 
-### REST 接口默认值差异
+### REST 接口默认值
 
-REST 分析接口 (`/_es_tok/analyze`) 的部分默认值与索引设置不同：
-
-| 参数 | REST 默认值 | 索引设置默认值 |
-|------|-----------|--------------|
-| `categ_config.split_word` | `true` | `false` |
-| `extra_config.drop_categs` | `false` | `true` |
-
-这是为了在 REST 接口中方便调试——`split_word=true` 可以看到单字粒度的分词，`drop_categs=false` 可以看到完整的分类 token。
+REST 分析接口 (`/_es_tok/analyze`) 的大多数参数默认值与索引设置一致。**关键差异**：未提供 `vocab_config` 时，REST 接口自动禁用词表分词（`use_vocab=false`），避免加载大型默认词表导致 OOM。如需词表分词，请通过 `vocab_config` 显式指定词表。
 
 ---
 
@@ -552,7 +545,7 @@ REST 分析接口 (`/_es_tok/analyze`) 的部分默认值与索引设置不同�
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `split_word` | `boolean` | `false` | 将 CJK 和语言类 token 拆分为单字 |
+| `split_word` | `boolean` | `true` | 将 CJK 和语言类 token 拆分为单字 |
 
 ### A.4 vocab_config — 词表
 
@@ -563,6 +556,8 @@ REST 分析接口 (`/_es_tok/analyze`) 的部分默认值与索引设置不同�
 | `size` | `int` | `-1` | 加载词汇数量上限。`-1` 表示不限制 |
 
 `list` 和 `file` 中的词汇会合并。
+
+> **注意**：必须通过 `file` 或 `list` 显式提供词表。内置词表文件 `vocabs.txt`（约 390 万行）可通过 `file: "vocabs.txt"` 配合 `size: 2680000` 使用。REST 接口未提供 `vocab_config` 时不加载词表。
 
 ### A.5 ngram_config — N-gram
 

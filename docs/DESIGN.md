@@ -109,10 +109,32 @@ public class EsTokPlugin extends Plugin
 `EsTokTokenizerFactory` 和 `EsTokAnalyzerProvider` 在被构造时：
 
 1. 通过 `EsTokConfigLoader.loadConfig(settings)` 读取完整配置
-2. **预构建** `CategStrategy`、`VocabStrategy`、`NgramStrategy`、`HantToHansConverter`（一次性初始化）
+2. **预构建** `CategStrategy`、`NgramStrategy`、`HantToHansConverter`（一次性初始化）；`VocabStrategy` 通过 `VocabConfig.getOrCreateStrategy()` → `VocabStrategy.getOrCreate(vocabs)` 获取（`ConcurrentHashMap.computeIfAbsent`），相同词表的所有索引和 REST 请求共享同一 Trie 实例
 3. 每次 `create()` / `createComponents()` 调用时，复用这些预构建的策略对象创建 `EsTokTokenizer`
 
-这样保证了词表加载、正则编译、Aho-Corasick Trie 构建等耗时操作只执行一次。
+这样保证了词表加载、正则编译等耗时操作只执行一次，且 Aho-Corasick Trie 在整个 JVM 中全局共享，避免多索引重复构建导致 OOM。
+
+### VocabStrategy 全局共享机制
+
+VocabStrategy 的 Aho-Corasick Trie 通过两级缓存实现全局共享：
+
+1. **VocabCache**：缓存词表文件加载结果（`ConcurrentHashMap`），基于配置参数和文件修改时间进行缓存失效
+2. **VocabStrategy.globalCache**：缓存 Trie 实例（`ConcurrentHashMap.computeIfAbsent`），相同词表内容共享同一 Trie
+3. **VocabConfig.getOrCreateStrategy()**：懒加载入口（`volatile` 双重检查），在 VocabConfig 实例级别缓存 VocabStrategy 引用，避免重复哈希计算
+
+所有入口统一通过 `VocabConfig.getOrCreateStrategy()` 获取 VocabStrategy：
+- `EsTokTokenizerFactory`（索引时）
+- `EsTokAnalyzerProvider`（索引时）
+- `EsTokAnalyzer`（测试/REST）
+- `RestAnalyzeAction`（REST 请求）
+
+### 词表文件回退机制
+
+当 `vocab_config.file` 指定的文件在插件目录不存在时，自动回退到 classpath（JAR 内置资源）加载。回退顺序：
+
+1. 插件目录：`/usr/share/elasticsearch/plugins/es_tok/<file>`
+2. Classpath：JAR 内 `/<file>` 资源
+3. 两者都不存在时抛出 `IllegalArgumentException`
 
 ---
 
@@ -146,7 +168,7 @@ EsTokConfig
 | 字段 | 类型 | 默认值 | 配置键 | 说明 |
 |------|------|--------|--------|------|
 | `useCateg` | `boolean` | `true` | `use_categ` | 启用分类分词 |
-| `splitWord` | `boolean` | `false` | `categ_config.split_word` | CJK/语言 token 拆分为单字 |
+| `splitWord` | `boolean` | `true` | `categ_config.split_word` | CJK/语言 token 拆分为单字 |
 
 ### VocabConfig — 词表配置
 
@@ -163,7 +185,9 @@ EsTokConfig
 | `vocab_config.file` | 词表文件路径（相对于插件目录），格式：每行一个词，CSV 格式取第一列 |
 | `vocab_config.size` | 加载词汇数量上限，默认 `-1`（不限制） |
 
-两个来源的词汇会合并。`VocabCache` 使用 `ConcurrentHashMap` 缓存词表，按文件修改时间进行缓存失效。
+两个来源的词汇会合并。`VocabCache` 使用 `ConcurrentHashMap` + `computeIfAbsent` 原子操作缓存词表，防止并发请求时多线程同时加载同一词表。缓存基于文件修改时间进行失效。
+
+> 当 `useVocab` 为 `true` 但未提供 `file` 或 `list` 时，返回空词表。如需使用内置词表，请显式配置 `vocab_config.file: "vocabs.txt"`（配合 `size` 控制加载数量）。`loadDefaultVocabs()` 方法仍然可用但不再作为自动回退。
 
 > **约束**：`useVocab` 和 `useCateg` 至少有一个为 `true`。
 
@@ -423,11 +447,9 @@ es_tok_query_string 查询 DSL
 
 ### GET/POST `/_es_tok/analyze`
 
-由 `RestAnalyzeAction` 处理。接受文本和完整配置参数，返回分词结果。
+由 `RestAnalyzeAction` 处理。接受文本和完整配置参数，返回分词结果。大多数参数默认值与索引设置一致。
 
-**REST 特有默认值**（与索引设置不同）：
-- `splitWord = true`（索引设置默认为 `false`）
-- `dropCategs = false`（索引设置默认为 `true`）
+**关键差异**：未提供 `vocab_config` 时，REST 接口自动禁用词表分词（`use_vocab=false`），避免加载大型词表（数百万词条 → Aho-Corasick Trie 需 1-4GB 内存）导致 OOM。如需词表分词，请通过 `vocab_config` 显式指定。词表加载后的 `VocabStrategy`（Trie）通过全局缓存共享。
 
 **响应格式：**
 
@@ -486,13 +508,15 @@ es_tok_query_string 查询 DSL
 | 文件 | 位置 | 格式 | 说明 |
 |------|------|------|------|
 | `hants.json` | classpath `/hants.json` | JSON `Map<String,String>` | 约 5000 条繁→简字符映射 |
+| `vocabs.txt` | 插件目录 / classpath | 每行一个词（CSV 取第一列） | 内置词表文件（约 390 万行），需通过 `vocab_config.file` 显式引用 |
 | `rules.json` | 插件目录 | JSON | 默认规则文件 |
 | `plugin-descriptor.properties` | 插件根目录 | Java Properties | 插件元数据 |
 
 ### 缓存机制
 
 - **HantToHansConverter**：单例模式 + 双重检查锁定，`ConcurrentHashMap` 存储映射
-- **VocabCache**：`ConcurrentHashMap<String, CachedVocab>`，按文件路径缓存，基于文件修改时间自动失效
+- **VocabCache**：`ConcurrentHashMap<String, CachedVocab>` + `computeIfAbsent` 原子操作，按配置键缓存，防止多线程重复加载。基于文件修改时间自动失效
+- **VocabStrategy 全局缓存**：`VocabStrategy.getOrCreate(vocabs)` 使用 `ConcurrentHashMap.computeIfAbsent()`，基于词表内容哈希（`hashCode()`）缓存。所有索引和 REST 接口共享同一 Trie 实例，避免多索引重复构建导致 OOM
 - **SearchRules**：`exclude_tokens` 和 `include_tokens` 在构造时转换为 `HashSet`，确保 O(1) 精确匹配
 - **SearchRules**：`exclude_patterns` 和 `include_patterns` 在构造时预编译为 `Pattern` 对象
 

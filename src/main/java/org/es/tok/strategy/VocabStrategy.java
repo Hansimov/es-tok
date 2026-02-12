@@ -6,9 +6,31 @@ import org.ahocorasick.trie.Trie;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class VocabStrategy implements TokenStrategy {
+    // Global cache: all indexes and REST share the same Trie for the same vocab
+    // list.
+    // Building an Aho-Corasick Trie from millions of words costs 1-4GB memory;
+    // without this cache, each index or REST request would build its own copy →
+    // OOM.
+    private static final ConcurrentHashMap<String, VocabStrategy> globalCache = new ConcurrentHashMap<>();
+
     private final Trie trie;
+
+    /**
+     * Get or create a cached VocabStrategy for the given vocab list.
+     * Thread-safe: uses ConcurrentHashMap.computeIfAbsent for atomic
+     * check-and-create.
+     * Returns null if vocabs is null or empty.
+     */
+    public static VocabStrategy getOrCreate(List<String> vocabs) {
+        if (vocabs == null || vocabs.isEmpty()) {
+            return null;
+        }
+        String key = vocabs.size() + ":" + vocabs.hashCode();
+        return globalCache.computeIfAbsent(key, k -> new VocabStrategy(vocabs));
+    }
 
     public VocabStrategy(List<String> vocabs) {
         if (vocabs == null || vocabs.isEmpty()) {

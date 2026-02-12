@@ -29,10 +29,8 @@ public class EsTokAnalyzer extends Analyzer {
     public EsTokAnalyzer(EsTokConfig config) {
         this.config = config;
 
-        // Pre-initialize strategies to avoid repeated construction
-        this.vocabStrategy = config.getVocabConfig().isUseVocab()
-                ? new VocabStrategy(config.getVocabConfig().getVocabs())
-                : null;
+        // Use VocabConfig.getOrCreateStrategy() for global Trie sharing
+        this.vocabStrategy = config.getVocabConfig().getOrCreateStrategy();
         this.categStrategy = config.getCategConfig().isUseCateg()
                 ? new CategStrategy(config.getCategConfig().isSplitWord())
                 : null;

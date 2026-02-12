@@ -10,9 +10,9 @@ public class CategLoader {
         }
         Settings categConfig = settings.getAsSettings("categ_config");
         if (categConfig == null || categConfig.isEmpty()) {
-            return new CategConfig(useCateg, false);
+            return new CategConfig(useCateg, true);
         }
-        boolean splitWord = categConfig.getAsBoolean("split_word", false);
+        boolean splitWord = categConfig.getAsBoolean("split_word", true);
         return new CategConfig(useCateg, splitWord);
     }
 }

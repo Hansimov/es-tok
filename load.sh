@@ -77,9 +77,9 @@ if [ "$IS_COPY" = true ]; then
     unzip $BUILT_ZIP_PATH -d $ES_PLUGIN_PATH
     echo "+ Unzip success!"
 
-    echo "cp $VOCAB_TXT $ES_PLUGIN_PATH/vocabs.txt"
-    cp $VOCAB_TXT $ES_PLUGIN_PATH/vocabs.txt
-    echo "+ Copy success!"
+    # echo "cp $VOCAB_TXT $ES_PLUGIN_PATH/vocabs.txt"
+    # cp $VOCAB_TXT $ES_PLUGIN_PATH/vocabs.txt
+    # echo "+ Copy success!"
 fi
 
 # `-r`: restart elastic node, and test plugin loading

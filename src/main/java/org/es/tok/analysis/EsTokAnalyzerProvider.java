@@ -21,33 +21,24 @@ public class EsTokAnalyzerProvider extends AbstractIndexAnalyzerProvider<EsTokAn
 
         EsTokConfig config = EsTokConfigLoader.loadConfig(settings, environment);
 
-        // Pre-initialize strategies here with proper error handling
-        VocabStrategy vocabStrategy = null;
-        CategStrategy categStrategy = null;
-        NgramStrategy ngramStrategy = null;
-        HantToHansConverter hantToHansConverter = null;
-
         try {
-            vocabStrategy = config.getVocabConfig().isUseVocab()
-                    ? new VocabStrategy(config.getVocabConfig().getVocabs())
-                    : null;
-            categStrategy = config.getCategConfig().isUseCateg()
+            // Use global VocabStrategy cache via VocabConfig.getOrCreateStrategy()
+            VocabStrategy vocabStrategy = config.getVocabConfig().getOrCreateStrategy();
+            CategStrategy categStrategy = config.getCategConfig().isUseCateg()
                     ? new CategStrategy(config.getCategConfig().isSplitWord())
                     : null;
-            ngramStrategy = config.getNgramConfig().hasAnyNgramEnabled()
+            NgramStrategy ngramStrategy = config.getNgramConfig().hasAnyNgramEnabled()
                     ? new NgramStrategy(config.getNgramConfig())
                     : null;
 
-            // Initialize HantToHansConverter with proper error handling
+            HantToHansConverter hantToHansConverter = null;
             if (config.getExtraConfig().isIgnoreHant()) {
                 try {
                     hantToHansConverter = HantToHansConverter.getInstance();
                 } catch (IOException e) {
-                    // Log error but continue without traditional Chinese conversion
                     System.err.println(
                             "Warning: Failed to initialize HantToHansConverter, traditional Chinese conversion will be disabled: "
                                     + e.getMessage());
-                    // Leave hantToHansConverter as null, the tokenizer will handle this gracefully
                 }
             }
 

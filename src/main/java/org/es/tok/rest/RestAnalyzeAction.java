@@ -12,6 +12,10 @@ import org.es.tok.analysis.EsTokAnalyzer;
 import org.es.tok.config.EsTokConfig;
 import org.es.tok.config.EsTokConfigLoader;
 import org.es.tok.tokenize.GroupAttribute;
+import org.es.tok.strategy.VocabStrategy;
+import org.es.tok.strategy.CategStrategy;
+import org.es.tok.strategy.NgramStrategy;
+import org.es.tok.extra.HantToHansConverter;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
@@ -62,7 +66,7 @@ public class RestAnalyzeAction extends BaseRestHandler {
         boolean ignoreCase = true;
         boolean ignoreHant = true;
         boolean dropDuplicates = true;
-        boolean dropCategs = false;
+        boolean dropCategs = true;
         boolean dropVocabs = false;
         // categ_config
         boolean splitWord = true;
@@ -392,6 +396,14 @@ public class RestAnalyzeAction extends BaseRestHandler {
         }
 
         // Build vocab_config settings
+        // REST endpoint: when no vocab_config is explicitly provided, disable vocab
+        // tokenization. Default vocabs (2.68M words) are designed for index-time use;
+        // loading them per REST request builds a ~1-4GB Aho-Corasick Trie which causes
+        // OOM.
+        if (useVocab && vocabFile == null && vocabList.isEmpty() && vocabSize < 0) {
+            useVocab = false;
+            settingsBuilder.put("use_vocab", false);
+        }
         if (vocabFile != null || !vocabList.isEmpty() || vocabSize >= 0) {
             if (vocabFile != null) {
                 settingsBuilder.put("vocab_config.file", vocabFile);
@@ -402,9 +414,6 @@ public class RestAnalyzeAction extends BaseRestHandler {
             if (vocabSize >= 0) {
                 settingsBuilder.put("vocab_config.size", vocabSize);
             }
-        } else if (useVocab) {
-            return channel -> sendErrorResponse(channel, RestStatus.BAD_REQUEST,
-                    "Must provide `file` or `list` in `vocab_config` when use_vocab is true");
         }
 
         // Build ngram_config settings
@@ -518,7 +527,25 @@ public class RestAnalyzeAction extends BaseRestHandler {
     private List<AnalyzeToken> analyzeText(String text, EsTokConfig config) throws IOException {
         List<AnalyzeToken> tokens = new ArrayList<>();
 
-        try (EsTokAnalyzer analyzer = new EsTokAnalyzer(config)) {
+        // Build strategies, using cached VocabStrategy for performance
+        VocabStrategy vocabStrategy = config.getVocabConfig().getOrCreateStrategy();
+        CategStrategy categStrategy = config.getCategConfig().isUseCateg()
+                ? new CategStrategy(config.getCategConfig().isSplitWord())
+                : null;
+        NgramStrategy ngramStrategy = config.getNgramConfig().hasAnyNgramEnabled()
+                ? new NgramStrategy(config.getNgramConfig())
+                : null;
+        HantToHansConverter hantConverter = null;
+        if (config.getExtraConfig().isIgnoreHant()) {
+            try {
+                hantConverter = HantToHansConverter.getInstance();
+            } catch (Exception e) {
+                // Ignore — proceed without hant conversion
+            }
+        }
+
+        try (EsTokAnalyzer analyzer = new EsTokAnalyzer(config, vocabStrategy, categStrategy, ngramStrategy,
+                hantConverter)) {
             TokenStream tokenStream = analyzer.tokenStream("field", text);
 
             CharTermAttribute termAtt = tokenStream.addAttribute(CharTermAttribute.class);
