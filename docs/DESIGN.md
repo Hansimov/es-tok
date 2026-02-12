@@ -504,7 +504,7 @@ es_tok_query_string 查询 DSL
 | 端点 | 返回内容 |
 |------|---------|
 | `/_cat/es_tok` | `es_tok \| Ready \| ES-TOK plugin` |
-| `/_cat/es_tok/version` | `es_tok \| 0.8.1 \| ES-TOK plugin` |
+| `/_cat/es_tok/version` | `es_tok \| 0.9.0 \| ES-TOK plugin` |
 
 ---
 
@@ -583,4 +583,4 @@ gradle wrapper --gradle-version 9.0.0
 ./gradlew testRunner --args=X      # 运行指定测试
 ```
 
-输出：`build/distributions/es_tok-0.8.1.zip`
+输出：`build/distributions/es_tok-0.9.0.zip`

@@ -1,6 +1,6 @@
 # ES-TOK
 
-![](https://img.shields.io/badge/es__tok-0.8.1-blue)
+![](https://img.shields.io/badge/es__tok-0.9.0-blue)
 ![](https://img.shields.io/badge/elasticsearch-9.2.4-green)
 ![](https://img.shields.io/badge/java-21-orange)
 
