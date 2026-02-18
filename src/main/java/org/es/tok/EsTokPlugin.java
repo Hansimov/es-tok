@@ -19,6 +19,7 @@ import org.elasticsearch.plugins.SearchPlugin;
 import org.elasticsearch.rest.RestController;
 import org.elasticsearch.rest.RestHandler;
 import org.es.tok.analysis.EsTokAnalyzerProvider;
+import org.es.tok.query.EsTokConstraintsQueryBuilder;
 import org.es.tok.query.EsTokQueryStringQueryBuilder;
 import org.es.tok.rest.RestInfoAction;
 import org.es.tok.tokenize.EsTokTokenizerFactory;
@@ -69,6 +70,10 @@ public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin,
                 new QuerySpec<>(
                         EsTokQueryStringQueryBuilder.NAME,
                         EsTokQueryStringQueryBuilder::new,
-                        EsTokQueryStringQueryBuilder::fromXContent));
+                        EsTokQueryStringQueryBuilder::fromXContent),
+                new QuerySpec<>(
+                        EsTokConstraintsQueryBuilder.NAME,
+                        EsTokConstraintsQueryBuilder::new,
+                        EsTokConstraintsQueryBuilder::fromXContent));
     }
 }

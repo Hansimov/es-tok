@@ -37,6 +37,9 @@ public class ConstraintBuilder {
     private static final String WITH_CONTAINS = "with_contains";
     private static final String WITH_PATTERNS = "with_patterns";
 
+    // Per-constraint field targeting
+    private static final String FIELDS = "fields";
+
     // Boolean operators
     private static final String AND = "AND";
     private static final String OR = "OR";
@@ -80,10 +83,11 @@ public class ConstraintBuilder {
 
     /**
      * Parse a single constraint object from the parser.
+     * <p>
+     * Each constraint object can optionally include a {@code "fields"} array
+     * to specify per-constraint field targeting.
      */
     private static SearchConstraint parseConstraintObject(XContentParser parser) throws IOException {
-        // Peek at the field names to determine if this is a boolean wrapper or bare
-        // condition
         String currentFieldName = null;
         XContentParser.Token token;
 
@@ -93,6 +97,7 @@ public class ConstraintBuilder {
         List<String> withSuffixes = new ArrayList<>();
         List<String> withContains = new ArrayList<>();
         List<String> withPatterns = new ArrayList<>();
+        List<String> constraintFields = new ArrayList<>();
 
         SearchConstraint.BoolType boolType = null;
         SearchConstraint result = null;
@@ -136,6 +141,14 @@ public class ConstraintBuilder {
                     throw new ParsingException(parser.getTokenLocation(),
                             "[NOT] value must be an object");
                 }
+            } else if (FIELDS.equals(currentFieldName)) {
+                // Per-constraint field targeting: "fields": ["title", "tags^2"]
+                if (token == XContentParser.Token.START_ARRAY) {
+                    constraintFields.addAll(parseStringArray(parser));
+                } else {
+                    throw new ParsingException(parser.getTokenLocation(),
+                            "[fields] value must be an array");
+                }
             } else if (token == XContentParser.Token.START_ARRAY) {
                 // Bare condition field (shorthand for AND)
                 List<String> list = parseStringArray(parser);
@@ -155,8 +168,15 @@ public class ConstraintBuilder {
             }
         }
 
-        // If we found a boolean wrapper (AND/OR/NOT), return it
+        // Apply per-constraint fields
+        List<String> fields = constraintFields.isEmpty() ? null : constraintFields;
+
+        // If we found a boolean wrapper (AND/OR/NOT), apply fields and return
         if (result != null) {
+            if (fields != null) {
+                // Re-create with fields
+                return new SearchConstraint(result.getBoolType(), result.getConditions(), fields);
+            }
             return result;
         }
 
@@ -165,7 +185,7 @@ public class ConstraintBuilder {
                 withSuffixes, withContains, withPatterns);
         return new SearchConstraint(
                 boolType != null ? boolType : SearchConstraint.BoolType.AND,
-                condition);
+                condition, fields);
     }
 
     /**
@@ -221,15 +241,19 @@ public class ConstraintBuilder {
 
     /**
      * Build a Lucene query that wraps the original query with constraint clauses.
+     * <p>
+     * Each constraint uses its own {@code fields} if specified, otherwise
+     * falls back to {@code defaultFields}.
      *
      * @param originalQuery the base query from query_string parsing
      * @param constraints   the list of constraints to apply
-     * @param fields        the fields to check constraints against
+     * @param defaultFields the default fields to check constraints against
+     *                      (used when a constraint has no per-constraint fields)
      * @return a BooleanQuery combining the original query with constraint clauses
      */
     public static Query buildConstrainedQuery(Query originalQuery,
             List<SearchConstraint> constraints,
-            List<String> fields) {
+            List<String> defaultFields) {
         if (constraints == null || constraints.isEmpty()) {
             return originalQuery;
         }
@@ -246,6 +270,10 @@ public class ConstraintBuilder {
         builder.add(originalQuery, BooleanClause.Occur.MUST);
 
         for (SearchConstraint constraint : activeConstraints) {
+            // Resolve fields: per-constraint fields take priority over defaults
+            List<String> fields = constraint.hasFields()
+                    ? constraint.getFields()
+                    : defaultFields;
             Query constraintQuery = buildConstraintQuery(constraint, fields);
             if (constraintQuery != null) {
                 switch (constraint.getBoolType()) {
@@ -395,29 +423,43 @@ public class ConstraintBuilder {
 
     private static Map<String, Object> constraintToMap(SearchConstraint constraint) {
         List<MatchCondition> conditions = constraint.getConditions();
+        Map<String, Object> result;
 
         switch (constraint.getBoolType()) {
             case AND -> {
                 if (conditions.size() == 1) {
                     // Can be serialized as bare condition or {"AND": condition}
-                    return conditionToMap(conditions.get(0));
+                    result = new java.util.LinkedHashMap<>(conditionToMap(conditions.get(0)));
+                } else {
+                    result = new java.util.LinkedHashMap<>();
+                    result.put(AND, conditions.stream().map(ConstraintBuilder::conditionToMap).toList());
                 }
-                return Map.of(AND, conditions.stream().map(ConstraintBuilder::conditionToMap).toList());
             }
             case OR -> {
+                result = new java.util.LinkedHashMap<>();
                 if (conditions.size() == 1) {
-                    return Map.of(OR, conditionToMap(conditions.get(0)));
+                    result.put(OR, conditionToMap(conditions.get(0)));
+                } else {
+                    result.put(OR, conditions.stream().map(ConstraintBuilder::conditionToMap).toList());
                 }
-                return Map.of(OR, conditions.stream().map(ConstraintBuilder::conditionToMap).toList());
             }
             case NOT -> {
+                result = new java.util.LinkedHashMap<>();
                 if (!conditions.isEmpty()) {
-                    return Map.of(NOT, conditionToMap(conditions.get(0)));
+                    result.put(NOT, conditionToMap(conditions.get(0)));
                 }
+            }
+            default -> {
                 return Collections.emptyMap();
             }
         }
-        return Collections.emptyMap();
+
+        // Add per-constraint fields if present
+        if (constraint.hasFields()) {
+            result.put(FIELDS, constraint.getFields());
+        }
+
+        return result;
     }
 
     private static Map<String, Object> conditionToMap(MatchCondition condition) {

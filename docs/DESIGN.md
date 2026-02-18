@@ -81,6 +81,7 @@ org.es.tok
 ├── query/                        # 自定义查询
 │   ├── EsTokQueryStringQueryBuilder.java
 │   ├── EsTokQueryStringQueryParser.java
+│   ├── EsTokConstraintsQueryBuilder.java
 │   ├── MatchCondition.java
 │   ├── SearchConstraint.java
 │   └── ConstraintBuilder.java
@@ -105,7 +106,7 @@ public class EsTokPlugin extends Plugin
 | `AnalysisPlugin` | `getTokenizers()` | `"es_tok"` → `EsTokTokenizerFactory` |
 | `AnalysisPlugin` | `getAnalyzers()` | `"es_tok"` → `EsTokAnalyzerProvider` |
 | `ActionPlugin` | `getRestHandlers()` | `RestInfoAction` + `RestAnalyzeAction` |
-| `SearchPlugin` | `getQueries()` | `"es_tok_query_string"` → `EsTokQueryStringQueryBuilder` |
+| `SearchPlugin` | `getQueries()` | `"es_tok_query_string"` → `EsTokQueryStringQueryBuilder`<br>`"es_tok_constraints"` → `EsTokConstraintsQueryBuilder` |
 
 ### Tokenizer 与 Analyzer 的初始化
 
@@ -408,13 +409,84 @@ Include（保留） > Exclude（排除） > Declude（去附） > 默认保留
 | `constraints` | `array` | `[]` | 约束条件数组（AND/OR/NOT 布尔约束） |
 | `max_freq` | `int` | `0`（禁用） | 文档频率阈值，超出则过滤 |
 
+### es_tok_constraints
+
+`EsTokConstraintsQueryBuilder` 继承 `AbstractQueryBuilder`，注册为查询类型 `"es_tok_constraints"`。
+
+这是一个独立的约束过滤查询，不包含文本搜索逻辑，仅基于约束条件对文档进行过滤。主要设计用途：**作为 KNN 搜索的预过滤器**。
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `fields` | `string[]` | `["*"]` | 要检查约束的索引字段，支持 `field^boost` 加权语法。可选，默认匹配所有字段 |
+| `constraints` | `array` | （必填） | 约束条件数组（复用与 `es_tok_query_string` 相同的约束系统）。每个约束可包含可选的 `fields` 覆盖默认字段 |
+
+#### 每约束字段覆盖（Per-Constraint Fields）
+
+每个约束条件内部可以携带自己的 `fields` 参数，覆盖查询级别的默认字段：
+
+```json
+{
+  "es_tok_constraints": {
+    "constraints": [
+      {"have_token": ["影视飓风"], "fields": ["title"]},
+      {"NOT": {"have_token": ["广告"]}, "fields": ["tags"]},
+      {"have_token": ["科技"]}
+    ],
+    "fields": ["title", "tags"]
+  }
+}
+```
+
+上例中，第一个约束仅在 `title` 字段中检查，第二个仅在 `tags` 中检查，第三个使用默认字段 `["title", "tags"]`。
+
+#### 设计动机
+
+KNN 搜索基于向量相似度进行近邻检索，但无法感知文档中的具体 token 内容。通过将 `es_tok_constraints` 作为 KNN 的 `filter` 子句，可以在 HNSW 图遍历过程中进行预过滤：
+
+- ES 在探索 HNSW 图时，只考虑满足约束条件的文档
+- 保证最终返回的 k 个结果全部满足约束条件
+- 不需要文本查询字符串，纯粹基于文档的已索引 token 进行过滤
+
+#### 查询执行流程
+
+```
+es_tok_constraints 查询 DSL
+  │
+  ▼
+1. doToQuery() 读取 fields 和 constraints
+   （每个约束可携带自己的 fields，覆盖查询级别默认值）
+  │
+  ▼
+2. 以 MatchAllDocsQuery 为基础查询
+  │
+  ▼
+3. 应用约束过滤
+   ConstraintBuilder.buildConstrainedQuery(matchAll, constraints, defaultFields)
+   → 包装为 BooleanQuery(MUST: matchAll, MUST/SHOULD/MUST_NOT: constraint queries)
+   （每个约束使用自己的 fields，无则回退到 defaultFields）
+  │
+  ▼
+4. 返回最终查询（用于 KNN filter 或其他过滤场景）
+```
+
+#### 与 es_tok_query_string 的区别
+
+| 特性 | `es_tok_query_string` | `es_tok_constraints` |
+|------|----------------------|---------------------|
+| 文本查询 | 必填（`query` 参数） | 无 |
+| 约束过滤 | 可选 | 必填 |
+| 频率过滤 | 支持（`max_freq`） | 不支持 |
+| 每约束字段覆盖 | 支持（回退到查询级 fields） | 支持（回退到 `["*"]`） |
+| 典型场景 | 全文搜索 + 约束 | KNN 预过滤、纯约束过滤 |
+| 基础查询 | `query_string` 解析结果 | `MatchAllDocsQuery` |
+
 ### 约束系统（Constraints）
 
 约束系统由三个类组成：
 
 - **`MatchCondition`**：定义匹配条件（`have_token`、`with_prefixes`、`with_suffixes`、`with_contains`、`with_patterns`）
-- **`SearchConstraint`**：布尔包装器（`BoolType`: AND/OR/NOT）around `MatchCondition`(s)
-- **`ConstraintBuilder`**：静态工具类，解析 XContent → `SearchConstraint` + 构建 Lucene Query
+- **`SearchConstraint`**：布尔包装器（`BoolType`: AND/OR/NOT）around `MatchCondition`(s)，可携带可选的 `fields` 字段覆盖默认字段
+- **`ConstraintBuilder`**：静态工具类，解析 XContent → `SearchConstraint` + 构建 Lucene Query（支持每约束字段覆盖）
 
 约束到 Lucene 的映射：
 

@@ -150,6 +150,10 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
             List<SearchConstraint> readConstraints = new ArrayList<>(constraintCount);
             for (int i = 0; i < constraintCount; i++) {
                 SearchConstraint.BoolType boolType = SearchConstraint.BoolType.values()[in.readVInt()];
+
+                // Read per-constraint fields
+                List<String> constraintFields = in.readStringCollectionAsList();
+
                 int condCount = in.readVInt();
                 List<MatchCondition> conditions = new ArrayList<>(condCount);
                 for (int j = 0; j < condCount; j++) {
@@ -160,7 +164,8 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
                             in.readStringCollectionAsList(),
                             in.readStringCollectionAsList()));
                 }
-                readConstraints.add(new SearchConstraint(boolType, conditions));
+                readConstraints.add(new SearchConstraint(boolType, conditions,
+                        constraintFields.isEmpty() ? null : constraintFields));
             }
             this.constraints = readConstraints;
         }
@@ -202,6 +207,10 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         out.writeVInt(constraints.size());
         for (SearchConstraint constraint : constraints) {
             out.writeVInt(constraint.getBoolType().ordinal());
+
+            // Write per-constraint fields
+            out.writeStringCollection(constraint.getFields());
+
             List<MatchCondition> conds = constraint.getConditions();
             out.writeVInt(conds.size());
             for (MatchCondition cond : conds) {
