@@ -137,25 +137,33 @@ public class EsTokTokenizer extends Tokenizer {
         // generate base tokens from categ and vocab strategies
         List<TokenStrategy.TokenInfo> baseTokens = generateBaseTokens(text);
 
-        // drop categ tokens covered by multiple vocab tokens
-        if (config.getExtraConfig().isDropCategs()) {
-            baseTokens = dropCategTokens(baseTokens, 2);
-        }
-
-        // deduplicate base tokens
+        // deduplicate base tokens before ngram generation
         if (config.getExtraConfig().isDropDuplicates()) {
             baseTokens = dropDuplicatedTokens(baseTokens);
         }
 
-        // sort base tokens
+        // sort base tokens for ngram adjacency detection
         baseTokens = sortTokensByOffset(baseTokens);
 
-        // generate n-grams
-        List<TokenStrategy.TokenInfo> allTokens = new ArrayList<>(baseTokens);
+        // generate n-grams BEFORE dropping categ tokens.
+        // This ensures bigrams like "红警" (from categ "红"+"警") survive
+        // even when their source CJK categ tokens are later dropped by
+        // vocab boundary coverage (e.g., vocab word "红警hbk08").
+        List<TokenStrategy.TokenInfo> ngramTokens = new ArrayList<>();
         if (ngramStrategy != null) {
-            List<TokenStrategy.TokenInfo> ngramTokens = ngramStrategy.generateNgrams(baseTokens);
-            allTokens.addAll(ngramTokens);
+            ngramTokens = ngramStrategy.generateNgrams(baseTokens);
         }
+
+        // drop categ tokens covered by boundary vocab tokens.
+        // Only drops CJK/lang categ tokens — eng/arab tokens (like "hbk",
+        // "08") are preserved as individually searchable tokens.
+        if (config.getExtraConfig().isDropCategs()) {
+            baseTokens = dropCategTokens(baseTokens, 2);
+        }
+
+        // combine base tokens with pre-computed ngrams
+        List<TokenStrategy.TokenInfo> allTokens = new ArrayList<>(baseTokens);
+        allTokens.addAll(ngramTokens);
 
         // deduplicate all tokens
         if (config.getExtraConfig().isDropDuplicates()) {
@@ -258,8 +266,17 @@ public class EsTokTokenizer extends Tokenizer {
         Iterator<TokenStrategy.TokenInfo> iterator = tokens.iterator();
         while (iterator.hasNext()) {
             TokenStrategy.TokenInfo token = iterator.next();
-            // only affect categ tokens
+            // only affect categ tokens — and only CJK/lang types.
+            // eng/arab categ tokens (like "hbk", "08") are preserved
+            // as individually searchable tokens even when covered by
+            // boundary vocab words. CJK single chars are redundant when
+            // represented by bigrams, but eng/arab tokens are complete
+            // words/numbers that users may search for independently.
             if (!isTokenGroup(token, "categ")) {
+                continue;
+            }
+            String tokenType = token.getType();
+            if (!"cjk".equals(tokenType) && !"lang".equals(tokenType)) {
                 continue;
             }
 
