@@ -3,73 +3,91 @@ plugins {
 }
 
 def bridgeSpecFile = file("$projectDir/src/main/resources/bridge-api.json")
+def goldenCasesFile = file("$rootProject.projectDir/testing/golden/analysis_cases.json")
 def bridgeDocFile = file("$rootProject.projectDir/docs/api/bridge.md")
 
-def renderFieldRows
-renderFieldRows = { Map<String, Object> properties ->
+String renderFieldRows(Map properties) {
     properties.collect { String name, Object property ->
         def row = property as Map<String, Object>
-        "| `${name}` | ${row.type ?: ''} | ${row.required == true ? 'yes' : 'no'} | ${row.description ?: ''} |"
+        "| `${name}` | ${row.type ?: ''} | ${row.required == true ? '是' : '否'} | ${row.description ?: ''} |"
     }.join('\n')
 }
 
-def renderBridgeDoc = {
-    Map<String, Object> spec ->
-        def lines = []
-        lines << "# ${spec.title}"
-        lines << ""
-        lines << (spec.summary ?: '')
-        lines << ""
-        lines << "## Transport"
-        lines << ""
-        lines << "- Request: ${spec.transport.request}"
-        lines << "- Response: ${spec.transport.response}"
-        lines << ""
-        lines << "## Request"
-        lines << ""
-        lines << (spec.request.description ?: '')
-        lines << ""
-        lines << "| Field | Type | Required | Description |"
-        lines << "|---|---|---|---|"
-        lines << renderFieldRows(spec.request.properties as Map<String, Object>)
-        lines << ""
-        lines << "Additional properties are forwarded to the ES-TOK config loader, so nested analyzer settings remain available through the bridge."
-        lines << ""
-        lines << "## Response"
-        lines << ""
-        lines << "| Field | Type | Required | Description |"
-        lines << "|---|---|---|---|"
-        lines << renderFieldRows(spec.response.properties as Map<String, Object>)
-        lines << ""
-        lines << "### Token Object"
-        lines << ""
-        lines << "| Field | Type | Required | Description |"
-        lines << "|---|---|---|---|"
-        lines << renderFieldRows(((spec.response.properties as Map<String, Object>).tokens as Map<String, Object>).items.properties as Map<String, Object>)
-        lines << ""
-        lines << "### Version Object"
-        lines << ""
-        lines << "| Field | Type | Required | Description |"
-        lines << "|---|---|---|---|"
-        lines << renderFieldRows(((spec.response.properties as Map<String, Object>).version as Map<String, Object>).properties as Map<String, Object>)
-        lines << ""
-        lines << "## Examples"
-        lines << ""
-        (spec.examples as List<Map<String, Object>>).each { Map<String, Object> example ->
-            lines << "### ${example.title}"
-            lines << ""
-            lines << "Request:"
-            lines << "```json"
-            lines << groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(example.request))
-            lines << "```"
-            lines << ""
-            lines << "Response:"
-            lines << "```json"
-            lines << groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(example.response))
-            lines << "```"
-            lines << ""
+String prettyJson(Object value) {
+    def generator = new groovy.json.JsonGenerator.Options().disableUnicodeEscaping().build()
+    return groovy.json.JsonOutput.prettyPrint(generator.toJson(value))
+            .replaceAll('\\\\u([0-9a-fA-F]{4})') { String match, String hex ->
+                Character.toString((char) Integer.parseInt(hex, 16))
+            }
+}
+
+String renderBridgeDoc(Map spec, Map goldenExamples) {
+    def lines = []
+    lines << "# ${spec.title}"
+    lines << ""
+    lines << (spec.summary ?: '')
+    lines << ""
+    lines << "## 传输方式"
+    lines << ""
+    lines << "- 请求：${spec.transport.request}"
+    lines << "- 响应：${spec.transport.response}"
+    lines << ""
+    lines << "## 请求体"
+    lines << ""
+    lines << (spec.request.description ?: '')
+    lines << ""
+    lines << "| 字段 | 类型 | 必填 | 说明 |"
+    lines << "|---|---|---|---|"
+    lines << renderFieldRows(spec.request.properties as Map<String, Object>)
+    lines << ""
+    lines << "除 `text` 外，其余字段会按原样传递给 ES-TOK 配置加载器，因此可以直接复用插件 REST 分析接口中的嵌套配置结构。"
+    lines << ""
+    lines << "## 响应体"
+    lines << ""
+    lines << "| 字段 | 类型 | 必填 | 说明 |"
+    lines << "|---|---|---|---|"
+    lines << renderFieldRows(spec.response.properties as Map<String, Object>)
+    lines << ""
+    lines << "### Token 对象"
+    lines << ""
+    lines << "| 字段 | 类型 | 必填 | 说明 |"
+    lines << "|---|---|---|---|"
+    lines << renderFieldRows(((spec.response.properties as Map<String, Object>).tokens as Map<String, Object>).items.properties as Map<String, Object>)
+    lines << ""
+    lines << "### 版本对象"
+    lines << ""
+    lines << "| 字段 | 类型 | 必填 | 说明 |"
+    lines << "|---|---|---|---|"
+    lines << renderFieldRows(((spec.response.properties as Map<String, Object>).version as Map<String, Object>).properties as Map<String, Object>)
+    lines << ""
+    lines << "## 示例"
+    lines << ""
+    (spec.examples as List<Map<String, Object>>).each { Map<String, Object> example ->
+        def goldenExample = goldenExamples[example.case as String]
+        if (goldenExample == null) {
+            throw new GradleException("Missing golden case for bridge example: ${example.case}")
         }
-        return lines.join('\n').trim() + '\n'
+        lines << "### ${example.title}"
+        lines << ""
+        lines << "请求："
+        lines << "```json"
+        lines << prettyJson(goldenExample.request)
+        lines << "```"
+        lines << ""
+        lines << "响应："
+        lines << "```json"
+        lines << prettyJson(goldenExample.expected)
+        lines << "```"
+        lines << ""
+    }
+    return lines.join('\n').trim() + '\n'
+}
+
+def loadGoldenExamples(File goldenCasesFile) {
+    def parsed = new groovy.json.JsonSlurper().parse(goldenCasesFile)
+    parsed.collectEntries { example ->
+        [(example.name): example]
+    }
 }
 
 application {
@@ -111,17 +129,20 @@ tasks.register('fatJar', Jar) {
 
 tasks.register('generateBridgeDocs') {
     inputs.file bridgeSpecFile
+    inputs.file goldenCasesFile
     outputs.file bridgeDocFile
 
     doLast {
         def spec = new groovy.json.JsonSlurper().parse(bridgeSpecFile) as Map<String, Object>
+        def goldenExamples = loadGoldenExamples(goldenCasesFile)
         bridgeDocFile.parentFile.mkdirs()
-        bridgeDocFile.setText(renderBridgeDoc(spec), 'UTF-8')
+        bridgeDocFile.setText(renderBridgeDoc(spec, goldenExamples), 'UTF-8')
     }
 }
 
 tasks.register('verifyBridgeDocs') {
     inputs.file bridgeSpecFile
+    inputs.file goldenCasesFile
     inputs.file bridgeDocFile
 
     mustRunAfter tasks.named('generateBridgeDocs')
@@ -131,7 +152,8 @@ tasks.register('verifyBridgeDocs') {
             throw new GradleException("Missing generated bridge doc: ${bridgeDocFile}. Run ./gradlew :bridge:generateBridgeDocs")
         }
         def spec = new groovy.json.JsonSlurper().parse(bridgeSpecFile) as Map<String, Object>
-        def expected = renderBridgeDoc(spec)
+        def goldenExamples = loadGoldenExamples(goldenCasesFile)
+        def expected = renderBridgeDoc(spec, goldenExamples)
         def actual = bridgeDocFile.getText('UTF-8')
         if (actual != expected) {
             throw new GradleException("Bridge API docs are out of date. Run ./gradlew :bridge:generateBridgeDocs")

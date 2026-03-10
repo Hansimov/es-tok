@@ -1,12 +1,12 @@
 {
-    "title": "ES-TOK Bridge API",
-    "summary": "The bridge CLI exposes the extracted ES-TOK Java core through stdin/stdout JSON so Python and other non-JVM callers can reuse the same analysis pipeline.",
+    "title": "ES-TOK Bridge 接口",
+    "summary": "bridge CLI 通过标准输入/输出暴露共享的 ES-TOK Java core，供 Python 和其他非 JVM 调用方复用同一套分析语义。",
     "transport": {
-        "request": "JSON object written to stdin",
-        "response": "JSON object written to stdout"
+        "request": "向标准输入写入一个 JSON 对象",
+        "response": "从标准输出读取一个 JSON 对象"
     },
     "request": {
-        "description": "The bridge requires a `text` field and forwards additional analyzer settings to the ES-TOK config loader. Nested config objects keep the same names used by the plugin REST API.",
+        "description": "bridge 至少需要 `text` 字段；其余字段会继续传给 ES-TOK 配置加载器。嵌套配置对象保持与插件 REST 分析接口一致的命名。",
         "required": [
             "text"
         ],
@@ -14,52 +14,52 @@
             "text": {
                 "type": "string",
                 "required": true,
-                "description": "Input text to analyze. Empty or missing values return an error response."
+                "description": "待分析文本。为空或缺失时返回错误。"
             },
             "use_vocab": {
                 "type": "boolean",
                 "required": false,
-                "description": "Enable vocab matching. Defaults to true for bridge parity with the plugin analyze endpoint."
+                "description": "是否启用词表分词。默认值为 true，与插件分析接口保持一致。"
             },
             "use_categ": {
                 "type": "boolean",
                 "required": false,
-                "description": "Enable categ tokenization."
+                "description": "是否启用分类分词。"
             },
             "use_ngram": {
                 "type": "boolean",
                 "required": false,
-                "description": "Enable n-gram generation."
+                "description": "是否启用 N-gram 生成。"
             },
             "use_rules": {
                 "type": "boolean",
                 "required": false,
-                "description": "Enable rule filtering."
+                "description": "是否启用规则过滤。"
             },
             "extra_config": {
                 "type": "object",
                 "required": false,
-                "description": "Optional nested extra config such as ignore_case, ignore_hant, drop_duplicates and drop_categs."
+                "description": "可选的 extra 嵌套配置，例如 ignore_case、ignore_hant、drop_duplicates、drop_categs。"
             },
             "categ_config": {
                 "type": "object",
                 "required": false,
-                "description": "Optional nested categ config such as split_word."
+                "description": "可选的 categ 嵌套配置，例如 split_word。"
             },
             "vocab_config": {
                 "type": "object",
                 "required": false,
-                "description": "Optional nested vocab config. When omitted and use_vocab is true, the bridge defaults vocab_config.file to vocabs.txt."
+                "description": "可选的 vocab 嵌套配置。当省略且 use_vocab 为 true 时，会默认补上 vocab_config.file = vocabs.txt。"
             },
             "ngram_config": {
                 "type": "object",
                 "required": false,
-                "description": "Optional nested n-gram config such as use_bigram, use_vbgram, use_vcgram and drop_cogram."
+                "description": "可选的 ngram 嵌套配置，例如 use_bigram、use_vbgram、use_vcgram、drop_cogram。"
             },
             "rules_config": {
                 "type": "object",
                 "required": false,
-                "description": "Optional nested rules config or file reference."
+                "description": "可选的 rules 嵌套配置或规则文件引用。"
             }
         }
     },
@@ -68,39 +68,39 @@
             "tokens": {
                 "type": "array",
                 "required": true,
-                "description": "Ordered analyze tokens emitted by the shared Java core.",
+                "description": "共享 Java core 输出的有序 token 列表。",
                 "items": {
                     "type": "object",
                     "properties": {
                         "token": {
                             "type": "string",
                             "required": true,
-                            "description": "Normalized token text."
+                            "description": "归一化后的 token 文本。"
                         },
                         "start_offset": {
                             "type": "integer",
                             "required": true,
-                            "description": "Inclusive start offset in the analyzed text."
+                            "description": "在分析文本中的起始偏移，包含起点。"
                         },
                         "end_offset": {
                             "type": "integer",
                             "required": true,
-                            "description": "Exclusive end offset in the analyzed text."
+                            "description": "在分析文本中的结束偏移，不包含终点。"
                         },
                         "type": {
                             "type": "string",
                             "required": true,
-                            "description": "Lucene token type such as cjk, vocab or bigram."
+                            "description": "Lucene token 类型，例如 cjk、vocab、bigram。"
                         },
                         "group": {
                             "type": "string",
                             "required": true,
-                            "description": "ES-TOK token group such as categ, vocab or ngram."
+                            "description": "ES-TOK 分组，例如 categ、vocab、ngram。"
                         },
                         "position": {
                             "type": "integer",
                             "required": true,
-                            "description": "Token position in the final ordered output."
+                            "description": "token 在最终有序输出中的位置。"
                         }
                     }
                 }
@@ -108,22 +108,22 @@
             "version": {
                 "type": "object",
                 "required": true,
-                "description": "Version hashes describing the active analysis behavior and resources.",
+                "description": "描述当前分析行为和资源快照的版本哈希。",
                 "properties": {
                     "analysis_hash": {
                         "type": "string",
                         "required": true,
-                        "description": "Hash of the effective analysis configuration and referenced resource hashes."
+                        "description": "有效分析配置以及关联资源哈希组合后的指纹。"
                     },
                     "vocab_hash": {
                         "type": "string",
                         "required": true,
-                        "description": "Hash of the resolved vocab list or `disabled` when vocab is inactive."
+                        "description": "解析后词表内容的哈希；当词表关闭时返回 `disabled`。"
                     },
                     "rules_hash": {
                         "type": "string",
                         "required": true,
-                        "description": "Hash of the resolved rules or `disabled` when rules are inactive."
+                        "description": "解析后规则内容的哈希；当规则关闭时返回 `disabled`。"
                     }
                 }
             }
@@ -131,64 +131,16 @@
     },
     "examples": [
         {
-            "title": "Inline vocab analysis",
-            "request": {
-                "text": "自然语言处理技术",
-                "use_vocab": true,
-                "use_categ": false,
-                "vocab_config": {
-                    "list": [
-                        "自然语言",
-                        "语言处理",
-                        "处理技术"
-                    ]
-                }
-            },
-            "response": {
-                "tokens": [
-                    {
-                        "token": "自然语言",
-                        "start_offset": 0,
-                        "end_offset": 4,
-                        "type": "vocab",
-                        "group": "vocab",
-                        "position": 0
-                    }
-                ],
-                "version": {
-                    "analysis_hash": "537297ca99b74e48",
-                    "vocab_hash": "3edf73e70c75ac7c",
-                    "rules_hash": "disabled"
-                }
-            }
+            "case": "inline_vocab",
+            "title": "内联词表分词"
         },
         {
-            "title": "Minimal categ analysis",
-            "request": {
-                "text": "红警HBK08",
-                "use_vocab": false,
-                "use_categ": true,
-                "categ_config": {
-                    "split_word": true
-                }
-            },
-            "response": {
-                "tokens": [
-                    {
-                        "token": "红",
-                        "start_offset": 0,
-                        "end_offset": 1,
-                        "type": "cjk",
-                        "group": "categ",
-                        "position": 0
-                    }
-                ],
-                "version": {
-                    "analysis_hash": "example-analysis-hash",
-                    "vocab_hash": "disabled",
-                    "rules_hash": "disabled"
-                }
-            }
+            "case": "minimal_categ",
+            "title": "基础分类分词"
+        },
+        {
+            "case": "drop_categs_preserve",
+            "title": "词表、分类与 N-gram 联合输出"
         }
     ]
 }

@@ -1,120 +1,52 @@
-# ES-TOK 插件使用指南
-
-## 目录
-
-- [1. 快速开始](#1-快速开始)
-- [2. REST 分析接口](#2-rest-分析接口)
-- [3. 创建索引与分词器配置](#3-创建索引与分词器配置)
-- [4. 搜索查询 (es_tok_query_string)](#4-搜索查询-es_tok_query_string)
-- [5. 约束过滤查询 (es_tok_constraints)](#5-约束过滤查询-es_tok_constraints)
-- [6. 规则过滤](#6-规则过滤)
-- [7. 索引时 vs 查询时的注意事项](#7-索引时-vs-查询时的注意事项)
-- [附录 A：完整参数参考](#附录-a完整参数参考)
-- [附录 B：Token 类型与分组](#附录-btoken-类型与分组)
-- [附录 C：默认 rules.json](#附录-c默认-rulesjson)
-
----
+# ES-TOK 使用指南
 
 ## 1. 快速开始
 
-### 查看插件版本
+### 查看插件与分析版本
 
 ```sh
+GET /_cat/es_tok?v
 GET /_cat/es_tok/version?v
 ```
 
-该接口会返回插件版本以及诊断用途的 `analysis_hash`、`vocab_hash`、`rules_hash` 列，便于快速确认当前节点上的默认分析版本指纹。
+两个接口都会返回统一的诊断列：
 
-### 快速分词测试
+- `analysis_hash`
+- `vocab_hash`
+- `rules_hash`
+
+其中 `/_cat/es_tok` 的 `status` 列为 `Ready`，`/_cat/es_tok/version` 的 `status` 列会显示插件版本号。
+
+### 最小 REST 分析示例
 
 ```json
-GET /_es_tok/analyze
+POST /_es_tok/analyze
 {
-  "text": "Elasticsearch全文搜索引擎"
+  "text": "自然语言处理技术"
 }
 ```
 
-### 使用词表分词
-
-```json
-GET /_es_tok/analyze
-{
-  "text": "自然语言处理技术",
-  "use_vocab": true,
-  "vocab_config": {
-    "list": ["自然语言", "语言处理", "处理技术", "自然语言处理"]
-  }
-}
-```
-
----
+如果 `use_vocab` 为默认值 `true` 且没有显式提供 `vocab_config`，REST 接口会自动回退到内置 `vocabs.txt`。
 
 ## 2. REST 分析接口
 
 ### 端点
 
-```
-GET/POST /_es_tok/analyze
+```text
+GET /_es_tok/analyze
+POST /_es_tok/analyze
 ```
 
-### 基本用法
+### 推荐请求示例
 
 ```json
-GET /_es_tok/analyze
+POST /_es_tok/analyze
 {
-  "text": "需要分词的文本"
-}
-```
-
-### 完整参数示例
-
-```json
-GET /_es_tok/analyze
-{
-  "text": "這是一個繁體中文的測試文檔",
-  "use_extra": true,
-  "use_categ": true,
+  "text": "自然语言处理技术",
   "use_vocab": true,
-  "use_ngram": true,
-  "use_rules": true,
-  "extra_config": {
-    "ignore_case": true,
-    "ignore_hant": true,
-    "drop_duplicates": true,
-    "drop_categs": true,
-    "drop_vocabs": true
-  },
-  "categ_config": {
-    "split_word": true
-  },
+  "use_categ": false,
   "vocab_config": {
-    "file": "vocabs.txt",
-    "size": 2680000
-  },
-  "ngram_config": {
-    "use_bigram": true,
-    "use_vbgram": false,
-    "use_vcgram": false,
-    "drop_cogram": true
-  },
-  "rules_config": {
-    "exclude_tokens": ["的", "了"],
-    "exclude_prefixes": ["pre_"],
-    "include_prefixes": ["的确", "的士"],
-    "declude_suffixes": ["的", "了"]
-  }
-}
-```
-
-### 使用规则文件
-
-```json
-GET /_es_tok/analyze
-{
-  "text": "这是一段测试文本",
-  "use_rules": true,
-  "rules_config": {
-    "file": "rules.json"
+    "list": ["自然语言", "语言处理", "处理技术"]
   }
 }
 ```
@@ -125,34 +57,56 @@ GET /_es_tok/analyze
 {
   "tokens": [
     {
-      "token": "文本",
+      "token": "自然语言",
       "start_offset": 0,
-      "end_offset": 2,
-      "type": "cjk",
-      "group": "categ",
+      "end_offset": 4,
+      "type": "vocab",
+      "group": "vocab",
       "position": 0
     }
-  ]
+  ],
+  "version": {
+    "analysis_hash": "8e1cddb55f955dab",
+    "vocab_hash": "3edf73e70c75ac7c",
+    "rules_hash": "disabled"
+  }
 }
 ```
 
-> REST 接口未提供 `vocab_config` 时，自动使用内置 `vocabs.txt` 词表（通过全局缓存共享，不会重复加载）。如需自定义词表，请通过 `vocab_config` 显式指定 `list` 或 `file`。
+### 顶层开关
 
----
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `use_extra` | `true` | 是否启用预处理 |
+| `use_categ` | `true` | 是否启用分类分词 |
+| `use_vocab` | `true` | 是否启用词表分词 |
+| `use_ngram` | `false` | 是否启用 N-gram |
+| `use_rules` | `false` | 是否启用规则过滤 |
 
-## 3. 创建索引与分词器配置
+### 嵌套配置对象
 
-### 基本索引创建
+- `extra_config`：`ignore_case`、`ignore_hant`、`drop_duplicates`、`drop_categs`、`drop_vocabs`
+- `categ_config`：`split_word`
+- `vocab_config`：`list`、`file`、`size`
+- `ngram_config`：`use_bigram`、`use_vbgram`、`use_vcgram`、`drop_cogram`
+- `rules_config`：`file` 以及各类 `include_*`、`exclude_*`、`declude_*`
+
+### 与 bridge 的关系
+
+bridge CLI 与 REST analyze 复用同一套 payload 分析服务，因此请求字段语义、默认值和响应结构保持一致。bridge 的正式字段说明见 [../api/bridge.md](../api/bridge.md)。
+
+## 3. 创建索引与分析器配置
+
+### 最小配置
 
 ```json
-PUT test
+PUT /test
 {
   "settings": {
     "analysis": {
       "tokenizer": {
         "es_tok_tokenizer": {
           "type": "es_tok",
-          "use_categ": true,
           "use_vocab": true,
           "vocab_config": {
             "file": "vocabs.txt"
@@ -173,7 +127,7 @@ PUT test
 ### 完整配置示例
 
 ```json
-PUT test
+PUT /test
 {
   "settings": {
     "analysis": {
@@ -189,8 +143,7 @@ PUT test
             "ignore_case": true,
             "ignore_hant": true,
             "drop_duplicates": true,
-            "drop_categs": true,
-            "drop_vocabs": true
+            "drop_categs": true
           },
           "categ_config": {
             "split_word": true
@@ -201,8 +154,6 @@ PUT test
           },
           "ngram_config": {
             "use_bigram": true,
-            "use_vbgram": false,
-            "use_vcgram": false,
             "drop_cogram": true
           },
           "rules_config": {
@@ -226,38 +177,21 @@ PUT test
 ```json
 GET /test/_analyze
 {
-  "text": "需要分词的文本",
+  "text": "红警HBK08",
   "analyzer": "es_tok_analyzer"
 }
 ```
 
-### 在 Mapping 中使用
+## 4. 查询扩展
 
-```json
-PUT test/_mapping
-{
-  "properties": {
-    "title": {
-      "type": "text",
-      "analyzer": "es_tok_analyzer"
-    },
-    "content": {
-      "type": "text",
-      "analyzer": "es_tok_analyzer"
-    }
-  }
-}
-```
+### `es_tok_query_string`
 
----
+`es_tok_query_string` 继承标准 `query_string` 参数，并新增两类能力：
 
-## 4. 搜索查询 (es_tok_query_string)
+- `constraints`：文档级 token 约束
+- `max_freq`：高频 term 过滤
 
-`es_tok_query_string` 是 ES-TOK 提供的自定义查询类型，继承标准 `query_string` 的所有功能，额外支持**约束过滤（constraints）** 和**频率过滤（max_freq）**。
-
-> **注意**：搜索查询不再支持 `rules` 参数。规则过滤仅用于索引/分析阶段。查询时使用 `constraints` 进行文档级别的约束过滤。
-
-### 基本查询
+示例：
 
 ```json
 POST /test/_search
@@ -265,163 +199,13 @@ POST /test/_search
   "query": {
     "es_tok_query_string": {
       "query": "搜索引擎的实现原理",
-      "default_field": "content"
-    }
-  }
-}
-```
-
-### 使用约束过滤（Constraints）
-
-`constraints` 是一个数组，每个元素可以是：
-- **裸条件**（等同于 AND）— 文档必须包含匹配的 token
-- `{"AND": {...}}` — 文档必须包含匹配的 token
-- `{"OR": [{...}, {...}]}` — 文档至少匹配一个条件
-- `{"NOT": {...}}` — 文档不能包含匹配的 token
-
-每个条件支持 5 种匹配规则：
-
-| 字段 | 匹配方式 | 说明 |
-|------|---------|------|
-| `have_token` | 精确匹配 | 文档包含指定 token |
-| `with_prefixes` | 前缀匹配 | 文档包含以指定前缀开头的 token |
-| `with_suffixes` | 后缀匹配 | 文档包含以指定后缀结尾的 token |
-| `with_contains` | 子串匹配 | 文档包含包含指定子串的 token |
-| `with_patterns` | 正则匹配 | 文档包含匹配指定正则的 token |
-
-每个约束还支持可选的 `fields` 参数，覆盖查询级别的搜索字段。未指定 `fields` 的约束使用查询的 `fields` 或 `default_field`。
-
-#### 排除特定 token
-
-```json
-POST /test/_search
-{
-  "query": {
-    "es_tok_query_string": {
-      "query": "搜索引擎的实现原理",
-      "default_field": "content",
+      "fields": ["title^3", "content"],
       "constraints": [
-        { "NOT": { "have_token": ["的", "了", "是", "和"] } }
-      ]
-    }
-  }
-}
-```
-
-#### 要求文档包含特定 token
-
-```json
-POST /test/_search
-{
-  "query": {
-    "es_tok_query_string": {
-      "query": "机器学习",
-      "default_field": "content",
-      "constraints": [
-        { "have_token": ["算法"] }
-      ]
-    }
-  }
-}
-```
-
-#### OR 约束（至少匹配一个条件）
-
-```json
-POST /test/_search
-{
-  "query": {
-    "es_tok_query_string": {
-      "query": "人工智能",
-      "default_field": "content",
-      "constraints": [
-        { "OR": [
-          { "have_token": ["深度学习"] },
-          { "with_prefixes": ["神经"] }
-        ]}
-      ]
-    }
-  }
-}
-```
-
-#### 组合多个约束
-
-```json
-POST /test/_search
-{
-  "query": {
-    "es_tok_query_string": {
-      "query": "数据分析",
-      "default_field": "content",
-      "constraints": [
-        { "have_token": ["统计"] },
         { "NOT": { "have_token": ["的", "了"] } },
         { "OR": [
-          { "with_prefixes": ["机器"] },
-          { "with_contains": ["学习"] }
-        ]}
-      ],
-      "max_freq": 50,
-      "default_operator": "AND",
-      "lenient": true
-    }
-  }
-}
-```
-
-### 频率过滤
-
-```json
-POST /test/_search
-{
-  "query": {
-    "es_tok_query_string": {
-      "query": "自然语言处理",
-      "default_field": "content",
-      "max_freq": 100000
-    }
-  }
-}
-```
-
-文档频率超过 `max_freq` 的 token 会被自动过滤，类似于动态停用词。
-
-### 每约束字段覆盖
-
-每个约束可以指定自己的 `fields`，覆盖查询级别的搜索字段。适用于不同约束需要检查不同字段的场景：
-
-```json
-POST /test/_search
-{
-  "query": {
-    "es_tok_query_string": {
-      "query": "影视飓风",
-      "fields": ["title^3", "tags^2", "content"],
-      "constraints": [
-        {"have_token": ["影视飓风"], "fields": ["title"]},
-        {"NOT": {"have_token": ["广告"]}, "fields": ["tags"]},
-        {"have_token": ["科技"]}
-      ]
-    }
-  }
-}
-```
-
-上例中，第一个约束仅在 `title` 字段中检查，第二个仅在 `tags` 中检查，第三个使用查询级别的 `fields`。
-
-### 多字段搜索与加权
-
-```json
-POST /test/_search
-{
-  "query": {
-    "es_tok_query_string": {
-      "query": "机器学习算法",
-      "type": "cross_fields",
-      "fields": ["title.words^3", "tags.words^2.5", "content"],
-      "constraints": [
-        { "NOT": { "have_token": ["的", "了"] } }
+          { "with_prefixes": ["搜索"] },
+          { "with_contains": ["原理"] }
+        ] }
       ],
       "max_freq": 1000000,
       "default_operator": "AND"
@@ -430,50 +214,17 @@ POST /test/_search
 }
 ```
 
-### 布尔查询与短语查询
+可用匹配条件：
 
-```json
-POST /test/_search
-{
-  "query": {
-    "es_tok_query_string": {
-      "query": "(重要 AND 文档) OR 关键",
-      "default_field": "content",
-      "constraints": [
-        { "NOT": { "have_token": ["的", "了"] } }
-      ]
-    }
-  }
-}
-```
+- `have_token`
+- `with_prefixes`
+- `with_suffixes`
+- `with_contains`
+- `with_patterns`
 
-> **注意**：引号短语查询（如 `"精确匹配"`）不受频率过滤影响，始终保留完整短语。
+### `es_tok_constraints`
 
----
-
-## 5. 约束过滤查询 (es_tok_constraints)
-
-`es_tok_constraints` 是一个独立的约束过滤查询，不包含文本搜索逻辑。它专门用于基于文档的已索引 token 进行过滤，**主要设计用途是作为 KNN 搜索的预过滤器**。
-
-### 基本用法
-
-```json
-POST /my_index/_search
-{
-  "query": {
-    "es_tok_constraints": {
-      "fields": ["title", "tags"],
-      "constraints": [
-        {"have_token": ["影视飓风"]}
-      ]
-    }
-  }
-}
-```
-
-### 作为 KNN 预过滤器
-
-这是 `es_tok_constraints` 最典型的用途。ES 的 KNN `filter` 是**预过滤器**——在 HNSW 图遍历过程中只考虑满足过滤条件的文档，保证返回的 k 个结果全部满足条件。
+`es_tok_constraints` 不包含全文查询文本，只负责约束过滤，尤其适合作为 KNN 的预过滤器。
 
 ```json
 POST /my_index/_search
@@ -481,14 +232,14 @@ POST /my_index/_search
   "knn": {
     "field": "text_emb",
     "query_vector": "...",
-    "k": 100,
-    "num_candidates": 1000,
+    "k": 50,
+    "num_candidates": 500,
     "filter": {
       "es_tok_constraints": {
         "fields": ["title", "tags"],
         "constraints": [
-          {"have_token": ["影视飓风"]},
-          {"NOT": {"have_token": ["广告"]}}
+          { "have_token": ["影视飓风"] },
+          { "NOT": { "have_token": ["广告"] } }
         ]
       }
     }
@@ -496,267 +247,48 @@ POST /my_index/_search
 }
 ```
 
-上述查询在进行 KNN 向量检索时，仅考虑 title 或 tags 中包含 token `"影视飓风"` 且不包含 token `"广告"` 的文档。
+## 5. 规则过滤
 
-### 每约束字段覆盖（Per-Constraint Fields）
+规则过滤只在分析阶段使用，不在查询 DSL 中直接执行。支持三类规则：
 
-每个约束条件可以携带自己的 `fields` 参数，覆盖查询级别的默认字段。未指定 `fields` 的约束使用查询级别的 `fields`（默认 `["*"]`）：
+- `exclude_*`：匹配后排除
+- `include_*`：匹配后强制保留，优先级最高
+- `declude_*`：当前后缀去除后的基本形式已存在时排除
+
+优先级顺序：
+
+```text
+include > exclude > declude > 默认保留
+```
+
+规则文件示例：
 
 ```json
 {
-  "es_tok_constraints": {
-    "constraints": [
-      {"have_token": ["影视飓风"], "fields": ["title"]},
-      {"NOT": {"have_token": ["广告"]}, "fields": ["tags"]},
-      {"have_token": ["科技"]}
-    ],
-    "fields": ["title", "tags"]
-  }
-}
-```
-
-上例中，第一个约束仅在 `title` 中检查，第二个仅在 `tags` 中检查，第三个使用默认字段 `["title", "tags"]`。
-
-### 组合多个约束
-
-```json
-{
-  "es_tok_constraints": {
-    "fields": ["title", "tags"],
-    "constraints": [
-      {"have_token": ["技术", "科技"]},
-      {"NOT": {"with_prefixes": ["广告"]}},
-      {"OR": [
-        {"with_contains": ["评测"]},
-        {"with_suffixes": ["教程"]}
-      ]}
-    ]
-  }
-}
-```
-
-### 与其他 KNN 过滤器组合
-
-`es_tok_constraints` 可以与其他标准 ES 过滤器（日期范围、term 查询等）一起使用：
-
-```json
-{
-  "knn": {
-    "field": "text_emb",
-    "query_vector": "...",
-    "k": 100,
-    "num_candidates": 1000,
-    "filter": {
-      "bool": {
-        "filter": [
-          {"range": {"pubdate": {"gte": "2024-01-01"}}},
-          {
-            "es_tok_constraints": {
-              "fields": ["title"],
-              "constraints": [
-                {"have_token": ["影视飓风"]}
-              ]
-            }
-          }
-        ]
-      }
-    }
-  }
-}
-```
-
-### 参数说明
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `fields` | `string[]` | 否 | 要检查约束的字段列表，支持 `field^boost` 加权语法。默认 `["*"]` |
-| `constraints` | `array` | 是 | 约束条件数组（复用 `es_tok_query_string` 的约束语法）。每个约束可包含可选的 `fields` 覆盖默认字段 |
-
-> **与 es_tok_query_string 的区别**：`es_tok_constraints` 不需要文本查询字符串，仅做约束过滤。内部使用 `MatchAllDocsQuery` 作为基础查询，然后叠加约束条件。
-
----
-
-## 6. 规则过滤
-
-### 概述
-
-规则过滤是 ES-TOK 的核心特性之一，允许精细控制哪些 token 参与索引。规则**仅在索引/分析阶段使用**：
-
-- **索引时**：通过分词器配置 `use_rules` + `rules_config`
-- **REST 分析时**：通过 `/_es_tok/analyze` 的 `use_rules` + `rules_config`
-
-> **注意**：查询时的文档约束使用 `constraints` 参数（见第 4 节），不再使用 `rules`。
-
-### 三类规则
-
-#### 排除规则（Exclude）
-
-匹配的 token 将被排除。支持 5 种匹配方式：
-
-| 字段 | 匹配方式 | 示例 |
-|------|---------|------|
-| `exclude_tokens` | 精确匹配 | `"的"` 排除 `"的"` |
-| `exclude_prefixes` | 前缀匹配 | `"pre_"` 排除 `"pre_word"` |
-| `exclude_suffixes` | 后缀匹配 | `"_end"` 排除 `"text_end"` |
-| `exclude_contains` | 子串匹配 | `"noise"` 排除 `"bad_noise_word"` |
-| `exclude_patterns` | 正则匹配 | `"^\\d+$"` 排除 `"123"` |
-
-#### 保留规则（Include）
-
-匹配的 token 将被**强制保留**，覆盖排除规则。支持与排除规则相同的 5 种匹配方式（`include_tokens`、`include_prefixes`、`include_suffixes`、`include_contains`、`include_patterns`）。
-
-**典型用例**：`exclude_tokens: ["的"]` + `include_prefixes: ["的确", "的士"]`  
-→ 排除 `"的"` 但保留 `"的确"` 和 `"的士兵"`
-
-#### 去附规则（Declude）
-
-上下文相关的排除机制。判断 token 去除前/后缀后的**基本形式**是否也存在于当前 token 集合中：
-
-| 字段 | 逻辑 | 示例 |
-|------|------|------|
-| `declude_suffixes` | `"简单的".endsWith("的")` 且 `"简单"` 存在 → 排除 `"简单的"` | 去除语气助词附着 |
-| `declude_prefixes` | `"不好".startsWith("不")` 且 `"好"` 存在 → 排除 `"不好"` | 去除否定前缀附着 |
-
-> **仅索引时生效**：去附规则需要完整的 token 集合上下文，因此仅在分词器的规则过滤阶段（索引时）有效。
-
-### 优先级
-
-```
-保留（Include） > 排除（Exclude） > 去附（Declude） > 默认保留
-```
-
-### 规则文件
-
-规则可以定义在 JSON 文件中，放置于插件目录（`/usr/share/elasticsearch/plugins/es_tok/`）。
-
-```json
-{
-  "exclude_tokens": ["的", "了", "是", "和"],
-  "exclude_prefixes": ["的", "了"],
-  "include_prefixes": ["的确", "的士", "了解", "了不"],
+  "exclude_tokens": ["的", "了"],
+  "include_prefixes": ["的确", "的士"],
   "declude_suffixes": ["的", "了"]
 }
 ```
 
-只需列出使用到的字段，省略的字段默认为空列表。
+## 6. bridge CLI
 
----
+bridge CLI 适合在 Python、脚本或离线任务中复用同一套 Java core。
 
-## 7. 索引时 vs 查询时的注意事项
+```sh
+./gradlew :bridge:fatJar
+echo '{"text":"红警HBK08","use_vocab":false,"use_categ":true,"categ_config":{"split_word":true}}' \
+  | java -jar bridge/build/libs/bridge-0.9.0-all.jar
+```
 
-### 两层过滤
+bridge 输出与 REST analyze 共享同一套 `tokens + version` 结构，并使用同一份 golden corpus 做回归校验。
 
-ES-TOK 支持两个独立的过滤层：
+## 7. 常见注意事项
 
-| 层 | 配置位置 | 执行时机 | 特点 |
-|----|---------|---------|------|
-| **分词器层** | `use_rules` + `rules_config`（索引设置或 REST 参数） | 分词时（索引和分析） | 拥有完整上下文，declude 生效 |
-| **查询层** | `es_tok_query_string` 的 `constraints` + `max_freq` | 查询解析后 | 约束过滤 + 频率过滤 |
-| **KNN 过滤层** | `es_tok_constraints` 的 `constraints` | KNN 检索时（预过滤） | 约束过滤（作为 KNN filter 子句） |
-
-### 索引时特有功能
-
-| 功能 | 说明 |
-|------|------|
-| `rules` 规则过滤 | include/exclude/declude 三类规则 |
-| `declude_*` 去附规则 | 依赖完整 token 集合上下文 |
-| 完整分词流水线 | 经过全部 10 个处理阶段 |
-
-### 查询时特有功能
-
-| 功能 | 说明 |
-|------|------|
-| `constraints` 约束过滤 | AND/OR/NOT 布尔约束，基于 Lucene Query |
-| `max_freq` 频率过滤 | 基于 `IndexReader.docFreq()` |
-| 短语查询保护 | `"引号短语"` 不被频率过滤 |
-
-### 建议的配置策略
-
-1. **索引时**：配置 `use_rules: true` + `rules_config.file: "rules.json"`，利用 declude 规则在索引阶段精确过滤冗余 token
-2. **查询时**：使用 `es_tok_query_string` 的 `constraints` 进行文档级别约束（如排除包含特定 token 的文档、要求包含特定前缀的 token）
-3. **KNN 过滤**：使用 `es_tok_constraints` 作为 KNN 搜索的预过滤器，基于已索引 token 对 KNN 候选进行约束过滤
-4. **频率过滤**：在查询时使用 `max_freq`，作为动态停用词的补充策略
-
-### REST 接口默认值
-
-REST 分析接口 (`/_es_tok/analyze`) 的大多数参数默认值与索引设置一致。未提供 `vocab_config` 时，REST 接口自动使用内置 `vocabs.txt` 词表（通过全局缓存共享，不会重复加载）。如需自定义词表，请通过 `vocab_config` 显式指定。
-
----
-
-## 附录 A：完整参数参考
-
-### A.1 全局开关
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `use_extra` | `boolean` | `true` | 启用预处理（大小写归一、繁简转换、去重、去冗余分类） |
-| `use_categ` | `boolean` | `true` | 启用分类分词 |
-| `use_vocab` | `boolean` | `true` | 启用词表分词 |
-| `use_ngram` | `boolean` | `false` | 启用 N-gram 生成 |
-| `use_rules` | `boolean` | `false` | 启用规则过滤 |
-
-> `use_categ` 和 `use_vocab` 至少有一个为 `true`。
-
-### A.2 extra_config — 预处理
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `ignore_case` | `boolean` | `true` | 转换为小写 |
-| `ignore_hant` | `boolean` | `true` | 繁体中文→简体中文 |
-| `drop_duplicates` | `boolean` | `true` | 移除重复 token（相同文本和偏移） |
-| `drop_categs` | `boolean` | `true` | 移除被多个词表 token 覆盖的分类 token |
-| `drop_vocabs` | `boolean` | `true` | 预留字段 |
-
-### A.3 categ_config — 分类分词
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `split_word` | `boolean` | `true` | 将 CJK 和语言类 token 拆分为单字 |
-
-### A.4 vocab_config — 词表
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `list` | `string[]` | `[]` | 内联词汇列表 |
-| `file` | `string` | 无 | 词表文件路径（相对于插件目录）。格式：每行一个词，CSV 格式取第一列 |
-| `size` | `int` | `-1` | 加载词汇数量上限。`-1` 表示不限制 |
-
-`list` 和 `file` 中的词汇会合并。
-
-> **注意**：必须通过 `file` 或 `list` 显式提供词表。内置词表文件 `vocabs.txt`（约 390 万行）可通过 `file: "vocabs.txt"` 配合 `size: 2680000` 使用。REST 接口未提供 `vocab_config` 时不加载词表。
-
-### A.5 ngram_config — N-gram
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `use_bigram` | `boolean` | `false` | categ + categ 相邻对 |
-| `use_vbgram` | `boolean` | `false` | vocab + vocab 相邻对 |
-| `use_vcgram` | `boolean` | `false` | vocab-categ 混合相邻对（至少一方为 vocab） |
-| `drop_cogram` | `boolean` | `true` | 丢弃跨越不同词表 token 边界的 bigram |
-
-需要 `use_ngram: true` 且至少一个子类型为 `true` 才会生成 N-gram。
-
-### A.6 rules_config — 规则过滤
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `exclude_tokens` | `string[]` | `[]` | 精确匹配排除 |
-| `exclude_prefixes` | `string[]` | `[]` | 前缀匹配排除 |
-| `exclude_suffixes` | `string[]` | `[]` | 后缀匹配排除 |
-| `exclude_contains` | `string[]` | `[]` | 子串匹配排除 |
-| `exclude_patterns` | `string[]` | `[]` | 正则匹配排除 |
-| `include_tokens` | `string[]` | `[]` | 精确匹配保留（覆盖排除） |
-| `include_prefixes` | `string[]` | `[]` | 前缀匹配保留（覆盖排除） |
-| `include_suffixes` | `string[]` | `[]` | 后缀匹配保留（覆盖排除） |
-| `include_contains` | `string[]` | `[]` | 子串匹配保留（覆盖排除） |
-| `include_patterns` | `string[]` | `[]` | 正则匹配保留（覆盖排除） |
-| `declude_prefixes` | `string[]` | `[]` | 前缀去附排除（上下文相关，仅索引时） |
-| `declude_suffixes` | `string[]` | `[]` | 后缀去附排除（上下文相关，仅索引时） |
-| `file` | `string` | 无 | 规则文件路径（相对于插件目录） |
-
-### A.7 es_tok_query_string — 查询参数
-
-#### 标准 query_string 参数
+- `use_categ` 和 `use_vocab` 至少要开启一个。
+- REST analyze 在未显式提供 `vocab_config` 时，会自动回退到 `vocabs.txt`。
+- 查询阶段的约束请用 `constraints`，不要再把 `rules` 当作查询参数。
+- 如果修改默认词表、规则或分析行为，必须同步更新 golden corpus 与版本文档。
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|

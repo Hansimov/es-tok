@@ -4,52 +4,59 @@
 ![](https://img.shields.io/badge/elasticsearch-9.2.4-green)
 ![](https://img.shields.io/badge/java-21-orange)
 
-Elasticsearch 文本分析插件，支持分类分词、词表分词、N-gram 生成和规则过滤。
+ES-TOK 是一个面向 Elasticsearch 的中文文本分析插件。当前仓库已经拆分为共享 Java core、Elasticsearch 适配层和 bridge CLI 三部分，保证插件、REST 分析接口和 Python 调用链复用同一套分词实现与版本指纹。
 
-## 文档
+## 当前模块
+
+- `core`：共享分析核心，负责配置加载、资源解析、分词执行和版本哈希计算。
+- `bridge`：标准输入/输出 JSON bridge，供 Python 或其他非 JVM 调用方复用 core。
+- 根工程：Elasticsearch 插件适配层，负责 tokenizer、analyzer、查询和 REST 接口注册。
+
+## 文档入口
 
 | 文档 | 内容 |
 |------|------|
-| [使用指南](docs/stable/USAGE.md) | 完整的使用说明、API 示例和参数参考 |
-| [架构设计](docs/stable/DESIGN.md) | 项目架构、处理流水线和设计细节 |
-| [Bridge API](docs/api/bridge.md) | 由接口规范自动生成的 bridge CLI 输入输出文档 |
-| [重构计划](docs/port/PLAN.md) | Java core / ES adapter / Python client 拆分计划 |
-| [开发指南](DEVELOP.md) | 安装、构建、部署和测试 |
+| [使用指南](docs/stable/USAGE.md) | 最新 REST、索引、查询、bridge 使用方式 |
+| [架构设计](docs/stable/DESIGN.md) | 当前多模块架构、执行流、版本诊断与测试体系 |
+| [Bridge 接口](docs/api/bridge.md) | 由接口规范和共享 golden corpus 自动生成的 bridge 文档 |
+| [演进计划](docs/port/PLAN.md) | 已完成迁移项、待办项和后续收口方向 |
+| [开发指南](DEVELOP.md) | 构建、测试、文档生成、插件加载与回归约定 |
 
-## 核心特性
+## 核心能力
 
-- **分类分词（Categ）** — 基于 Unicode 字符类别的正则分词，支持 CJK、英文、数字等 8 种类型
-- **词表分词（Vocab）** — 基于 Aho-Corasick 算法的多模式匹配，支持外部词表文件
-- **N-gram 生成** — 在基础 token 上生成 bigram / vbgram / vcgram 二元组
-- **规则过滤（Rules）** — 排除/保留/去附三类规则，支持精确、前缀、后缀、子串、正则 5 种匹配
-- **自定义查询** — `es_tok_query_string` 查询类型，支持查询时 token 过滤和频率过滤
-- **繁简转换** — 内置约 5000 条繁→简字符映射
+- 分类分词：基于 Unicode 字符类别切分文本。
+- 词表分词：基于 Aho-Corasick 的高性能词表匹配。
+- N-gram 生成：支持 bigram、vbgram、vcgram。
+- 规则过滤：支持 include、exclude、declude 三类规则。
+- 查询扩展：支持 `es_tok_query_string` 与 `es_tok_constraints`。
+- 版本诊断：统一输出 `analysis_hash`、`vocab_hash`、`rules_hash`。
 
 ## 快速开始
 
-### 查看版本
+### 查看插件与分析版本
 
 ```sh
 GET /_cat/es_tok/version?v
 ```
 
-### REST 分析
+### 直接调用 REST 分析接口
 
 ```json
-GET /_es_tok/analyze
+POST /_es_tok/analyze
 {
   "text": "自然语言处理技术",
   "use_vocab": true,
+  "use_categ": false,
   "vocab_config": {
     "list": ["自然语言", "语言处理", "处理技术"]
   }
 }
 ```
 
-### 创建索引
+### 创建索引并挂接分词器
 
 ```json
-PUT test
+PUT /test
 {
   "settings": {
     "analysis": {
@@ -58,8 +65,12 @@ PUT test
           "type": "es_tok",
           "use_vocab": true,
           "use_rules": true,
-          "vocab_config": { "file": "vocabs.txt" },
-          "rules_config": { "file": "rules.json" }
+          "vocab_config": {
+            "file": "vocabs.txt"
+          },
+          "rules_config": {
+            "file": "rules.json"
+          }
         }
       },
       "analyzer": {
@@ -73,7 +84,7 @@ PUT test
 }
 ```
 
-### 搜索查询
+### 使用查询扩展
 
 ```json
 POST /test/_search
@@ -91,4 +102,12 @@ POST /test/_search
 }
 ```
 
-详细用法请参阅 [使用指南](docs/stable/USAGE.md)。
+### 调用 bridge CLI
+
+```sh
+./gradlew :bridge:fatJar
+echo '{"text":"自然语言处理技术","use_vocab":true,"use_categ":false,"vocab_config":{"list":["自然语言","语言处理","处理技术"]}}' \
+  | java -jar bridge/build/libs/bridge-0.9.0-all.jar
+```
+
+更完整的参数说明和约束查询示例见 [使用指南](docs/stable/USAGE.md)。

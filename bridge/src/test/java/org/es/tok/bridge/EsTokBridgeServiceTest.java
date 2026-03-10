@@ -60,8 +60,8 @@ public class EsTokBridgeServiceTest {
 
         List<Map<String, Object>> examples = castList(spec.get("examples"));
         assertFalse(examples.isEmpty());
-        assertTrue(examples.get(0).containsKey("request"));
-        assertTrue(examples.get(0).containsKey("response"));
+        assertTrue(examples.get(0).containsKey("case"));
+        assertTrue(examples.get(0).containsKey("title"));
     }
 
     private static List<GoldenCase> loadGoldenCases() throws Exception {
