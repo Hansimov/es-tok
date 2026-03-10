@@ -23,6 +23,8 @@
 GET /_cat/es_tok/version?v
 ```
 
+该接口会返回插件版本以及诊断用途的 `analysis_hash`、`vocab_hash`、`rules_hash` 列，便于快速确认当前节点上的默认分析版本指纹。
+
 ### 快速分词测试
 
 ```json

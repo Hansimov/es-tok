@@ -19,9 +19,14 @@ apply plugin: 'elasticsearch.yaml-rest-test'
 group = 'org.es'
 version = '0.9.0'
 
-repositories {
-    mavenCentral()
-    maven { url 'https://artifacts.elastic.co/maven' }
+allprojects {
+    group = rootProject.group
+    version = rootProject.version
+
+    repositories {
+        mavenCentral()
+        maven { url 'https://artifacts.elastic.co/maven' }
+    }
 }
 
 esplugin {
@@ -30,9 +35,31 @@ esplugin {
     classname = 'org.es.tok.EsTokPlugin'
 }
 
+def coreSharedPatterns = [
+    'org/es/tok/config/**',
+    'org/es/tok/extra/**',
+    'org/es/tok/categ/**',
+    'org/es/tok/vocab/**',
+    'org/es/tok/ngram/**',
+    'org/es/tok/rules/**',
+    'org/es/tok/strategy/**'
+]
+
+sourceSets {
+    main {
+        java {
+            coreSharedPatterns.each { exclude it }
+        }
+    }
+    test {
+        resources {
+            srcDir 'testing'
+        }
+    }
+}
+
 dependencies {
-    implementation "org.ahocorasick:ahocorasick:0.6.3"
-    implementation "com.fasterxml.jackson.core:jackson-databind:2.15.2"
+    implementation project(':core')
     
     testImplementation "junit:junit:4.13.2"
     testImplementation "org.apache.lucene:lucene-test-framework:${luceneVersion}"

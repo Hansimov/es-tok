@@ -1,0 +1,144 @@
+plugins {
+    id 'application'
+}
+
+def bridgeSpecFile = file("$projectDir/src/main/resources/bridge-api.json")
+def bridgeDocFile = file("$rootProject.projectDir/docs/api/bridge.md")
+
+def renderFieldRows
+renderFieldRows = { Map<String, Object> properties ->
+    properties.collect { String name, Object property ->
+        def row = property as Map<String, Object>
+        "| `${name}` | ${row.type ?: ''} | ${row.required == true ? 'yes' : 'no'} | ${row.description ?: ''} |"
+    }.join('\n')
+}
+
+def renderBridgeDoc = {
+    Map<String, Object> spec ->
+        def lines = []
+        lines << "# ${spec.title}"
+        lines << ""
+        lines << (spec.summary ?: '')
+        lines << ""
+        lines << "## Transport"
+        lines << ""
+        lines << "- Request: ${spec.transport.request}"
+        lines << "- Response: ${spec.transport.response}"
+        lines << ""
+        lines << "## Request"
+        lines << ""
+        lines << (spec.request.description ?: '')
+        lines << ""
+        lines << "| Field | Type | Required | Description |"
+        lines << "|---|---|---|---|"
+        lines << renderFieldRows(spec.request.properties as Map<String, Object>)
+        lines << ""
+        lines << "Additional properties are forwarded to the ES-TOK config loader, so nested analyzer settings remain available through the bridge."
+        lines << ""
+        lines << "## Response"
+        lines << ""
+        lines << "| Field | Type | Required | Description |"
+        lines << "|---|---|---|---|"
+        lines << renderFieldRows(spec.response.properties as Map<String, Object>)
+        lines << ""
+        lines << "### Token Object"
+        lines << ""
+        lines << "| Field | Type | Required | Description |"
+        lines << "|---|---|---|---|"
+        lines << renderFieldRows(((spec.response.properties as Map<String, Object>).tokens as Map<String, Object>).items.properties as Map<String, Object>)
+        lines << ""
+        lines << "### Version Object"
+        lines << ""
+        lines << "| Field | Type | Required | Description |"
+        lines << "|---|---|---|---|"
+        lines << renderFieldRows(((spec.response.properties as Map<String, Object>).version as Map<String, Object>).properties as Map<String, Object>)
+        lines << ""
+        lines << "## Examples"
+        lines << ""
+        (spec.examples as List<Map<String, Object>>).each { Map<String, Object> example ->
+            lines << "### ${example.title}"
+            lines << ""
+            lines << "Request:"
+            lines << "```json"
+            lines << groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(example.request))
+            lines << "```"
+            lines << ""
+            lines << "Response:"
+            lines << "```json"
+            lines << groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(example.response))
+            lines << "```"
+            lines << ""
+        }
+        return lines.join('\n').trim() + '\n'
+}
+
+application {
+    mainClass = 'org.es.tok.bridge.EsTokCliMain'
+}
+
+sourceSets {
+    test {
+        resources {
+            srcDir "$rootProject.projectDir/testing"
+        }
+    }
+}
+
+dependencies {
+    implementation project(':core')
+
+    testImplementation "junit:junit:4.13.2"
+}
+
+tasks.named('jar') {
+    manifest {
+        attributes 'Main-Class': application.mainClass.get()
+    }
+}
+
+tasks.register('fatJar', Jar) {
+    archiveClassifier = 'all'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes 'Main-Class': application.mainClass.get()
+    }
+    from sourceSets.main.output
+    dependsOn configurations.runtimeClasspath
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+}
+
+tasks.register('generateBridgeDocs') {
+    inputs.file bridgeSpecFile
+    outputs.file bridgeDocFile
+
+    doLast {
+        def spec = new groovy.json.JsonSlurper().parse(bridgeSpecFile) as Map<String, Object>
+        bridgeDocFile.parentFile.mkdirs()
+        bridgeDocFile.setText(renderBridgeDoc(spec), 'UTF-8')
+    }
+}
+
+tasks.register('verifyBridgeDocs') {
+    inputs.file bridgeSpecFile
+    inputs.file bridgeDocFile
+
+    mustRunAfter tasks.named('generateBridgeDocs')
+
+    doLast {
+        if (!bridgeDocFile.exists()) {
+            throw new GradleException("Missing generated bridge doc: ${bridgeDocFile}. Run ./gradlew :bridge:generateBridgeDocs")
+        }
+        def spec = new groovy.json.JsonSlurper().parse(bridgeSpecFile) as Map<String, Object>
+        def expected = renderBridgeDoc(spec)
+        def actual = bridgeDocFile.getText('UTF-8')
+        if (actual != expected) {
+            throw new GradleException("Bridge API docs are out of date. Run ./gradlew :bridge:generateBridgeDocs")
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('verifyBridgeDocs')
+}

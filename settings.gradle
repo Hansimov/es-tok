@@ -1,4 +1,6 @@
 rootProject.name = 'es_tok'
+include('core')
+include('bridge')
 try {
     enableFeaturePreview('TYPESAFE_PROJECT_ACCESSORS')
 } catch (MissingMethodException ignored) {

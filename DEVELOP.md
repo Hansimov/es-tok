@@ -101,10 +101,39 @@ curl --cacert $HOME/elasticsearch-docker-9.2.4-pro/certs/ca/ca.crt -u elastic:$E
 
 ## Test commands
 
+### Run default test suite
+```sh
+./gradlew test
+```
+
 ### Run all tests
 ```sh
 ./gradlew testRunner
 ```
+
+### Run bridge unit and integration tests
+```sh
+./gradlew :bridge:test
+```
+
+### Generate and verify bridge API docs
+```sh
+./gradlew :bridge:generateBridgeDocs
+./gradlew :bridge:verifyBridgeDocs
+```
+
+### QueryString integration tests
+`QueryStringTest` requires a running Elasticsearch node with the plugin loaded.
+The suite reads these environment variables before connecting:
+
+```sh
+ES_HOST=localhost
+ES_PORT=19200
+ES_USER=elastic
+ES_PASSWORD=...
+```
+
+If the node is unreachable, `QueryStringTest` is skipped by default instead of failing the whole `test` task.
 
 ### Run specific tests
 ```sh

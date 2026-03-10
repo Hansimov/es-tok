@@ -16,6 +16,13 @@ import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.X509Certificate;
 
+import org.apache.http.HttpHost;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.impl.client.BasicCredentialsProvider;
+import org.elasticsearch.client.Request;
+import org.elasticsearch.client.RestClient;
+
 /**
  * Utility class for testing ES-TOK analyzer
  */
@@ -44,6 +51,29 @@ public class TestUtils {
             return sslContext;
         } catch (NoSuchAlgorithmException | KeyManagementException e) {
             throw new RuntimeException("Failed to create insecure SSL context", e);
+        }
+    }
+
+    public static boolean isElasticsearchAvailable() {
+        String host = System.getenv().getOrDefault("ES_HOST", "localhost");
+        int port = Integer.parseInt(System.getenv().getOrDefault("ES_PORT", "19200"));
+        String username = System.getenv().getOrDefault("ES_USER", "elastic");
+        String password = System.getenv().getOrDefault("ES_PASSWORD", "");
+
+        BasicCredentialsProvider credentialsProvider = new BasicCredentialsProvider();
+        credentialsProvider.setCredentials(
+                AuthScope.ANY,
+                new UsernamePasswordCredentials(username, password));
+
+        try (RestClient client = RestClient.builder(new HttpHost(host, port, "https"))
+                .setHttpClientConfigCallback(
+                        httpClientBuilder -> httpClientBuilder.setDefaultCredentialsProvider(credentialsProvider)
+                                .setSSLContext(TestUtils.createInsecureSSLContext()))
+                .build()) {
+            client.performRequest(new Request("GET", "/"));
+            return true;
+        } catch (Exception exception) {
+            return false;
         }
     }
 

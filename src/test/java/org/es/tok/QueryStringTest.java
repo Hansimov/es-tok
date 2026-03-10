@@ -8,6 +8,7 @@ import org.elasticsearch.client.Request;
 import org.elasticsearch.client.Response;
 import org.elasticsearch.client.RestClient;
 import org.junit.After;
+import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -27,6 +28,8 @@ public class QueryStringTest {
 
   @Before
   public void setup() throws Exception {
+    Assume.assumeTrue("QueryStringTest requires a reachable Elasticsearch test node", TestUtils.isElasticsearchAvailable());
+
     // Setup REST client
     String host = System.getenv().getOrDefault("ES_HOST", "localhost");
     int port = Integer.parseInt(System.getenv().getOrDefault("ES_PORT", "19200"));

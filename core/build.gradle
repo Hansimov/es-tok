@@ -1,0 +1,36 @@
+plugins {
+    id 'java-library'
+}
+
+def sharedSourcePatterns = [
+    'org/es/tok/config/**',
+    'org/es/tok/extra/**',
+    'org/es/tok/categ/**',
+    'org/es/tok/vocab/**',
+    'org/es/tok/ngram/**',
+    'org/es/tok/rules/**',
+    'org/es/tok/strategy/**',
+    'org/es/tok/core/**'
+]
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src/main/java', '../src/main/java']
+            sharedSourcePatterns.each { include it }
+        }
+        resources {
+            srcDirs = ['src/main/resources', '../src/main/resources']
+        }
+    }
+}
+
+dependencies {
+    api "org.elasticsearch:elasticsearch:${rootProject.ext.elasticVersion}"
+    api "org.ahocorasick:ahocorasick:0.6.3"
+    api "com.fasterxml.jackson.core:jackson-databind:2.15.2"
+
+    testImplementation "junit:junit:4.13.2"
+    testImplementation "org.apache.lucene:lucene-test-framework:${rootProject.ext.luceneVersion}"
+    testImplementation "org.apache.lucene:lucene-analysis-common:${rootProject.ext.luceneVersion}"
+}

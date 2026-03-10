@@ -8,19 +8,11 @@ import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentParser;
 import org.elasticsearch.common.settings.Settings;
-import org.es.tok.analysis.EsTokAnalyzer;
 import org.es.tok.config.EsTokConfig;
 import org.es.tok.config.EsTokConfigLoader;
-import org.es.tok.tokenize.GroupAttribute;
-import org.es.tok.strategy.VocabStrategy;
-import org.es.tok.strategy.CategStrategy;
-import org.es.tok.strategy.NgramStrategy;
-import org.es.tok.extra.HantToHansConverter;
-import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
-import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
-import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
-import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
+import org.es.tok.core.facade.EsTokEngine;
+import org.es.tok.core.model.AnalyzeResult;
+import org.es.tok.core.model.AnalyzeToken;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -484,22 +476,27 @@ public class RestAnalyzeAction extends BaseRestHandler {
 
         return channel -> {
             try {
-                List<AnalyzeToken> tokens = analyzeText(finalText, finalConfig);
+                AnalyzeResult result = new EsTokEngine(finalConfig).analyze(finalText);
 
                 XContentBuilder builder = channel.newBuilder();
                 builder.startObject();
                 builder.startArray("tokens");
-                for (AnalyzeToken token : tokens) {
+                for (AnalyzeToken token : result.getTokens()) {
                     builder.startObject();
-                    builder.field("token", token.term);
-                    builder.field("start_offset", token.startOffset);
-                    builder.field("end_offset", token.endOffset);
-                    builder.field("type", token.type);
-                    builder.field("group", token.group);
-                    builder.field("position", token.position);
+                    builder.field("token", token.getToken());
+                    builder.field("start_offset", token.getStartOffset());
+                    builder.field("end_offset", token.getEndOffset());
+                    builder.field("type", token.getType());
+                    builder.field("group", token.getGroup());
+                    builder.field("position", token.getPosition());
                     builder.endObject();
                 }
                 builder.endArray();
+                builder.startObject("version");
+                builder.field("analysis_hash", result.getVersion().getAnalysisHash());
+                builder.field("vocab_hash", result.getVersion().getVocabHash());
+                builder.field("rules_hash", result.getVersion().getRulesHash());
+                builder.endObject();
                 builder.endObject();
 
                 channel.sendResponse(new RestResponse(RestStatus.OK, builder));
@@ -520,74 +517,6 @@ public class RestAnalyzeAction extends BaseRestHandler {
             channel.sendResponse(new RestResponse(status, builder));
         } catch (IOException e) {
             // Fallback error response
-        }
-    }
-
-    private List<AnalyzeToken> analyzeText(String text, EsTokConfig config) throws IOException {
-        List<AnalyzeToken> tokens = new ArrayList<>();
-
-        // Build strategies, using cached VocabStrategy for performance
-        VocabStrategy vocabStrategy = config.getVocabConfig().getOrCreateStrategy();
-        CategStrategy categStrategy = config.getCategConfig().isUseCateg()
-                ? new CategStrategy(config.getCategConfig().isSplitWord())
-                : null;
-        NgramStrategy ngramStrategy = config.getNgramConfig().hasAnyNgramEnabled()
-                ? new NgramStrategy(config.getNgramConfig())
-                : null;
-        HantToHansConverter hantConverter = null;
-        if (config.getExtraConfig().isIgnoreHant()) {
-            try {
-                hantConverter = HantToHansConverter.getInstance();
-            } catch (Exception e) {
-                // Ignore — proceed without hant conversion
-            }
-        }
-
-        try (EsTokAnalyzer analyzer = new EsTokAnalyzer(config, vocabStrategy, categStrategy, ngramStrategy,
-                hantConverter)) {
-            TokenStream tokenStream = analyzer.tokenStream("field", text);
-
-            CharTermAttribute termAtt = tokenStream.addAttribute(CharTermAttribute.class);
-            OffsetAttribute offsetAtt = tokenStream.addAttribute(OffsetAttribute.class);
-            PositionIncrementAttribute posIncrAtt = tokenStream.addAttribute(PositionIncrementAttribute.class);
-            TypeAttribute typeAtt = tokenStream.addAttribute(TypeAttribute.class);
-            GroupAttribute groupAtt = tokenStream.addAttribute(GroupAttribute.class);
-
-            tokenStream.reset();
-
-            int position = -1;
-            while (tokenStream.incrementToken()) {
-                position += posIncrAtt.getPositionIncrement();
-                tokens.add(new AnalyzeToken(
-                        termAtt.toString(),
-                        offsetAtt.startOffset(),
-                        offsetAtt.endOffset(),
-                        typeAtt.type(),
-                        groupAtt.group(),
-                        position));
-            }
-
-            tokenStream.end();
-        }
-
-        return tokens;
-    }
-
-    private static class AnalyzeToken {
-        final String term;
-        final int startOffset;
-        final int endOffset;
-        final String type;
-        final String group;
-        final int position;
-
-        AnalyzeToken(String term, int startOffset, int endOffset, String type, String group, int position) {
-            this.term = term;
-            this.startOffset = startOffset;
-            this.endOffset = endOffset;
-            this.type = type;
-            this.group = group;
-            this.position = position;
         }
     }
 }

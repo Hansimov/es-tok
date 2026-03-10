@@ -571,12 +571,12 @@ es_tok_query_string 查询 DSL
 
 ### GET `/_cat/es_tok` / `/_cat/es_tok/version`
 
-由 `RestInfoAction` 处理，返回插件状态和版本信息：
+由 `RestInfoAction` 处理，返回插件状态和版本信息。当前输出除了插件状态之外，还会附带诊断用途的 `analysis_hash`、`vocab_hash`、`rules_hash` 列，用于快速确认 Java core 默认诊断配置对应的版本指纹：
 
 | 端点 | 返回内容 |
 |------|---------|
-| `/_cat/es_tok` | `es_tok \| Ready \| ES-TOK plugin` |
-| `/_cat/es_tok/version` | `es_tok \| 0.9.0 \| ES-TOK plugin` |
+| `/_cat/es_tok` | `es_tok \| Ready \| 0.9.0 \| <analysis_hash> \| disabled \| disabled \| ES-TOK plugin` |
+| `/_cat/es_tok/version` | `es_tok \| 0.9.0 \| 0.9.0 \| <analysis_hash> \| disabled \| disabled \| ES-TOK plugin` |
 
 ---
 

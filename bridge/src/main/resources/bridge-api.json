@@ -1,0 +1,194 @@
+{
+    "title": "ES-TOK Bridge API",
+    "summary": "The bridge CLI exposes the extracted ES-TOK Java core through stdin/stdout JSON so Python and other non-JVM callers can reuse the same analysis pipeline.",
+    "transport": {
+        "request": "JSON object written to stdin",
+        "response": "JSON object written to stdout"
+    },
+    "request": {
+        "description": "The bridge requires a `text` field and forwards additional analyzer settings to the ES-TOK config loader. Nested config objects keep the same names used by the plugin REST API.",
+        "required": [
+            "text"
+        ],
+        "properties": {
+            "text": {
+                "type": "string",
+                "required": true,
+                "description": "Input text to analyze. Empty or missing values return an error response."
+            },
+            "use_vocab": {
+                "type": "boolean",
+                "required": false,
+                "description": "Enable vocab matching. Defaults to true for bridge parity with the plugin analyze endpoint."
+            },
+            "use_categ": {
+                "type": "boolean",
+                "required": false,
+                "description": "Enable categ tokenization."
+            },
+            "use_ngram": {
+                "type": "boolean",
+                "required": false,
+                "description": "Enable n-gram generation."
+            },
+            "use_rules": {
+                "type": "boolean",
+                "required": false,
+                "description": "Enable rule filtering."
+            },
+            "extra_config": {
+                "type": "object",
+                "required": false,
+                "description": "Optional nested extra config such as ignore_case, ignore_hant, drop_duplicates and drop_categs."
+            },
+            "categ_config": {
+                "type": "object",
+                "required": false,
+                "description": "Optional nested categ config such as split_word."
+            },
+            "vocab_config": {
+                "type": "object",
+                "required": false,
+                "description": "Optional nested vocab config. When omitted and use_vocab is true, the bridge defaults vocab_config.file to vocabs.txt."
+            },
+            "ngram_config": {
+                "type": "object",
+                "required": false,
+                "description": "Optional nested n-gram config such as use_bigram, use_vbgram, use_vcgram and drop_cogram."
+            },
+            "rules_config": {
+                "type": "object",
+                "required": false,
+                "description": "Optional nested rules config or file reference."
+            }
+        }
+    },
+    "response": {
+        "properties": {
+            "tokens": {
+                "type": "array",
+                "required": true,
+                "description": "Ordered analyze tokens emitted by the shared Java core.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "token": {
+                            "type": "string",
+                            "required": true,
+                            "description": "Normalized token text."
+                        },
+                        "start_offset": {
+                            "type": "integer",
+                            "required": true,
+                            "description": "Inclusive start offset in the analyzed text."
+                        },
+                        "end_offset": {
+                            "type": "integer",
+                            "required": true,
+                            "description": "Exclusive end offset in the analyzed text."
+                        },
+                        "type": {
+                            "type": "string",
+                            "required": true,
+                            "description": "Lucene token type such as cjk, vocab or bigram."
+                        },
+                        "group": {
+                            "type": "string",
+                            "required": true,
+                            "description": "ES-TOK token group such as categ, vocab or ngram."
+                        },
+                        "position": {
+                            "type": "integer",
+                            "required": true,
+                            "description": "Token position in the final ordered output."
+                        }
+                    }
+                }
+            },
+            "version": {
+                "type": "object",
+                "required": true,
+                "description": "Version hashes describing the active analysis behavior and resources.",
+                "properties": {
+                    "analysis_hash": {
+                        "type": "string",
+                        "required": true,
+                        "description": "Hash of the effective analysis configuration and referenced resource hashes."
+                    },
+                    "vocab_hash": {
+                        "type": "string",
+                        "required": true,
+                        "description": "Hash of the resolved vocab list or `disabled` when vocab is inactive."
+                    },
+                    "rules_hash": {
+                        "type": "string",
+                        "required": true,
+                        "description": "Hash of the resolved rules or `disabled` when rules are inactive."
+                    }
+                }
+            }
+        }
+    },
+    "examples": [
+        {
+            "title": "Inline vocab analysis",
+            "request": {
+                "text": "自然语言处理技术",
+                "use_vocab": true,
+                "use_categ": false,
+                "vocab_config": {
+                    "list": [
+                        "自然语言",
+                        "语言处理",
+                        "处理技术"
+                    ]
+                }
+            },
+            "response": {
+                "tokens": [
+                    {
+                        "token": "自然语言",
+                        "start_offset": 0,
+                        "end_offset": 4,
+                        "type": "vocab",
+                        "group": "vocab",
+                        "position": 0
+                    }
+                ],
+                "version": {
+                    "analysis_hash": "537297ca99b74e48",
+                    "vocab_hash": "3edf73e70c75ac7c",
+                    "rules_hash": "disabled"
+                }
+            }
+        },
+        {
+            "title": "Minimal categ analysis",
+            "request": {
+                "text": "红警HBK08",
+                "use_vocab": false,
+                "use_categ": true,
+                "categ_config": {
+                    "split_word": true
+                }
+            },
+            "response": {
+                "tokens": [
+                    {
+                        "token": "红",
+                        "start_offset": 0,
+                        "end_offset": 1,
+                        "type": "cjk",
+                        "group": "categ",
+                        "position": 0
+                    }
+                ],
+                "version": {
+                    "analysis_hash": "example-analysis-hash",
+                    "vocab_hash": "disabled",
+                    "rules_hash": "disabled"
+                }
+            }
+        }
+    ]
+}
