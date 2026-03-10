@@ -6,6 +6,16 @@
 - Gradle Wrapper（优先使用仓库内的 `./gradlew`）
 - 可选：带插件的 Elasticsearch 节点，用于 `QueryStringTest` 和手工验证
 
+## 工程结构
+
+当前仓库是标准 Gradle 多模块工程：
+
+- 根项目：Elasticsearch 插件适配层，包含 REST、query、tokenizer、plugin 注册等 ES/Lucene 相关代码
+- `core`：纯分析核心与默认资源
+- `bridge`：命令行桥接层与 bridge 文档生成
+
+日常开发应始终通过 Gradle 项目模型导入，不要把它当成单模块 Java 工程手工配置源码目录。
+
 ## 首次安装与配置
 
 ### 安装 Java 21
@@ -88,6 +98,21 @@ gradle wrapper --gradle-version 9.0.0
 ./gradlew test
 ```
 
+### 全量校验
+
+提交前推荐至少执行一次：
+
+```sh
+./gradlew clean test yamlRestTest :bridge:test check
+```
+
+如果存在 sibling `btok` 仓库，再补跑：
+
+```sh
+cd ../btok
+python -m unittest discover -s tests
+```
+
 ### bridge 测试
 
 ```sh
@@ -161,6 +186,43 @@ bridge 接口文档不是手写维护，而是由两部分共同生成：
 ./gradlew :bridge:generateBridgeDocs
 ./gradlew :bridge:verifyBridgeDocs
 ```
+
+## 常见问题
+
+### `jarHell`：Hamcrest 冲突
+
+如果全量测试在 `:jarHell` 失败，并看到 `hamcrest:3.0` 与 `hamcrest-core:1.3` 同时出现在 classpath，说明测试依赖发生了重复引入。
+
+当前仓库已经在根项目与 `core` 的 `junit:4.13.2` 依赖上显式排除了 `hamcrest-core`。后续如果调整测试依赖，需继续保持这个约束，否则 `./gradlew clean test yamlRestTest :bridge:test check` 会再次失败。
+
+### VS Code Java classpath warning
+
+如果 VS Code / JDT LS 提示：
+
+- `EsTokTokenizer.java is not on the classpath of project core`
+- `RestAnalyzeAction.java is not on the classpath of project core`
+- `RestInfoAction.java is not on the classpath of project core`
+
+优先检查工作区是否误配置了：
+
+- `java.project.sourcePaths`
+- `java.project.resourcePaths`
+
+这两个设置适用于简单 Java 工程，不适用于当前多模块 Gradle 项目。它们会干扰 Gradle 导入，导致根项目源码被错误映射到 `core` 项目。
+
+修正后，如果警告仍未立即消失，执行一次：
+
+```text
+Java: Clean Java Language Server Workspace
+```
+
+或：
+
+```text
+Developer: Reload Window
+```
+
+如果 Gradle 构建已经通过，而只剩这类 warning，通常是语言服务缓存未刷新，不是实际编译错误。
 
 ## 回归约定
 

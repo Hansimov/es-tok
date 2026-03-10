@@ -13,6 +13,7 @@ buildscript {
     }
 }
 
+apply plugin: 'java-library'
 apply plugin: 'elasticsearch.esplugin'
 apply plugin: 'elasticsearch.yaml-rest-test'
 
@@ -36,9 +37,20 @@ esplugin {
 }
 
 sourceSets {
-    test {
+    main {
+        java {
+            srcDirs = ['src/main/java']
+        }
         resources {
-            srcDir 'testing'
+            srcDirs = ['src/main/resources']
+        }
+    }
+    test {
+        java {
+            srcDirs = ['src/test/java']
+        }
+        resources {
+            srcDirs = ['src/test/resources', 'testing']
         }
     }
 }
@@ -46,7 +58,9 @@ sourceSets {
 dependencies {
     implementation project(':core')
     
-    testImplementation "junit:junit:4.13.2"
+    testImplementation("junit:junit:4.13.2") {
+        exclude group: 'org.hamcrest', module: 'hamcrest-core'
+    }
     testImplementation "org.apache.lucene:lucene-test-framework:${luceneVersion}"
     testImplementation "org.apache.lucene:lucene-analysis-common:${luceneVersion}"
     
