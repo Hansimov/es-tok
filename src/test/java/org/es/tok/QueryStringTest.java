@@ -98,6 +98,7 @@ public class QueryStringTest {
     indexDocument("3", "第三个文档，测试不同的内容");
     indexDocument("4", "第四个文档，测试更多内容和词汇");
     indexDocument("5", "最后一个文档，包含特殊的内容");
+    indexDocument("6", "github copilot 提供代码补全和纠错能力");
 
     // Refresh index
     Request refreshRequest = new Request("POST", "/" + TEST_INDEX + "/_refresh");
@@ -317,7 +318,7 @@ public class QueryStringTest {
         {
           "query": {
             "es_tok_query_string": {
-              "query": "\"测试 文档\"",
+              "query": "\\\"测试 文档\\\"",
               "default_field": "content",
               "constraints": [
                 { "NOT": { "have_token": ["一个"] } }
@@ -367,6 +368,29 @@ public class QueryStringTest {
 
     String result = performSearch(query);
     assertTrue("Should work with max_freq=0", result.contains("\"total\""));
+  }
+
+  @Test
+  public void testSpellCorrectionFindsMisspelledEnglishTerms() throws Exception {
+    String query = """
+        {
+          "query": {
+            "es_tok_query_string": {
+              "query": "gihtub copolit",
+              "default_field": "content",
+              "default_operator": "AND",
+              "spell_correct": true,
+              "spell_correct_rare_doc_freq": 0,
+              "spell_correct_min_length": 4,
+              "spell_correct_size": 3
+            }
+          }
+        }
+        """;
+
+    String result = performSearch(query);
+    assertTrue("Spell correction should find the github copilot document", extractHitCount(result) > 0);
+    assertTrue("Corrected result should contain github copilot document", result.contains("github copilot"));
   }
 
   private int extractHitCount(String jsonResponse) {

@@ -15,6 +15,7 @@ import org.elasticsearch.index.query.Operator;
 import org.elasticsearch.xcontent.ParseField;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentParser;
+import org.es.tok.suggest.LuceneIndexSuggester;
 
 import java.io.IOException;
 import java.time.ZoneId;
@@ -75,6 +76,12 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
     // ES-TOK extension fields
     public static final ParseField CONSTRAINTS_FIELD = new ParseField("constraints");
     public static final ParseField MAX_FREQ_FIELD = new ParseField("max_freq");
+    public static final ParseField SPELL_CORRECT_FIELD = new ParseField("spell_correct");
+    public static final ParseField SPELL_CORRECT_RARE_DOC_FREQ_FIELD = new ParseField("spell_correct_rare_doc_freq");
+    public static final ParseField SPELL_CORRECT_MIN_LENGTH_FIELD = new ParseField("spell_correct_min_length");
+    public static final ParseField SPELL_CORRECT_MAX_EDITS_FIELD = new ParseField("spell_correct_max_edits");
+    public static final ParseField SPELL_CORRECT_PREFIX_LENGTH_FIELD = new ParseField("spell_correct_prefix_length");
+    public static final ParseField SPELL_CORRECT_SIZE_FIELD = new ParseField("spell_correct_size");
 
     // ===== Instance fields =====
 
@@ -105,6 +112,12 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
     // ES-TOK extension: constraints and max_freq
     private List<SearchConstraint> constraints = Collections.emptyList();
     private int maxFreq = 0;
+    private boolean spellCorrect = false;
+    private int spellCorrectRareDocFreq = 0;
+    private int spellCorrectMinLength = 4;
+    private int spellCorrectMaxEdits = 2;
+    private int spellCorrectPrefixLength = 1;
+    private int spellCorrectSize = 3;
 
     // ===== Constructors =====
 
@@ -171,6 +184,12 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         }
 
         this.maxFreq = in.readVInt();
+        this.spellCorrect = in.readBoolean();
+        this.spellCorrectRareDocFreq = in.readVInt();
+        this.spellCorrectMinLength = in.readVInt();
+        this.spellCorrectMaxEdits = in.readVInt();
+        this.spellCorrectPrefixLength = in.readVInt();
+        this.spellCorrectSize = in.readVInt();
     }
 
     @Override
@@ -223,6 +242,12 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         }
 
         out.writeVInt(maxFreq);
+        out.writeBoolean(spellCorrect);
+        out.writeVInt(spellCorrectRareDocFreq);
+        out.writeVInt(spellCorrectMinLength);
+        out.writeVInt(spellCorrectMaxEdits);
+        out.writeVInt(spellCorrectPrefixLength);
+        out.writeVInt(spellCorrectSize);
     }
 
     // ===== Getters and setters (fluent API) =====
@@ -483,6 +508,75 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         return maxFreq;
     }
 
+    public EsTokQueryStringQueryBuilder spellCorrect(boolean spellCorrect) {
+        this.spellCorrect = spellCorrect;
+        return this;
+    }
+
+    public boolean spellCorrect() {
+        return spellCorrect;
+    }
+
+    public EsTokQueryStringQueryBuilder spellCorrectRareDocFreq(int spellCorrectRareDocFreq) {
+        if (spellCorrectRareDocFreq < 0) {
+            throw new IllegalArgumentException("[spell_correct_rare_doc_freq] cannot be negative");
+        }
+        this.spellCorrectRareDocFreq = spellCorrectRareDocFreq;
+        return this;
+    }
+
+    public int spellCorrectRareDocFreq() {
+        return spellCorrectRareDocFreq;
+    }
+
+    public EsTokQueryStringQueryBuilder spellCorrectMinLength(int spellCorrectMinLength) {
+        if (spellCorrectMinLength < 1) {
+            throw new IllegalArgumentException("[spell_correct_min_length] must be positive");
+        }
+        this.spellCorrectMinLength = spellCorrectMinLength;
+        return this;
+    }
+
+    public int spellCorrectMinLength() {
+        return spellCorrectMinLength;
+    }
+
+    public EsTokQueryStringQueryBuilder spellCorrectMaxEdits(int spellCorrectMaxEdits) {
+        if (spellCorrectMaxEdits < 1 || spellCorrectMaxEdits > 2) {
+            throw new IllegalArgumentException("[spell_correct_max_edits] must be 1 or 2");
+        }
+        this.spellCorrectMaxEdits = spellCorrectMaxEdits;
+        return this;
+    }
+
+    public int spellCorrectMaxEdits() {
+        return spellCorrectMaxEdits;
+    }
+
+    public EsTokQueryStringQueryBuilder spellCorrectPrefixLength(int spellCorrectPrefixLength) {
+        if (spellCorrectPrefixLength < 0) {
+            throw new IllegalArgumentException("[spell_correct_prefix_length] cannot be negative");
+        }
+        this.spellCorrectPrefixLength = spellCorrectPrefixLength;
+        return this;
+    }
+
+    public int spellCorrectPrefixLength() {
+        return spellCorrectPrefixLength;
+    }
+
+    public EsTokQueryStringQueryBuilder spellCorrectSize(int spellCorrectSize) {
+        if (spellCorrectSize < 1) {
+            throw new IllegalArgumentException("[spell_correct_size] must be positive");
+        }
+        this.spellCorrectSize = spellCorrectSize;
+        return this;
+    }
+
+    public int spellCorrectSize() {
+        return spellCorrectSize;
+    }
+
     // ===== Query building =====
 
     @Override
@@ -494,6 +588,17 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
                 lenient != null ? lenient : false);
 
         parser.setMaxFreq(maxFreq);
+        parser.setSuggestionFields(resolveQueryFields());
+        if (spellCorrect) {
+            parser.setCorrectionConfig(new LuceneIndexSuggester.CorrectionConfig(
+                    spellCorrectRareDocFreq,
+                    spellCorrectMinLength,
+                    spellCorrectMaxEdits,
+                    spellCorrectPrefixLength,
+                    spellCorrectSize,
+                    1,
+                    0.5f));
+        }
 
         parser.setDefaultOperator(
                 defaultOperator == Operator.AND ? org.apache.lucene.queryparser.classic.QueryParser.Operator.AND
@@ -653,6 +758,24 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         if (maxFreq > 0) {
             builder.field(MAX_FREQ_FIELD.getPreferredName(), maxFreq);
         }
+        if (spellCorrect) {
+            builder.field(SPELL_CORRECT_FIELD.getPreferredName(), true);
+        }
+        if (spellCorrectRareDocFreq != 0) {
+            builder.field(SPELL_CORRECT_RARE_DOC_FREQ_FIELD.getPreferredName(), spellCorrectRareDocFreq);
+        }
+        if (spellCorrectMinLength != 4) {
+            builder.field(SPELL_CORRECT_MIN_LENGTH_FIELD.getPreferredName(), spellCorrectMinLength);
+        }
+        if (spellCorrectMaxEdits != 2) {
+            builder.field(SPELL_CORRECT_MAX_EDITS_FIELD.getPreferredName(), spellCorrectMaxEdits);
+        }
+        if (spellCorrectPrefixLength != 1) {
+            builder.field(SPELL_CORRECT_PREFIX_LENGTH_FIELD.getPreferredName(), spellCorrectPrefixLength);
+        }
+        if (spellCorrectSize != 3) {
+            builder.field(SPELL_CORRECT_SIZE_FIELD.getPreferredName(), spellCorrectSize);
+        }
 
         if (boost() != DEFAULT_BOOST) {
             builder.field(BOOST_FIELD.getPreferredName(), boost());
@@ -690,6 +813,12 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         boolean autoGenerateSynonymsPhraseQuery = true;
         List<SearchConstraint> constraints = Collections.emptyList();
         int maxFreq = 0;
+        boolean spellCorrect = false;
+        int spellCorrectRareDocFreq = 0;
+        int spellCorrectMinLength = 4;
+        int spellCorrectMaxEdits = 2;
+        int spellCorrectPrefixLength = 1;
+        int spellCorrectSize = 3;
         float boost = DEFAULT_BOOST;
         String queryName = null;
 
@@ -766,6 +895,23 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
                     autoGenerateSynonymsPhraseQuery = parser.booleanValue();
                 } else if (MAX_FREQ_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     maxFreq = parser.intValue();
+                } else if (SPELL_CORRECT_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
+                    spellCorrect = parser.booleanValue();
+                } else if (SPELL_CORRECT_RARE_DOC_FREQ_FIELD.match(currentFieldName,
+                        parser.getDeprecationHandler())) {
+                    spellCorrectRareDocFreq = parser.intValue();
+                } else if (SPELL_CORRECT_MIN_LENGTH_FIELD.match(currentFieldName,
+                        parser.getDeprecationHandler())) {
+                    spellCorrectMinLength = parser.intValue();
+                } else if (SPELL_CORRECT_MAX_EDITS_FIELD.match(currentFieldName,
+                        parser.getDeprecationHandler())) {
+                    spellCorrectMaxEdits = parser.intValue();
+                } else if (SPELL_CORRECT_PREFIX_LENGTH_FIELD.match(currentFieldName,
+                        parser.getDeprecationHandler())) {
+                    spellCorrectPrefixLength = parser.intValue();
+                } else if (SPELL_CORRECT_SIZE_FIELD.match(currentFieldName,
+                        parser.getDeprecationHandler())) {
+                    spellCorrectSize = parser.intValue();
                 } else if (AbstractQueryBuilder.BOOST_FIELD.match(currentFieldName,
                         parser.getDeprecationHandler())) {
                     boost = parser.floatValue();
@@ -825,6 +971,12 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         queryBuilder.autoGenerateSynonymsPhraseQuery(autoGenerateSynonymsPhraseQuery);
         queryBuilder.constraints(constraints);
         queryBuilder.maxFreq(maxFreq);
+        queryBuilder.spellCorrect(spellCorrect);
+        queryBuilder.spellCorrectRareDocFreq(spellCorrectRareDocFreq);
+        queryBuilder.spellCorrectMinLength(spellCorrectMinLength);
+        queryBuilder.spellCorrectMaxEdits(spellCorrectMaxEdits);
+        queryBuilder.spellCorrectPrefixLength(spellCorrectPrefixLength);
+        queryBuilder.spellCorrectSize(spellCorrectSize);
         queryBuilder.boost(boost);
         queryBuilder.queryName(queryName);
 
@@ -869,7 +1021,13 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
                 && maxDeterminizedStates == other.maxDeterminizedStates
                 && autoGenerateSynonymsPhraseQuery == other.autoGenerateSynonymsPhraseQuery
                 && Objects.equals(constraints, other.constraints)
-                && maxFreq == other.maxFreq;
+                && maxFreq == other.maxFreq
+                && spellCorrect == other.spellCorrect
+                && spellCorrectRareDocFreq == other.spellCorrectRareDocFreq
+                && spellCorrectMinLength == other.spellCorrectMinLength
+                && spellCorrectMaxEdits == other.spellCorrectMaxEdits
+                && spellCorrectPrefixLength == other.spellCorrectPrefixLength
+                && spellCorrectSize == other.spellCorrectSize;
     }
 
     @Override
@@ -879,6 +1037,8 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
                 fuzzyPrefixLength, fuzzyMaxExpansions, fuzzyTranspositions, fuzzyRewrite,
                 lenient, analyzeWildcard, timeZone, type, tieBreaker, rewrite,
                 minimumShouldMatch, enablePositionIncrements, maxDeterminizedStates,
-                autoGenerateSynonymsPhraseQuery, constraints, maxFreq);
+                autoGenerateSynonymsPhraseQuery, constraints, maxFreq,
+                spellCorrect, spellCorrectRareDocFreq, spellCorrectMinLength,
+                spellCorrectMaxEdits, spellCorrectPrefixLength, spellCorrectSize);
     }
 }

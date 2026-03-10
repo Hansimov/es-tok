@@ -22,6 +22,7 @@ public class QueryStringBuilderTest {
         assertEquals("test query", builder.queryString());
         assertTrue(builder.constraints().isEmpty());
         assertEquals(0, builder.maxFreq());
+                assertFalse(builder.spellCorrect());
     }
 
     @Test
@@ -163,12 +164,16 @@ public class QueryStringBuilderTest {
                 .defaultField("content")
                 .constraints(List.of(constraint))
                 .maxFreq(50)
+                .spellCorrect(true)
+                .spellCorrectRareDocFreq(1)
                 .lenient(true)
                 .boost(2.0f);
 
         assertEquals("测试 查询 文档", builder.queryString());
         assertEquals(1, builder.constraints().size());
         assertEquals(50, builder.maxFreq());
+        assertTrue(builder.spellCorrect());
+        assertEquals(1, builder.spellCorrectRareDocFreq());
         assertTrue(builder.lenient());
         assertEquals(2.0f, builder.boost(), 0.001f);
     }
@@ -190,6 +195,9 @@ public class QueryStringBuilderTest {
                 .defaultField("content")
                 .constraints(List.of(constraint))
                 .maxFreq(100)
+                .spellCorrect(true)
+                .spellCorrectMinLength(3)
+                .spellCorrectMaxEdits(1)
                 .phraseSlop(2)
                 .lenient(true)
                 .analyzeWildcard(true)
@@ -199,8 +207,16 @@ public class QueryStringBuilderTest {
         assertTrue(builder.fields().containsKey("field1"));
         assertTrue(builder.fields().containsKey("field2"));
         assertEquals(100, builder.maxFreq());
+                assertTrue(builder.spellCorrect());
+                assertEquals(3, builder.spellCorrectMinLength());
+                assertEquals(1, builder.spellCorrectMaxEdits());
         assertFalse(builder.constraints().isEmpty());
     }
+
+        @Test(expected = IllegalArgumentException.class)
+        public void testInvalidSpellCorrectMaxEdits() {
+                new EsTokQueryStringQueryBuilder("test").spellCorrectMaxEdits(3);
+        }
 
     // ===== Equality tests =====
 
@@ -217,11 +233,13 @@ public class QueryStringBuilderTest {
 
         EsTokQueryStringQueryBuilder builder1 = new EsTokQueryStringQueryBuilder("test query")
                 .constraints(List.of(constraint))
-                .maxFreq(50);
+                .maxFreq(50)
+                .spellCorrect(true);
 
         EsTokQueryStringQueryBuilder builder2 = new EsTokQueryStringQueryBuilder("test query")
                 .constraints(List.of(constraint))
-                .maxFreq(50);
+                .maxFreq(50)
+                .spellCorrect(true);
 
         assertEquals(builder1, builder2);
         assertEquals(builder1.hashCode(), builder2.hashCode());
@@ -230,10 +248,12 @@ public class QueryStringBuilderTest {
     @Test
     public void testInequality() {
         EsTokQueryStringQueryBuilder builder1 = new EsTokQueryStringQueryBuilder("test query 1")
-                .maxFreq(50);
+                .maxFreq(50)
+                .spellCorrect(true);
 
         EsTokQueryStringQueryBuilder builder2 = new EsTokQueryStringQueryBuilder("test query 2")
-                .maxFreq(100);
+                .maxFreq(100)
+                .spellCorrect(false);
 
         assertNotEquals(builder1, builder2);
     }

@@ -15,11 +15,14 @@ import org.apache.lucene.search.TermQuery;
 import org.elasticsearch.index.query.SearchExecutionContext;
 import org.elasticsearch.index.search.QueryStringQueryParser;
 import org.elasticsearch.lucene.queries.BlendedTermQuery;
+import org.es.tok.suggest.LuceneIndexSuggester;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Extended QueryStringQueryParser with frequency-based token filtering.
@@ -32,8 +35,14 @@ import java.util.Map;
  */
 public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
 
+    private static final String RESERVED_QUERY_CHARS = "+-!():{}[]^\"~*?:\\/|&";
+    private static final Pattern BOOLEAN_KEYWORD_PATTERN = Pattern.compile("(^|\\s)(AND|OR|NOT)(\\s|$)");
+
     private int maxFreq = 0;
     private SearchExecutionContext context;
+    private LuceneIndexSuggester.CorrectionConfig correctionConfig;
+    private List<String> suggestionFields = Collections.emptyList();
+    private LuceneIndexSuggester suggester;
 
     public EsTokQueryStringQueryParser(SearchExecutionContext context, String defaultField) {
         super(context, defaultField);
@@ -73,13 +82,107 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
         this.maxFreq = maxFreq;
     }
 
+    public void setCorrectionConfig(LuceneIndexSuggester.CorrectionConfig correctionConfig) {
+        this.correctionConfig = correctionConfig;
+    }
+
+    public void setSuggestionFields(List<String> suggestionFields) {
+        this.suggestionFields = suggestionFields != null ? List.copyOf(suggestionFields) : Collections.emptyList();
+    }
+
     @Override
     public Query parse(String query) throws ParseException {
-        Query originalQuery = super.parse(query);
-        if (originalQuery == null || maxFreq <= 0) {
+        boolean useRawCorrection = correctionConfig != null
+                && !suggestionFields.isEmpty()
+                && shouldCorrectRawQuery(query);
+        String effectiveQuery = useRawCorrection ? correctSimpleQueryText(query) : query;
+
+        Query originalQuery = super.parse(effectiveQuery);
+        if (originalQuery == null) {
             return originalQuery;
         }
-        return filterQuery(originalQuery);
+
+        if (!useRawCorrection && correctionConfig != null && !suggestionFields.isEmpty()) {
+            originalQuery = correctQuery(originalQuery);
+        }
+        if (maxFreq > 0) {
+            originalQuery = filterQuery(originalQuery);
+        }
+        return originalQuery;
+    }
+
+    private boolean shouldCorrectRawQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        if (BOOLEAN_KEYWORD_PATTERN.matcher(query).find()) {
+            return false;
+        }
+        for (int i = 0; i < query.length(); i++) {
+            if (RESERVED_QUERY_CHARS.indexOf(query.charAt(i)) >= 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private String correctSimpleQueryText(String query) {
+        try {
+            List<LuceneIndexSuggester.SuggestionOption> suggestions = getSuggester()
+                    .suggestCorrections(suggestionFields, query, correctionConfig);
+            if (suggestions.isEmpty()) {
+                return query;
+            }
+            return suggestions.get(0).text();
+        } catch (IOException e) {
+            return query;
+        }
+    }
+
+    private Query correctQuery(Query query) {
+        if (query == null) {
+            return null;
+        }
+
+        if (query instanceof BooleanQuery boolQuery) {
+            BooleanQuery.Builder builder = new BooleanQuery.Builder();
+            for (BooleanClause clause : boolQuery.clauses()) {
+                Query corrected = correctQuery(clause.query());
+                if (corrected != null) {
+                    builder.add(corrected, clause.occur());
+                }
+            }
+            return builder.build();
+        }
+        if (query instanceof DisjunctionMaxQuery disjunctionMaxQuery) {
+            List<Query> corrected = new ArrayList<>(disjunctionMaxQuery.getDisjuncts().size());
+            for (Query disjunct : disjunctionMaxQuery.getDisjuncts()) {
+                Query correctedDisjunct = correctQuery(disjunct);
+                if (correctedDisjunct != null) {
+                    corrected.add(correctedDisjunct);
+                }
+            }
+            return corrected.isEmpty()
+                    ? query
+                    : new DisjunctionMaxQuery(corrected, disjunctionMaxQuery.getTieBreakerMultiplier());
+        }
+        if (query instanceof BoostQuery boostQuery) {
+            Query corrected = correctQuery(boostQuery.getQuery());
+            return corrected == null ? null : new BoostQuery(corrected, boostQuery.getBoost());
+        }
+        if (query instanceof TermQuery termQuery) {
+            return correctTermQuery(termQuery);
+        }
+        if (query instanceof PhraseQuery phraseQuery) {
+            return correctPhraseQuery(phraseQuery);
+        }
+        if (query instanceof MultiPhraseQuery) {
+            return query;
+        }
+        if (query instanceof BlendedTermQuery) {
+            return query;
+        }
+        return query;
     }
 
     // ===== Frequency-based filtering =====
@@ -178,5 +281,48 @@ public class EsTokQueryStringQueryParser extends QueryStringQueryParser {
             // On error, don't filter the term
         }
         return false;
+    }
+
+    private Query correctTermQuery(TermQuery termQuery) {
+        Term originalTerm = termQuery.getTerm();
+        String correctedText = correctTermText(originalTerm.field(), originalTerm.text());
+        if (correctedText.equals(originalTerm.text())) {
+            return termQuery;
+        }
+        return new TermQuery(new Term(originalTerm.field(), correctedText));
+    }
+
+    private Query correctPhraseQuery(PhraseQuery phraseQuery) {
+        Term[] originalTerms = phraseQuery.getTerms();
+        int[] positions = phraseQuery.getPositions();
+        PhraseQuery.Builder builder = new PhraseQuery.Builder();
+        builder.setSlop(phraseQuery.getSlop());
+
+        boolean changed = false;
+        for (int i = 0; i < originalTerms.length; i++) {
+            Term originalTerm = originalTerms[i];
+            String correctedText = correctTermText(originalTerm.field(), originalTerm.text());
+            changed |= correctedText.equals(originalTerm.text()) == false;
+            builder.add(new Term(originalTerm.field(), correctedText), positions[i]);
+        }
+
+        return changed ? builder.build() : phraseQuery;
+    }
+
+    private String correctTermText(String field, String text) {
+        try {
+            List<String> fields = field != null ? List.of(field) : suggestionFields;
+            LuceneIndexSuggester.Correction correction = getSuggester().suggestCorrection(fields, text, correctionConfig);
+            return correction.changed() ? correction.suggested() : text;
+        } catch (IOException e) {
+            return text;
+        }
+    }
+
+    private LuceneIndexSuggester getSuggester() {
+        if (suggester == null) {
+            suggester = new LuceneIndexSuggester(context.getIndexReader());
+        }
+        return suggester;
     }
 }

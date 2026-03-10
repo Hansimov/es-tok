@@ -18,10 +18,13 @@ import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.plugins.SearchPlugin;
 import org.elasticsearch.rest.RestController;
 import org.elasticsearch.rest.RestHandler;
+import org.es.tok.action.EsTokSuggestAction;
+import org.es.tok.action.TransportEsTokSuggestAction;
 import org.es.tok.analysis.EsTokAnalyzerProvider;
 import org.es.tok.query.EsTokConstraintsQueryBuilder;
 import org.es.tok.query.EsTokQueryStringQueryBuilder;
 import org.es.tok.rest.RestInfoAction;
+import org.es.tok.rest.RestSuggestAction;
 import org.es.tok.tokenize.EsTokTokenizerFactory;
 import org.es.tok.rest.RestAnalyzeAction;
 
@@ -61,7 +64,14 @@ public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin,
             final Predicate<NodeFeature> clusterSupportsFeature) {
         return List.of(
                 new RestInfoAction(),
-                new RestAnalyzeAction());
+            new RestAnalyzeAction(),
+            new RestSuggestAction());
+        }
+
+        @Override
+        public List<ActionHandler> getActions() {
+        return List.of(
+            new ActionHandler(EsTokSuggestAction.INSTANCE, TransportEsTokSuggestAction.class));
     }
 
     @Override

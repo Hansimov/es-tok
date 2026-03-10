@@ -95,6 +95,110 @@ POST /_es_tok/analyze
 
 bridge CLI 与 REST analyze 复用同一套 payload 分析服务，因此请求字段语义、默认值和响应结构保持一致。bridge 的正式字段说明见 [../api/bridge.md](../api/bridge.md)。
 
+## 2.1 REST Suggest 接口
+
+### 端点
+
+```text
+GET /_es_tok/suggest
+POST /_es_tok/suggest
+GET /{index}/_es_tok/suggest
+POST /{index}/_es_tok/suggest
+```
+
+### 请求示例：prefix completion
+
+```json
+POST /my_index/_es_tok/suggest
+{
+  "text": "git",
+  "mode": "prefix",
+  "fields": ["content"],
+  "size": 5,
+  "scan_limit": 64,
+  "cache": true,
+  "max_fields": 8
+}
+```
+
+### 请求示例：next-token completion
+
+```json
+POST /my_index/_es_tok/suggest
+{
+  "text": "github",
+  "mode": "next_token",
+  "fields": ["content"],
+  "size": 5,
+  "scan_limit": 64,
+  "allow_compact_bigrams": true,
+  "cache": true
+}
+```
+
+### 请求示例：correction
+
+`correction` 模式会返回 top-K 整句候选，而不是只返回一个最佳改写。
+
+```json
+POST /my_index/_es_tok/suggest
+{
+  "text": "gihtub copolit",
+  "mode": "correction",
+  "fields": ["content"],
+  "size": 3,
+  "cache": true,
+  "correction_rare_doc_freq": 0,
+  "correction_min_length": 4,
+  "correction_max_edits": 2,
+  "correction_prefix_length": 1
+}
+```
+
+### 关键参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `text` | 无 | 当前输入前缀或当前 token |
+| `mode` | `prefix` | `prefix`、`next_token` 或 `correction` |
+| `fields` | 无 | 参与建议的 text 字段列表 |
+| `size` | `5` | 返回 top-K 候选 |
+| `scan_limit` | `64` | 每个 field 在 term dictionary 上的最大扫描数量 |
+| `min_prefix_length` | `1` | 最短输入长度 |
+| `min_candidate_length` | `1` | 最短候选长度 |
+| `allow_compact_bigrams` | `true` | `next_token` 模式下是否允许紧凑 bigram，如 `深度学习` |
+| `cache` | `true` | 是否启用 shard-local 建议缓存 |
+| `max_fields` | `8` | 一次请求最多参与建议的字段数 |
+| `correction_rare_doc_freq` | `0` | correction 模式下，只有 doc freq 小于等于该值的 token 才尝试纠错 |
+| `correction_min_length` | `4` | correction 模式下的最短纠错 token 长度 |
+| `correction_max_edits` | `2` | correction 模式下允许的最大编辑距离，只能为 `1` 或 `2` |
+| `correction_prefix_length` | `1` | correction 模式下候选需要共享的最短前缀 |
+
+### 响应示例
+
+```json
+{
+  "_shards": {
+    "total": 1,
+    "successful": 1,
+    "failed": 0
+  },
+  "text": "github",
+  "mode": "next_token",
+  "fields": ["content"],
+  "cache_hit_count": 1,
+  "options": [
+    {
+      "text": "copilot",
+      "doc_freq": 2,
+      "score": 2.25,
+      "type": "next_token",
+      "shard_count": 1
+    }
+  ]
+}
+```
+
 ## 3. 创建索引与分析器配置
 
 ### 最小配置
@@ -190,6 +294,7 @@ GET /test/_analyze
 
 - `constraints`：文档级 token 约束
 - `max_freq`：高频 term 过滤
+- `spell_correct`：基于 term dictionary 的低延迟输入纠错
 
 示例：
 
@@ -208,11 +313,26 @@ POST /test/_search
         ] }
       ],
       "max_freq": 1000000,
+      "spell_correct": true,
+      "spell_correct_rare_doc_freq": 0,
+      "spell_correct_min_length": 4,
+      "spell_correct_max_edits": 2,
       "default_operator": "AND"
     }
   }
 }
 ```
+
+纠错相关参数：
+
+- `spell_correct`：是否启用 query-side 输入纠错
+- `spell_correct_rare_doc_freq`：只有 doc freq 小于等于该阈值的 term 才尝试纠错
+- `spell_correct_min_length`：最短纠错 token 长度，避免高频短词误改
+- `spell_correct_max_edits`：最大编辑距离，仅允许 `1` 或 `2`
+- `spell_correct_prefix_length`：纠错候选必须共享的最短前缀
+- `spell_correct_size`：每个 token 最多检查的候选数
+
+完整设计、原生 ES 能力比较和补全策略见 [SUGGEST.md](SUGGEST.md)。
 
 可用匹配条件：
 

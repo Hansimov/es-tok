@@ -56,6 +56,9 @@ public class TestRunner {
         System.out.println("12. Running DropCategsPreserve Tests...");
         runJUnitTests(DropCategsPreserveTest.class);
 
+        System.out.println("13. Running Suggestion Cache Tests...");
+        runJUnitTests(SuggestionCacheTest.class);
+
         System.out.println("========================================");
         System.out.println("   All tests completed!");
         System.out.println("========================================");
@@ -101,6 +104,11 @@ public class TestRunner {
                     return true;
                 case "performance":
                     PerformanceTest.main(new String[0]);
+                    return true;
+                case "suggestperformance":
+                case "suggestbench":
+                case "suggestionperformance":
+                    SuggestionPerformanceTest.main(new String[0]);
                     return true;
                 case "hanttohans":
                     HantToHansTest.main(new String[0]);
@@ -174,6 +182,7 @@ public class TestRunner {
         System.out.println("  VocabFile / vocab_file");
         System.out.println("  VocabConcat / vocab_concat");
         System.out.println("  Performance / performance");
+        System.out.println("  SuggestionPerformance / suggest_bench / suggestperformance");
         System.out.println("  HantToHans / hant_to_hans");
         System.out.println("  AnalyzeRules / rules / analyze_rules");
         System.out.println("  DropDeles / deles / drop_deles");
