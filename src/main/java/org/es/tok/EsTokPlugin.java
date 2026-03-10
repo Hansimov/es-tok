@@ -32,7 +32,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin, SearchPlugin {
-    public static final String VERSION = "0.9.0";
+    public static final String VERSION = "0.10.0";
 
     @Override
     public Map<String, AnalysisProvider<TokenizerFactory>> getTokenizers() {

@@ -1,6 +1,6 @@
 # ES-TOK
 
-![](https://img.shields.io/badge/es__tok-0.9.0-blue)
+![](https://img.shields.io/badge/es__tok-0.10.0-blue)
 ![](https://img.shields.io/badge/elasticsearch-9.2.4-green)
 ![](https://img.shields.io/badge/java-21-orange)
 
@@ -107,7 +107,7 @@ POST /test/_search
 ```sh
 ./gradlew :bridge:fatJar
 echo '{"text":"自然语言处理技术","use_vocab":true,"use_categ":false,"vocab_config":{"list":["自然语言","语言处理","处理技术"]}}' \
-  | java -jar bridge/build/libs/bridge-0.9.0-all.jar
+  | java -jar bridge/build/libs/bridge-0.10.0-all.jar
 ```
 
 更完整的参数说明和约束查询示例见 [使用指南](docs/stable/USAGE.md)。

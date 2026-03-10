@@ -15,7 +15,7 @@ public class RestInfoActionTest {
 
         assertEquals("es_tok", snapshot.plugin());
         assertEquals("Ready", snapshot.status());
-        assertEquals("0.9.0", snapshot.pluginVersion());
+        assertEquals("0.10.0", snapshot.pluginVersion());
         assertNotNull(snapshot.analysisHash());
         assertEquals("disabled", snapshot.vocabHash());
         assertEquals("disabled", snapshot.rulesHash());
