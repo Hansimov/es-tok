@@ -165,6 +165,21 @@ public class SuggestRestTest {
         assertTrue(result.contains("影视飓风"));
     }
 
+      @Test
+      public void testPinyinPrewarmEndpointAllowsEmptyText() throws Exception {
+        String query = """
+            {
+              "text": "",
+              "mode": "prefix",
+              "fields": ["content"],
+              "prewarm_pinyin": true
+            }
+            """;
+
+        String result = performSuggest(query);
+        assertTrue(result.contains("\"options\":[]"));
+      }
+
     @Test
     public void testPinyinCorrectionSuggestEndpoint() throws Exception {
         String query = """

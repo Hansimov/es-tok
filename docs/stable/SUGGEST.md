@@ -83,6 +83,8 @@
 - prefix / correction 主要访问 term dictionary，延迟稳定
 - associate 只对 top-N 命中文档做 source 读取和 analyzer 重放，不做全量扫描
 - 拼音匹配只在 `use_pinyin=true` 时启用，并且只缓存高频中文 term 的拼音索引
+- 拼音候选检索现在走 reader 级前缀桶，而不是每次请求扫描整份 retained term 列表
+- 可通过 `prewarm_pinyin=true` 显式预热拼音 reader 缓存，把冷启动成本挪到重建索引或节点重启之后
 
 ## 3. 性能与规模考虑
 
@@ -108,6 +110,7 @@
 - 补全扫描上限保持小而稳定，优先做 top-K 高频返回
 - associate 的 `scan_limit` 不要开太大，优先让它服务于高相关候选聚合，而不是近似全局统计
 - `use_pinyin` 只在确实需要中文拼音召回时开启
+- 如果业务对首发时延敏感，在索引重建或节点重启后主动打一遍 `prewarm_pinyin=true` 请求
 
 ## 4. 什么时候仍然使用原生 ES
 

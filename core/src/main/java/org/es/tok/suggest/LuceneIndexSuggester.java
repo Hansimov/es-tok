@@ -37,6 +37,12 @@ public class LuceneIndexSuggester {
         this.reader = Objects.requireNonNull(reader, "reader");
     }
 
+    public void prewarmPinyinIndices(Collection<String> fields) throws IOException {
+        for (String field : normalizeFields(fields)) {
+            pinyinFieldIndex(field);
+        }
+    }
+
     public Correction suggestCorrection(Collection<String> fields, String token, CorrectionConfig config)
             throws IOException {
         return suggestCorrectionCandidates(fields, token, config).stream()
@@ -562,7 +568,7 @@ public class LuceneIndexSuggester {
             CorrectionConfig config,
             Map<String, CorrectionCandidateAccumulator> candidates,
             float fieldWeight) throws IOException {
-        for (PinyinIndexedTerm indexedTerm : pinyinFieldIndex(field).terms()) {
+        for (PinyinIndexedTerm indexedTerm : pinyinFieldIndex(field).candidates(token)) {
             if (token.equals(indexedTerm.text())) {
                 continue;
             }
@@ -582,7 +588,7 @@ public class LuceneIndexSuggester {
             CompletionConfig config,
             Map<String, CompletionAccumulator> candidates,
             float fieldWeight) throws IOException {
-        for (PinyinIndexedTerm indexedTerm : pinyinFieldIndex(field).terms()) {
+        for (PinyinIndexedTerm indexedTerm : pinyinFieldIndex(field).candidates(prefix)) {
             float pinyinScore = PinyinSupport.correctionMatchScore(prefix, indexedTerm.text());
             if (pinyinScore <= 0.0f) {
                 continue;
@@ -604,7 +610,7 @@ public class LuceneIndexSuggester {
             CompletionConfig config,
             Map<String, CompletionAccumulator> candidates,
             float fieldWeight) throws IOException {
-        for (PinyinIndexedTerm indexedTerm : pinyinFieldIndex(field).terms()) {
+        for (PinyinIndexedTerm indexedTerm : pinyinFieldIndex(field).candidates(prefix)) {
             float pinyinScore = PinyinSupport.prefixMatchScore(prefix, indexedTerm.pinyinKey());
             if (pinyinScore <= 0.0f) {
                 continue;
@@ -740,7 +746,39 @@ public class LuceneIndexSuggester {
         List<PinyinIndexedTerm> termsList = retained.stream()
                 .sorted(Comparator.comparingInt(PinyinIndexedTerm::docFreq).reversed().thenComparing(PinyinIndexedTerm::text))
                 .toList();
-        return new PinyinFieldIndex(termsList);
+        return new PinyinFieldIndex(
+                termsList,
+                buildPinyinPrefixBuckets(termsList, true),
+                buildPinyinPrefixBuckets(termsList, false));
+    }
+
+    private static Map<String, List<PinyinIndexedTerm>> buildPinyinPrefixBuckets(
+            List<PinyinIndexedTerm> terms,
+            boolean fullPinyin) {
+        Map<String, List<PinyinIndexedTerm>> buckets = new HashMap<>();
+        for (PinyinIndexedTerm term : terms) {
+            String key = fullPinyin ? term.pinyinKey().full() : term.pinyinKey().initials();
+            addPinyinPrefixes(buckets, key, term);
+        }
+        return buckets;
+    }
+
+    private static void addPinyinPrefixes(
+            Map<String, List<PinyinIndexedTerm>> buckets,
+            String key,
+            PinyinIndexedTerm term) {
+        if (key == null || key.isBlank()) {
+            return;
+        }
+
+        int maxPrefixLength = Math.min(4, key.length());
+        for (int length = 1; length <= maxPrefixLength; length++) {
+            String prefix = key.substring(0, length);
+            List<PinyinIndexedTerm> bucket = buckets.computeIfAbsent(prefix, ignored -> new ArrayList<>());
+            if (bucket.size() < 512) {
+                bucket.add(term);
+            }
+        }
     }
 
     private static int compareIndexedTerms(PinyinIndexedTerm left, PinyinIndexedTerm right) {
@@ -1359,8 +1397,51 @@ public class LuceneIndexSuggester {
     private record PinyinIndexedTerm(String text, int docFreq, PinyinSupport.PinyinKey pinyinKey) {
     }
 
-    private record PinyinFieldIndex(List<PinyinIndexedTerm> terms) {
-        private static final PinyinFieldIndex EMPTY = new PinyinFieldIndex(List.of());
+    private record PinyinFieldIndex(
+            List<PinyinIndexedTerm> terms,
+            Map<String, List<PinyinIndexedTerm>> fullPrefixBuckets,
+            Map<String, List<PinyinIndexedTerm>> initialsPrefixBuckets) {
+        private static final PinyinFieldIndex EMPTY = new PinyinFieldIndex(List.of(), Map.of(), Map.of());
+
+        private List<PinyinIndexedTerm> candidates(String input) {
+            if (terms.isEmpty()) {
+                return List.of();
+            }
+
+            PinyinSupport.PinyinKey inputKey = PinyinSupport.pinyinKey(input);
+            if (inputKey.isEmpty()) {
+                return List.of();
+            }
+
+            LinkedHashMap<String, PinyinIndexedTerm> merged = new LinkedHashMap<>();
+            addCandidates(merged, bucket(fullPrefixBuckets, inputKey.full()));
+            addCandidates(merged, bucket(initialsPrefixBuckets, inputKey.initials()));
+
+            String normalizedInput = PinyinSupport.normalizeInput(input);
+            if (merged.isEmpty() && !normalizedInput.isEmpty()) {
+                addCandidates(merged, bucket(fullPrefixBuckets, normalizedInput));
+                addCandidates(merged, bucket(initialsPrefixBuckets, normalizedInput));
+            }
+            return List.copyOf(merged.values());
+        }
+
+        private static void addCandidates(
+                LinkedHashMap<String, PinyinIndexedTerm> merged,
+                List<PinyinIndexedTerm> candidates) {
+            for (PinyinIndexedTerm candidate : candidates) {
+                merged.putIfAbsent(candidate.text(), candidate);
+            }
+        }
+
+        private static List<PinyinIndexedTerm> bucket(
+                Map<String, List<PinyinIndexedTerm>> buckets,
+                String queryKey) {
+            if (queryKey == null || queryKey.isBlank()) {
+                return List.of();
+            }
+            int anchorLength = Math.min(4, queryKey.length());
+            return buckets.getOrDefault(queryKey.substring(0, anchorLength), List.of());
+        }
     }
 
     private static final class PinyinIndexCache {

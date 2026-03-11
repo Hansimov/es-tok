@@ -23,6 +23,7 @@ public class ShardEsTokSuggestRequest extends BroadcastShardRequest {
     private final int correctionMaxEdits;
     private final int correctionPrefixLength;
     private final boolean usePinyin;
+    private final boolean prewarmPinyin;
 
     public ShardEsTokSuggestRequest(StreamInput in) throws IOException {
         super(in);
@@ -40,6 +41,7 @@ public class ShardEsTokSuggestRequest extends BroadcastShardRequest {
         correctionMaxEdits = in.readVInt();
         correctionPrefixLength = in.readVInt();
         usePinyin = in.readBoolean();
+        prewarmPinyin = in.readBoolean();
     }
 
     public ShardEsTokSuggestRequest(ShardId shardId, EsTokSuggestRequest request) {
@@ -58,6 +60,7 @@ public class ShardEsTokSuggestRequest extends BroadcastShardRequest {
         this.correctionMaxEdits = request.correctionMaxEdits();
         this.correctionPrefixLength = request.correctionPrefixLength();
         this.usePinyin = request.usePinyin();
+        this.prewarmPinyin = request.prewarmPinyin();
     }
 
     public String text() {
@@ -116,6 +119,10 @@ public class ShardEsTokSuggestRequest extends BroadcastShardRequest {
         return usePinyin;
     }
 
+    public boolean prewarmPinyin() {
+        return prewarmPinyin;
+    }
+
     @Override
     public void writeTo(StreamOutput out) throws IOException {
         super.writeTo(out);
@@ -133,5 +140,6 @@ public class ShardEsTokSuggestRequest extends BroadcastShardRequest {
         out.writeVInt(correctionMaxEdits);
         out.writeVInt(correctionPrefixLength);
         out.writeBoolean(usePinyin);
+        out.writeBoolean(prewarmPinyin);
     }
 }

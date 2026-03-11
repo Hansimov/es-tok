@@ -18,6 +18,11 @@ DEFAULT_FIELDS = {
     "auto": ["title.words", "tags.words"],
 }
 
+FIELD_ALIASES = {
+    "owner.name.words": "owner.name.suggest",
+    "pages.parts.words": "pages.parts.suggest",
+}
+
 NEXT_TOKEN_PHRASE_CONTINUATION_IDS = {
     "campus_hide_seek",
     "neighbor_likes_dad",
@@ -97,8 +102,10 @@ def flatten_cases(sources):
                     "mode": normalized_mode,
                     "label": label,
                     "text": payload["text"],
-                    "fields": payload.get(
-                        "fields", default_fields(normalized_mode, label)
+                    "fields": normalize_fields(
+                        payload.get(
+                            "fields", default_fields(normalized_mode, label, payload)
+                        )
                     ),
                     "request": payload.get("request", {}),
                     "expected": {
@@ -125,10 +132,22 @@ def case_label(source_id, mode, payload):
     return "associative_completion" if mode in ("associate", "next_token") else "auto"
 
 
-def default_fields(mode, label):
+def default_fields(mode, label, payload):
+    request = payload.get("request", {})
+    if request.get("use_pinyin"):
+        if (
+            mode in ("associate", "next_token", "auto")
+            and label == "phrase_continuation"
+        ):
+            return ["title.suggest"]
+        return ["tags.suggest", "title.suggest"]
     if mode in ("associate", "next_token", "auto") and label == "phrase_continuation":
         return ["title.words"]
     return DEFAULT_FIELDS[mode]
+
+
+def normalize_fields(fields):
+    return [FIELD_ALIASES.get(field, field) for field in fields]
 
 
 def build_request(case):

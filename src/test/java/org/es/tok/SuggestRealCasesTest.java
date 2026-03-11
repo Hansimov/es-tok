@@ -32,6 +32,9 @@ import static org.junit.Assert.assertTrue;
 public class SuggestRealCasesTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Path CASE_FILE = Path.of("testing/golden/suggest_real_cases.json");
+    private static final Map<String, String> FIELD_ALIASES = Map.of(
+            "owner.name.words", "owner.name.suggest",
+            "pages.parts.words", "pages.parts.suggest");
     private static final Set<String> NEXT_TOKEN_PHRASE_CONTINUATION_IDS = Set.of(
             "campus_hide_seek",
             "neighbor_likes_dad",
@@ -90,6 +93,8 @@ public class SuggestRealCasesTest {
         List<RealCase> cases = loadRegressionCases();
         assertFalse("Expected at least one regression-marked real case", cases.isEmpty());
 
+        prewarmPinyin(List.of("tags.suggest", "title.suggest"));
+
         List<String> failures = new ArrayList<>();
         for (RealCase realCase : cases) {
             List<String> optionTexts = performSuggest(realCase);
@@ -102,6 +107,18 @@ public class SuggestRealCasesTest {
         }
 
         assertTrue(String.join("\n", failures), failures.isEmpty());
+    }
+
+    private void prewarmPinyin(List<String> fields) throws Exception {
+        Map<String, Object> requestBody = new LinkedHashMap<>();
+        requestBody.put("text", "");
+        requestBody.put("mode", "prefix");
+        requestBody.put("fields", fields);
+        requestBody.put("prewarm_pinyin", true);
+
+        Request request = new Request("POST", "/bili_videos_dev6/_es_tok/suggest");
+        request.setJsonEntity(MAPPER.writeValueAsString(requestBody));
+        client.performRequest(request);
     }
 
     private List<String> performSuggest(RealCase realCase) throws Exception {
@@ -184,6 +201,7 @@ public class SuggestRealCasesTest {
                 if (fieldList.isEmpty()) {
                     fieldList = defaultFields(sourceNode.path("id").asText(), mode, caseNode);
                 }
+                fieldList = normalizeFields(fieldList);
 
                 String normalizedMode = normalizeMode(mode);
                 cases.add(new RealCase(
@@ -237,18 +255,37 @@ public class SuggestRealCasesTest {
     }
 
     private static List<String> defaultFields(String sourceId, String mode, JsonNode caseNode) {
+        if (caseNode.path("request").path("use_pinyin").asBoolean(false)) {
+            if ("phrase_continuation".equals(resolveKind(sourceId, caseNode))) {
+                return List.of("title.suggest");
+            }
+            return List.of("tags.suggest", "title.suggest");
+        }
         if (!"associate".equals(mode) && !"next_token".equals(mode) && !"auto".equals(mode)) {
             return List.of("title.words", "tags.words");
         }
 
-        String kind = caseNode.path("kind").asText();
-        if (kind.isBlank() && NEXT_TOKEN_PHRASE_CONTINUATION_IDS.contains(sourceId)) {
-            kind = "phrase_continuation";
-        }
+        String kind = resolveKind(sourceId, caseNode);
         if ("phrase_continuation".equals(kind)) {
             return List.of("title.words");
         }
         return List.of("title.words", "tags.words");
+    }
+
+    private static String resolveKind(String sourceId, JsonNode caseNode) {
+        String kind = caseNode.path("kind").asText();
+        if (kind.isBlank() && NEXT_TOKEN_PHRASE_CONTINUATION_IDS.contains(sourceId)) {
+            return "phrase_continuation";
+        }
+        return kind;
+    }
+
+    private static List<String> normalizeFields(List<String> fields) {
+        List<String> normalized = new ArrayList<>(fields.size());
+        for (String field : fields) {
+            normalized.add(FIELD_ALIASES.getOrDefault(field, field));
+        }
+        return normalized;
     }
 
     private static String normalizeMode(String mode) {

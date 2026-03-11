@@ -151,7 +151,13 @@ public class SourceBackedAssociateSuggester {
     }
 
     private static String sourcePath(String field) {
-        return field.endsWith(".words") ? field.substring(0, field.length() - ".words".length()) : field;
+        if (field.endsWith(".words")) {
+            return field.substring(0, field.length() - ".words".length());
+        }
+        if (field.endsWith(".suggest")) {
+            return field.substring(0, field.length() - ".suggest".length());
+        }
+        return field;
     }
 
     private static List<String> flattenSourceValues(Object value) {
@@ -202,6 +208,10 @@ public class SourceBackedAssociateSuggester {
             return false;
         }
         if (codePointLength > 24) {
+            return false;
+        }
+        boolean hasMeaningfulLetter = token.chars().anyMatch(ch -> Character.isLetter(ch) || Character.UnicodeScript.of(ch) == Character.UnicodeScript.HAN);
+        if (!hasMeaningfulLetter) {
             return false;
         }
         return token.chars().anyMatch(ch -> Character.isLetterOrDigit(ch) || Character.UnicodeScript.of(ch) == Character.UnicodeScript.HAN);

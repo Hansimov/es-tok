@@ -31,6 +31,7 @@ public class EsTokSuggestRequest extends BroadcastRequest<EsTokSuggestRequest> {
     private int correctionMaxEdits = 2;
     private int correctionPrefixLength = 1;
     private boolean usePinyin = false;
+    private boolean prewarmPinyin = false;
 
     public EsTokSuggestRequest() {
         this(Strings.EMPTY_ARRAY);
@@ -58,12 +59,13 @@ public class EsTokSuggestRequest extends BroadcastRequest<EsTokSuggestRequest> {
         correctionMaxEdits = in.readVInt();
         correctionPrefixLength = in.readVInt();
         usePinyin = in.readBoolean();
+        prewarmPinyin = in.readBoolean();
     }
 
     @Override
     public ActionRequestValidationException validate() {
         ActionRequestValidationException validationException = super.validate();
-        if (text == null || text.isBlank()) {
+        if ((text == null || text.isBlank()) && prewarmPinyin == false) {
             validationException = ValidateActions.addValidationError("text cannot be empty", validationException);
         }
         if (fields == null || fields.isEmpty()) {
@@ -222,6 +224,18 @@ public class EsTokSuggestRequest extends BroadcastRequest<EsTokSuggestRequest> {
         return this;
     }
 
+    public boolean prewarmPinyin() {
+        return prewarmPinyin;
+    }
+
+    public EsTokSuggestRequest prewarmPinyin(boolean prewarmPinyin) {
+        this.prewarmPinyin = prewarmPinyin;
+        if (prewarmPinyin) {
+            this.usePinyin = true;
+        }
+        return this;
+    }
+
     public List<String> limitedFields() {
         if (fields == null || fields.isEmpty()) {
             return List.of();
@@ -258,5 +272,6 @@ public class EsTokSuggestRequest extends BroadcastRequest<EsTokSuggestRequest> {
         out.writeVInt(correctionMaxEdits);
         out.writeVInt(correctionPrefixLength);
         out.writeBoolean(usePinyin);
+        out.writeBoolean(prewarmPinyin);
     }
 }

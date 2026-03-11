@@ -240,6 +240,31 @@ public class SuggestionEngineTest {
     }
 
     @Test
+    public void testPinyinPrewarmKeepsMixedChineseLatinMatches() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "战鹰",
+                    "战鹰",
+                    "战鹰",
+                    "战影");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                suggester.prewarmPinyinIndices(List.of("content"));
+
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestPrefixCompletions(
+                        List.of("content"),
+                        "战ying",
+                        new LuceneIndexSuggester.CompletionConfig(3, 32, 1, 1, true, true));
+
+                assertFalse(completions.isEmpty());
+                assertEquals("战鹰", completions.get(0).text());
+            }
+        }
+    }
+
+    @Test
     public void testPinyinCorrectionSupportsHomophoneRepair() throws Exception {
         try (Directory directory = new ByteBuffersDirectory();
                 Analyzer analyzer = new KeywordAnalyzer()) {

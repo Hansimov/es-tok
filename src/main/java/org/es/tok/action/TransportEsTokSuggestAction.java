@@ -167,6 +167,12 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         IndexShard indexShard = indexService.getShard(request.shardId().id());
         try (Engine.Searcher searcher = indexShard.acquireSearcher("es_tok_suggest")) {
             IndexReader reader = searcher.getIndexReader();
+            if (request.prewarmPinyin()) {
+                suggestService.prewarmPinyin(reader, request.fields());
+                if (request.text() == null || request.text().isBlank()) {
+                    return new ShardEsTokSuggestResponse(request.shardId(), List.of(), false);
+                }
+            }
             LuceneIndexSuggester.CompletionConfig completionConfig = new LuceneIndexSuggester.CompletionConfig(
                 request.size(),
                 request.scanLimit(),

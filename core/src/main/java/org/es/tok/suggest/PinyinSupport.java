@@ -109,10 +109,10 @@ public final class PinyinSupport {
         }
 
         if (inputKey.full().equals(candidateKey.full())) {
-            return 1.2f;
+            return 2.4f;
         }
         if (!inputKey.initials().isEmpty() && inputKey.initials().equals(candidateKey.initials())) {
-            return 1.02f;
+            return 1.45f;
         }
         if (candidateKey.initials().startsWith(inputKey.full())) {
             int extraInitials = Math.max(0, candidateKey.initials().length() - inputKey.full().length());

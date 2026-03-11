@@ -90,6 +90,12 @@ public class CachedShardSuggestService {
         return new SuggestResult(immutable, false);
     }
 
+    public void prewarmPinyin(IndexReader reader, List<String> fields) throws IOException {
+        Objects.requireNonNull(reader, "reader");
+        Objects.requireNonNull(fields, "fields");
+        new LuceneIndexSuggester(reader).prewarmPinyinIndices(fields);
+    }
+
     private CacheKey createKey(
             IndexReader reader,
             String mode,

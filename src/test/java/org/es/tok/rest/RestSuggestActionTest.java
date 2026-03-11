@@ -9,6 +9,7 @@ import java.util.Map;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class RestSuggestActionTest {
@@ -91,5 +92,19 @@ public class RestSuggestActionTest {
         assertEquals(8, request.size());
         assertEquals(96, request.scanLimit());
         assertEquals(2, request.correctionMinLength());
+    }
+
+    @Test
+    public void testPrewarmPinyinAllowsEmptyText() {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("mode", "prefix");
+        payload.put("fields", List.of("content"));
+        payload.put("prewarm_pinyin", true);
+
+        EsTokSuggestRequest request = RestSuggestAction.buildRequest(payload, new String[] { "idx" });
+
+        assertTrue(request.prewarmPinyin());
+        assertTrue(request.usePinyin());
+        assertNull(request.validate());
     }
 }

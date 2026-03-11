@@ -126,6 +126,92 @@
         }
     },
     {
+        "id": "pinyin_ysjf",
+        "source": {
+            "note": "pinyin abbreviation regression for 影视飓风"
+        },
+        "prefix": {
+            "text": "ysjf",
+            "expected": {
+                "any_of": [
+                    "影视飓风"
+                ],
+                "top_k": 3
+            },
+            "request": {
+                "use_pinyin": true,
+                "size": 5,
+                "scan_limit": 128
+            },
+            "regression": true
+        },
+        "auto": {
+            "text": "ysjf",
+            "expected": {
+                "any_of": [
+                    "影视飓风"
+                ],
+                "top_k": 3
+            },
+            "request": {
+                "use_pinyin": true,
+                "size": 8,
+                "scan_limit": 128,
+                "correction_min_length": 2,
+                "correction_max_edits": 2,
+                "correction_prefix_length": 1
+            },
+            "regression": true
+        }
+    },
+    {
+        "id": "pinyin_zhanying",
+        "source": {
+            "note": "mixed han-latin pinyin regression for 战鹰"
+        },
+        "auto": {
+            "text": "战ying",
+            "expected": {
+                "any_of": [
+                    "战鹰"
+                ],
+                "top_k": 3
+            },
+            "request": {
+                "use_pinyin": true,
+                "size": 8,
+                "scan_limit": 128,
+                "correction_min_length": 2,
+                "correction_max_edits": 2,
+                "correction_prefix_length": 1
+            },
+            "regression": true
+        }
+    },
+    {
+        "id": "pinyin_hongjing",
+        "source": {
+            "note": "homophone correction regression for 红警"
+        },
+        "correction": {
+            "text": "红井",
+            "expected": {
+                "any_of": [
+                    "红警"
+                ],
+                "top_k": 3
+            },
+            "request": {
+                "use_pinyin": true,
+                "size": 5,
+                "correction_min_length": 1,
+                "correction_max_edits": 2,
+                "correction_prefix_length": 0
+            },
+            "regression": true
+        }
+    },
+    {
         "id": "qingyu_account_case",
         "source": {
             "bvid": "BV188P4zHEC7",

@@ -172,6 +172,20 @@ POST /my_index/_es_tok/suggest
 
 `use_pinyin` 适用于中文词语的全拼、首字母和混合输入，例如 `ysjf -> 影视飓风`、`yingshjf -> 影视飓风`、`战ying -> 战鹰`。
 
+如果你刚重建索引或刚重启节点，希望把拼音 reader 级缓存提前烤热，可以先发一次只做预热的请求：
+
+```json
+POST /my_index/_es_tok/suggest
+{
+  "text": "",
+  "mode": "prefix",
+  "fields": ["content"],
+  "prewarm_pinyin": true
+}
+```
+
+这个请求不会返回候选，但会把后续 `use_pinyin=true` 查询需要的拼音索引提前构建好。
+
 ### 关键参数
 
 | 参数 | 默认值 | 说明 |
@@ -187,6 +201,7 @@ POST /my_index/_es_tok/suggest
 | `cache` | `true` | 是否启用 shard-local 建议缓存 |
 | `max_fields` | `8` | 一次请求最多参与建议的字段数 |
 | `use_pinyin` | `false` | 是否启用中文拼音匹配，支持全拼、首字母和混合输入 |
+| `prewarm_pinyin` | `false` | 只预热当前 reader 的拼音索引；可与空 `text` 一起使用 |
 | `correction_rare_doc_freq` | `0` | correction 模式下，只有 doc freq 小于等于该值的 token 才尝试纠错 |
 | `correction_min_length` | `4` | correction 模式下的最短纠错 token 长度 |
 | `correction_max_edits` | `2` | correction 模式下允许的最大编辑距离，只能为 `1` 或 `2` |
