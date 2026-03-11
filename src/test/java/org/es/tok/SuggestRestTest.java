@@ -16,6 +16,7 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.stream.Collectors;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class SuggestRestTest {
@@ -239,6 +240,10 @@ public class SuggestRestTest {
 
         String result = performSuggest(query);
         assertTrue(result.contains("copilot") || result.contains("actions") || result.contains("github"));
+        assertFalse(result.contains("\"type\":\"auto\""));
+        assertTrue(result.contains("\"type\":\"prefix\"")
+          || result.contains("\"type\":\"associate\"")
+          || result.contains("\"type\":\"correction\""));
     }
 
     private void indexDocument(String id, String content) throws Exception {

@@ -127,7 +127,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
                 AggregatedOption aggregated = aggregatedOptions.computeIfAbsent(
                         option.text(),
                         ignored -> new AggregatedOption(option.text(), option.type()));
-                aggregated.add(option.docFreq(), option.score(), option.shardCount());
+                aggregated.add(option.docFreq(), option.score(), option.shardCount(), option.type());
             }
         }
 
@@ -343,15 +343,21 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             List<LuceneIndexSuggester.SuggestionOption> options,
             float weight,
             String sourceType) {
-        if (options.isEmpty()) {
+        if (options.isEmpty() || weight <= 0.0f) {
             return;
         }
         float topScore = Math.max(1.0f, options.get(0).score());
         for (int index = 0; index < options.size(); index++) {
             LuceneIndexSuggester.SuggestionOption option = options.get(index);
+            if (option.score() <= 0.0f) {
+                continue;
+            }
             float branchScore = weight
                 * ((Math.max(0.0f, option.score()) / topScore) * 100.0f + (float) (Math.log1p(option.docFreq()) * 3.0d))
                 * Math.max(0.3f, 1.0f - (index * 0.08f));
+            if (branchScore <= 0.0f) {
+                continue;
+            }
             merged.computeIfAbsent(option.text(), AutoAccumulator::new)
                 .add(option.docFreq(), branchScore, sourceType);
         }
@@ -368,6 +374,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
 
         private final String text;
         private final LinkedHashSet<String> sources = new LinkedHashSet<>();
+        private final Map<String, Float> sourceScores = new HashMap<>();
         private int docFreq;
         private float score;
 
@@ -379,6 +386,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             this.docFreq = Math.max(this.docFreq, docFreq);
             this.score += score;
             this.sources.add(source);
+            this.sourceScores.merge(source, score, Float::sum);
         }
 
         private float score() {
@@ -393,8 +401,16 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             return text;
         }
 
+        private String dominantSource() {
+            return sourceScores.entrySet().stream()
+                .max(Map.Entry.<String, Float>comparingByValue()
+                    .thenComparing(Map.Entry::getKey, Comparator.reverseOrder()))
+                .map(Map.Entry::getKey)
+                .orElse("prefix");
+        }
+
         private LuceneIndexSuggester.SuggestionOption toOption() {
-            return new LuceneIndexSuggester.SuggestionOption(text, docFreq, score(), "auto");
+            return new LuceneIndexSuggester.SuggestionOption(text, docFreq, score(), dominantSource());
         }
         }
 
@@ -420,24 +436,33 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
 
     private static final class AggregatedOption {
         private final String text;
-        private final String type;
+        private final Map<String, Float> typeScores = new HashMap<>();
         private int docFreq;
         private float score;
         private int shardCount;
 
         private AggregatedOption(String text, String type) {
             this.text = text;
-            this.type = type;
+            this.typeScores.put(type, 0.0f);
         }
 
-        private void add(int docFreq, float score, int shardCount) {
+        private void add(int docFreq, float score, int shardCount, String type) {
             this.docFreq += docFreq;
             this.score += score;
             this.shardCount += shardCount;
+            this.typeScores.merge(type, score, Float::sum);
+        }
+
+        private String dominantType() {
+            return typeScores.entrySet().stream()
+                .max(Map.Entry.<String, Float>comparingByValue()
+                    .thenComparing(Map.Entry::getKey, Comparator.reverseOrder()))
+                .map(Map.Entry::getKey)
+                .orElse("prefix");
         }
 
         private EsTokSuggestOption toOption() {
-            return new EsTokSuggestOption(text, docFreq, score, type, shardCount);
+            return new EsTokSuggestOption(text, docFreq, score, dominantType(), shardCount);
         }
     }
 }

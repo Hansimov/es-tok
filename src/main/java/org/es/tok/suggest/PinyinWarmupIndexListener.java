@@ -24,6 +24,11 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class PinyinWarmupIndexListener implements IndexEventListener, Closeable {
 
     private static final Logger LOGGER = LogManager.getLogger(PinyinWarmupIndexListener.class);
+    private static final List<String> PREFERRED_WARMUP_FIELDS = List.of(
+            "title.suggest",
+            "tags.suggest",
+            "title.words",
+            "tags.words");
 
     private final Map<String, List<String>> warmupFieldsByIndex = new ConcurrentHashMap<>();
 
@@ -68,6 +73,12 @@ public final class PinyinWarmupIndexListener implements IndexEventListener, Clos
         }
         MappingLookup mappingLookup = mapperService.mappingLookup();
         Set<String> mappedFields = mappingLookup.getFullNameToFieldType().keySet();
+        List<String> preferred = PREFERRED_WARMUP_FIELDS.stream()
+                .filter(field -> shouldPrewarmField(field, mappedFields))
+                .toList();
+        if (preferred.isEmpty() == false) {
+            return preferred;
+        }
         return mappedFields
                 .stream()
             .filter(field -> shouldPrewarmField(field, mappedFields))

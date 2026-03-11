@@ -421,6 +421,8 @@ public class LuceneIndexSuggester {
         int textLength = text.codePointCount(0, text.length());
         int prefixLength = normalizedPrefix.codePointCount(0, normalizedPrefix.length());
         int growth = Math.max(0, textLength - prefixLength);
+        boolean pureChinesePrefix = PinyinSupport.isPureChineseQuery(normalizedPrefix);
+        boolean literalPrefix = !normalizedPrefix.isBlank() && text.startsWith(normalizedPrefix);
 
         float shapeFactor = 1.0f;
         if (text.equals(normalizedPrefix)) {
@@ -437,6 +439,16 @@ public class LuceneIndexSuggester {
             shapeFactor *= 1.12f;
         } else if (growth >= 8) {
             shapeFactor *= 0.84f;
+        }
+
+        if (pureChinesePrefix && literalPrefix) {
+            if (growth <= 1) {
+                shapeFactor *= 12.0f;
+            } else if (growth <= 3) {
+                shapeFactor *= 9.0f;
+            } else {
+                shapeFactor *= 6.5f;
+            }
         }
 
         if (textLength == 1) {
@@ -597,6 +609,9 @@ public class LuceneIndexSuggester {
             CompletionConfig config,
             Map<String, CompletionAccumulator> candidates,
             float fieldWeight) throws IOException {
+        if (PinyinSupport.isPureChineseQuery(prefix)) {
+            return;
+        }
         for (PinyinIndexedTerm indexedTerm : pinyinFieldIndex(field).candidates(prefix)) {
             float pinyinScore = PinyinSupport.correctionMatchScore(prefix, indexedTerm.text());
             if (pinyinScore <= 0.0f) {
@@ -715,9 +730,24 @@ public class LuceneIndexSuggester {
     }
 
     private PinyinFieldIndex pinyinFieldIndex(String field) throws IOException {
-        IndexReader.CacheHelper cacheHelper = reader.getReaderCacheHelper();
-        Object cacheKey = cacheHelper != null ? cacheHelper.getKey() : reader;
+        Object cacheKey = pinyinCacheKey(reader);
         return PinyinIndexCache.getOrBuild(cacheKey, field, () -> buildPinyinFieldIndex(field));
+    }
+
+    private static Object pinyinCacheKey(IndexReader reader) {
+        List<Object> segmentKeys = new ArrayList<>();
+        reader.leaves().forEach(leaf -> {
+            IndexReader.CacheHelper coreCacheHelper = leaf.reader().getCoreCacheHelper();
+            if (coreCacheHelper != null) {
+                segmentKeys.add(coreCacheHelper.getKey());
+            }
+        });
+        if (segmentKeys.isEmpty() == false) {
+            return List.copyOf(segmentKeys);
+        }
+
+        IndexReader.CacheHelper cacheHelper = reader.getReaderCacheHelper();
+        return cacheHelper != null ? cacheHelper.getKey() : reader;
     }
 
     private PinyinFieldIndex buildPinyinFieldIndex(String field) throws IOException {
@@ -766,23 +796,23 @@ public class LuceneIndexSuggester {
             boolean fullPinyin) {
         Map<String, List<PinyinIndexedTerm>> buckets = new HashMap<>();
         for (PinyinIndexedTerm term : terms) {
-            String key = fullPinyin ? term.pinyinKey().full() : term.pinyinKey().initials();
-            addPinyinPrefixes(buckets, key, term);
+            addPinyinPrefixes(buckets, PinyinSupport.bucketKeys(term.pinyinKey(), fullPinyin), term);
         }
         return buckets;
     }
 
     private static void addPinyinPrefixes(
             Map<String, List<PinyinIndexedTerm>> buckets,
-            String key,
+            List<String> keys,
             PinyinIndexedTerm term) {
-        if (key == null || key.isBlank()) {
+        if (keys == null || keys.isEmpty()) {
             return;
         }
 
-        int maxPrefixLength = Math.min(4, key.length());
-        for (int length = 1; length <= maxPrefixLength; length++) {
-            String prefix = key.substring(0, length);
+        for (String prefix : keys) {
+            if (prefix == null || prefix.isBlank()) {
+                continue;
+            }
             List<PinyinIndexedTerm> bucket = buckets.computeIfAbsent(prefix, ignored -> new ArrayList<>());
             if (bucket.size() < 512) {
                 bucket.add(term);
@@ -868,7 +898,61 @@ public class LuceneIndexSuggester {
             return collapsed;
         }
 
-        return shouldCompactWhitespace(collapsed) ? removeWhitespace(collapsed) : collapsed;
+        String tightened = tightenCjkAdjacentWhitespace(collapsed);
+        if (containsWhitespace(tightened) == false) {
+            return tightened;
+        }
+
+        return shouldCompactWhitespace(tightened) ? removeWhitespace(tightened) : tightened;
+    }
+
+    private static String tightenCjkAdjacentWhitespace(String text) {
+        StringBuilder builder = new StringBuilder(text.length());
+        int[] codePoints = text.codePoints().toArray();
+        for (int index = 0; index < codePoints.length; index++) {
+            int codePoint = codePoints[index];
+            if (isGapCodePoint(codePoint)) {
+                int previous = previousNonWhitespace(codePoints, index - 1);
+                int next = nextNonWhitespace(codePoints, index + 1);
+                if (previous >= 0 && next >= 0 && (isHanCodePoint(previous) || isHanCodePoint(next))) {
+                    continue;
+                }
+                builder.append(' ');
+                continue;
+            }
+            builder.appendCodePoint(codePoint);
+        }
+        return builder.toString().strip();
+    }
+
+    private static int previousNonWhitespace(int[] codePoints, int index) {
+        while (index >= 0) {
+            if (!isGapCodePoint(codePoints[index])) {
+                return codePoints[index];
+            }
+            index--;
+        }
+        return -1;
+    }
+
+    private static int nextNonWhitespace(int[] codePoints, int index) {
+        while (index < codePoints.length) {
+            if (!isGapCodePoint(codePoints[index])) {
+                return codePoints[index];
+            }
+            index++;
+        }
+        return -1;
+    }
+
+    private static boolean isHanCodePoint(int codePoint) {
+        return codePoint >= 0 && Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN;
+    }
+
+    private static boolean isGapCodePoint(int codePoint) {
+        return Character.isWhitespace(codePoint)
+                || Character.isSpaceChar(codePoint)
+                || Character.getType(codePoint) == Character.FORMAT;
     }
 
     private static String collapseWhitespace(String text) {
@@ -877,7 +961,7 @@ public class LuceneIndexSuggester {
         for (int index = 0; index < text.length(); ) {
             int codePoint = text.codePointAt(index);
             index += Character.charCount(codePoint);
-            if (Character.isWhitespace(codePoint)) {
+            if (isGapCodePoint(codePoint)) {
                 if (!previousWhitespace) {
                     builder.append(' ');
                     previousWhitespace = true;
@@ -897,7 +981,7 @@ public class LuceneIndexSuggester {
         for (int index = 0; index < text.length(); ) {
             int codePoint = text.codePointAt(index);
             index += Character.charCount(codePoint);
-            if (Character.isWhitespace(codePoint)) {
+            if (isGapCodePoint(codePoint)) {
                 continue;
             }
             if (codePoint < 128 && Character.isLetterOrDigit(codePoint)) {
@@ -914,7 +998,7 @@ public class LuceneIndexSuggester {
         for (int index = 0; index < text.length(); ) {
             int codePoint = text.codePointAt(index);
             index += Character.charCount(codePoint);
-            if (!Character.isWhitespace(codePoint)) {
+            if (!isGapCodePoint(codePoint)) {
                 builder.appendCodePoint(codePoint);
             }
         }
@@ -1466,16 +1550,26 @@ public class LuceneIndexSuggester {
             }
         };
 
-        private static synchronized PinyinFieldIndex getOrBuild(Object readerKey, String field, PinyinFieldIndexLoader loader)
+        private static PinyinFieldIndex getOrBuild(Object readerKey, String field, PinyinFieldIndexLoader loader)
                 throws IOException {
-            Map<String, PinyinFieldIndex> byField = CACHE.computeIfAbsent(readerKey, ignored -> new HashMap<>());
-            PinyinFieldIndex cached = byField.get(field);
-            if (cached != null) {
-                return cached;
+            synchronized (CACHE) {
+                Map<String, PinyinFieldIndex> byField = CACHE.computeIfAbsent(readerKey, ignored -> new HashMap<>());
+                PinyinFieldIndex cached = byField.get(field);
+                if (cached != null) {
+                    return cached;
+                }
             }
+
             PinyinFieldIndex built = loader.load();
-            byField.put(field, built);
-            return built;
+            synchronized (CACHE) {
+                Map<String, PinyinFieldIndex> byField = CACHE.computeIfAbsent(readerKey, ignored -> new HashMap<>());
+                PinyinFieldIndex cached = byField.get(field);
+                if (cached != null) {
+                    return cached;
+                }
+                byField.put(field, built);
+                return built;
+            }
         }
     }
 

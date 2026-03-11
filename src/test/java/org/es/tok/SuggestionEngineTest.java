@@ -240,6 +240,30 @@ public class SuggestionEngineTest {
     }
 
     @Test
+    public void testPinyinPrefixSupportsMixedPartialFullAndInitialInput() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "影视飓风",
+                    "影视飓风",
+                    "影视飓风",
+                    "影视剧风",
+                    "影集积分");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestPrefixCompletions(
+                        List.of("content"),
+                        "yinsjf",
+                        new LuceneIndexSuggester.CompletionConfig(5, 32, 1, 1, true, true));
+
+                assertFalse(completions.isEmpty());
+                assertEquals("影视飓风", completions.get(0).text());
+            }
+        }
+    }
+
+    @Test
     public void testPinyinPrewarmKeepsMixedChineseLatinMatches() throws Exception {
         try (Directory directory = new ByteBuffersDirectory();
                 Analyzer analyzer = new KeywordAnalyzer()) {
@@ -367,6 +391,63 @@ public class SuggestionEngineTest {
 
                 assertFalse(completions.isEmpty());
                 assertEquals("影视飓风", completions.get(0).text());
+            }
+        }
+    }
+
+    @Test
+    public void testPureChinesePrefixPrefersLiteralPrefixOverHomophoneDocFreq() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "影视剧",
+                    "影视剧",
+                    "影视剧",
+                    "影视剧",
+                    "影视剧",
+                    "影视剧",
+                    "影视剧",
+                    "影视剧",
+                    "影视剧",
+                    "影视剧",
+                    "影视剧审美还是太权威了",
+                    "影视剧审美还是太权威了",
+                    "影视剧审美还是太权威了",
+                    "影视飓风",
+                    "影视飓风",
+                    "影视飓风");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestPrefixCompletions(
+                        List.of("content"),
+                        "影视飓",
+                        new LuceneIndexSuggester.CompletionConfig(5, 32, 1, 1, true, true));
+
+                assertFalse(completions.isEmpty());
+                assertEquals("影视飓风", completions.get(0).text());
+            }
+        }
+    }
+
+    @Test
+    public void testPrefixNormalizationRemovesCjkAdjacentWhitespace() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "影 视飓风",
+                    "俞 俐均",
+                    "小米 su7");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestPrefixCompletions(
+                        List.of("content"),
+                        "影",
+                        new LuceneIndexSuggester.CompletionConfig(5, 32, 1, 1, true, true));
+
+                assertTrue(completions.stream().anyMatch(candidate -> candidate.text().equals("影视飓风")));
+                assertFalse(completions.stream().anyMatch(candidate -> candidate.text().contains("影 视")));
             }
         }
     }
@@ -661,6 +742,31 @@ public class SuggestionEngineTest {
 
                 assertFalse(suggestions.isEmpty());
                 assertEquals("老师", suggestions.get(0).text());
+            }
+        }
+    }
+
+    @Test
+    public void testAutoReportsDominantSourceType() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "老师",
+                    "老师",
+                    "老师 今天",
+                    "老人");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.SuggestionOption> suggestions = suggester.suggestAuto(
+                        List.of("content"),
+                        "老狮",
+                        new LuceneIndexSuggester.CompletionConfig(3, 32, 1, 1, true),
+                        new LuceneIndexSuggester.CorrectionConfig(0, 2, 2, 1, 3, 1, 0.5f));
+
+                assertFalse(suggestions.isEmpty());
+                assertEquals("老师", suggestions.get(0).text());
+                assertEquals("correction", suggestions.get(0).type());
             }
         }
     }
