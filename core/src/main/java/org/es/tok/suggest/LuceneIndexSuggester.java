@@ -84,6 +84,8 @@ public class LuceneIndexSuggester {
                         ignored -> new CorrectionCandidateAccumulator(normalizedSuggestion));
                 accumulator.add(field, word, docFreq(field, word.string));
             }
+
+            collectShortCjkCorrectionCandidates(field, token, effectiveConfig, candidates);
         }
 
         List<Correction> corrections = candidates.values().stream()
@@ -394,6 +396,7 @@ public class LuceneIndexSuggester {
         }
 
         int codePointLength = text.codePointCount(0, text.length());
+        int firstCodePoint = text.codePointAt(0);
         boolean asciiOnly = text.chars().allMatch(ch -> ch < 128);
         boolean hasWhitespace = containsWhitespace(text);
         boolean hasDigit = text.chars().anyMatch(Character::isDigit);
@@ -405,9 +408,9 @@ public class LuceneIndexSuggester {
 
         float shapeFactor = 1.0f;
         if (codePointLength == 1) {
-            shapeFactor *= 0.15f;
+            shapeFactor *= isCommonFunctionCodePoint(firstCodePoint) ? 0.08f : 0.72f;
         } else if (codePointLength == 2) {
-            shapeFactor *= 1.18f;
+            shapeFactor *= 1.24f;
         } else if (codePointLength <= 4) {
             shapeFactor *= 1.15f;
         } else if (codePointLength <= 6) {
@@ -436,6 +439,67 @@ public class LuceneIndexSuggester {
         }
 
         return score * shapeFactor;
+    }
+
+    private void collectShortCjkCorrectionCandidates(
+            String field,
+            String token,
+            CorrectionConfig config,
+            Map<String, CorrectionCandidateAccumulator> candidates) throws IOException {
+        if (!isShortCjkCorrectionToken(token)) {
+            return;
+        }
+
+        Terms terms = MultiTerms.getTerms(reader, field);
+        if (terms == null) {
+            return;
+        }
+
+        int tokenCodePointLength = token.codePointCount(0, token.length());
+        for (String prefix : shortCjkPrefixes(token)) {
+            TermsEnum termsEnum = terms.iterator();
+            if (termsEnum.seekCeil(new BytesRef(prefix)) == TermsEnum.SeekStatus.END) {
+                continue;
+            }
+
+            int visited = 0;
+            BytesRef current = termsEnum.term();
+            while (current != null && visited < 128) {
+                String candidate = normalizeSuggestionSurface(current.utf8ToString());
+                if (!candidate.startsWith(prefix)) {
+                    break;
+                }
+
+                visited++;
+                current = termsEnum.next();
+
+                if (!isAcceptableCorrectionCandidate(token, candidate) || token.equals(candidate)) {
+                    continue;
+                }
+
+                int candidateCodePointLength = candidate.codePointCount(0, candidate.length());
+                if (candidateCodePointLength < 2 || candidateCodePointLength > 4) {
+                    continue;
+                }
+                if (Math.abs(candidateCodePointLength - tokenCodePointLength) > 1) {
+                    continue;
+                }
+
+                int distance = boundedCodePointEditDistance(token, candidate, Math.min(2, config.maxEdits()));
+                if (distance < 0) {
+                    continue;
+                }
+
+                int candidateDocFreq = docFreq(field, candidate);
+                if (candidateDocFreq < config.minCandidateDocFreq()) {
+                    continue;
+                }
+
+                float score = shortCjkCorrectionScore(token, candidate, candidateDocFreq, distance);
+                candidates.computeIfAbsent(candidate, CorrectionCandidateAccumulator::new)
+                        .add(field, candidate, score, candidateDocFreq);
+            }
+        }
     }
 
     private List<CompletionCandidate> finalizeCompletions(
@@ -632,6 +696,115 @@ public class LuceneIndexSuggester {
         return true;
     }
 
+    private static boolean isShortCjkCorrectionToken(String token) {
+        if (token == null || token.isBlank()) {
+            return false;
+        }
+
+        String normalized = normalizeSuggestionSurface(token);
+        int codePointLength = normalized.codePointCount(0, normalized.length());
+        if (codePointLength < 2 || codePointLength > 4) {
+            return false;
+        }
+        if (normalized.chars().anyMatch(Character::isDigit)) {
+            return false;
+        }
+
+        int nonAsciiCount = 0;
+        for (int index = 0; index < normalized.length(); ) {
+            int codePoint = normalized.codePointAt(index);
+            index += Character.charCount(codePoint);
+            if (codePoint >= 128) {
+                nonAsciiCount++;
+            }
+        }
+        return nonAsciiCount >= Math.max(1, codePointLength - 1);
+    }
+
+    private static String firstCodePointString(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        int codePoint = text.codePointAt(0);
+        return new String(Character.toChars(codePoint));
+    }
+
+    private static List<String> shortCjkPrefixes(String token) {
+        List<String> prefixes = new ArrayList<>();
+        String first = firstCodePointString(token);
+        if (!first.isEmpty()) {
+            int[] codePoints = token.codePoints().toArray();
+            if (codePoints.length >= 3) {
+                prefixes.add(new String(codePoints, 0, 2));
+            }
+            prefixes.add(first);
+        }
+        return prefixes;
+    }
+
+    private static int boundedCodePointEditDistance(String left, String right, int maxDistance) {
+        int[] leftCodePoints = left.codePoints().toArray();
+        int[] rightCodePoints = right.codePoints().toArray();
+        if (Math.abs(leftCodePoints.length - rightCodePoints.length) > maxDistance) {
+            return -1;
+        }
+
+        int[] previous = new int[rightCodePoints.length + 1];
+        int[] current = new int[rightCodePoints.length + 1];
+        for (int j = 0; j <= rightCodePoints.length; j++) {
+            previous[j] = j;
+        }
+
+        for (int i = 1; i <= leftCodePoints.length; i++) {
+            current[0] = i;
+            int rowMin = current[0];
+            for (int j = 1; j <= rightCodePoints.length; j++) {
+                int substitutionCost = leftCodePoints[i - 1] == rightCodePoints[j - 1] ? 0 : 1;
+                current[j] = Math.min(
+                        Math.min(previous[j] + 1, current[j - 1] + 1),
+                        previous[j - 1] + substitutionCost);
+                rowMin = Math.min(rowMin, current[j]);
+            }
+
+            if (rowMin > maxDistance) {
+                return -1;
+            }
+
+            int[] swap = previous;
+            previous = current;
+            current = swap;
+        }
+
+        return previous[rightCodePoints.length] <= maxDistance ? previous[rightCodePoints.length] : -1;
+    }
+
+    private static float shortCjkCorrectionScore(String original, String candidate, int docFreq, int distance) {
+        float baseScore = distance == 0 ? 0.0f : (distance == 1 ? 3.5f : 1.75f);
+        if (original.codePointCount(0, original.length()) == candidate.codePointCount(0, candidate.length())) {
+            baseScore += 0.75f;
+        }
+        baseScore += Math.min(2, sharedLeadingCodePointCount(original, candidate)) * 0.9f;
+        if (!original.isBlank() && !candidate.isBlank()) {
+            int originalLast = original.codePointBefore(original.length());
+            int candidateLast = candidate.codePointBefore(candidate.length());
+            if (originalLast == candidateLast) {
+                baseScore += 0.5f;
+            }
+        }
+        return correctionScore(candidate, baseScore, docFreq);
+    }
+
+    private static int sharedLeadingCodePointCount(String left, String right) {
+        int[] leftCodePoints = left.codePoints().toArray();
+        int[] rightCodePoints = right.codePoints().toArray();
+        int limit = Math.min(leftCodePoints.length, rightCodePoints.length);
+        int shared = 0;
+        while (shared < limit && leftCodePoints[shared] == rightCodePoints[shared]) {
+            shared++;
+        }
+        return shared;
+    }
+
     private static boolean isDisallowedNextTokenChar(int ch) {
         if (Character.isWhitespace(ch)) {
             return true;
@@ -776,6 +949,12 @@ public class LuceneIndexSuggester {
         private void add(String field, SuggestWord suggestWord, int docFreq) {
             fields.add(field);
             bestScore = Math.max(bestScore, correctionScore(suggestWord.string, suggestWord.score, docFreq));
+            maxDocFreq = Math.max(maxDocFreq, docFreq);
+        }
+
+        private void add(String field, String text, float score, int docFreq) {
+            fields.add(field);
+            bestScore = Math.max(bestScore, score);
             maxDocFreq = Math.max(maxDocFreq, docFreq);
         }
 

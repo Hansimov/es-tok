@@ -392,6 +392,86 @@ public class SuggestionEngineTest {
         }
     }
 
+    @Test
+    public void testCorrectionFallsBackForShortChineseEntity() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "老师",
+                    "老师",
+                    "老师",
+                    "老人",
+                    "老人",
+                    "老公");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.SuggestionOption> corrections = suggester.suggestCorrections(
+                        List.of("content"),
+                        "老狮",
+                        new LuceneIndexSuggester.CorrectionConfig(0, 2, 2, 1, 3, 1, 0.5f));
+
+                assertFalse(corrections.isEmpty());
+                assertEquals("老师", corrections.get(0).text());
+            }
+        }
+    }
+
+    @Test
+    public void testCorrectionPrefersSharedPrefixForShortChineseEntity() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "手机壳",
+                    "手机壳",
+                    "手机壳",
+                    "手机",
+                    "手书",
+                    "手游");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.SuggestionOption> corrections = suggester.suggestCorrections(
+                        List.of("content"),
+                        "手机科",
+                        new LuceneIndexSuggester.CorrectionConfig(0, 2, 2, 1, 5, 1, 0.5f));
+
+                assertFalse(corrections.isEmpty());
+                assertEquals("手机壳", corrections.get(0).text());
+            }
+        }
+    }
+
+    @Test
+    public void testNextTokenKeepsInformativeSingleCharacterTailCompetitive() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "安河 桥",
+                    "安河 桥",
+                    "安河 桥",
+                    "安河 的",
+                    "安河 的",
+                    "桥",
+                    "桥",
+                    "的",
+                    "的",
+                    "的",
+                    "的");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestNextTokenCompletions(
+                        List.of("content"),
+                        "安河",
+                        new LuceneIndexSuggester.CompletionConfig(3, 32, 1, 1, true));
+
+                assertFalse(completions.isEmpty());
+                assertEquals("桥", completions.get(0).text());
+            }
+        }
+    }
+
     private void buildIndex(Directory directory, Analyzer analyzer, String... contents) throws Exception {
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
         try (IndexWriter writer = new IndexWriter(directory, config)) {

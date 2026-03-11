@@ -16,6 +16,32 @@ DEFAULT_FIELDS = {
     "next_token": ["title.words", "tags.words"],
 }
 
+NEXT_TOKEN_PHRASE_CONTINUATION_IDS = {
+    "campus_hide_seek",
+    "neighbor_likes_dad",
+    "teacher_raise_head",
+    "qingyu_account_case",
+    "xiongda_no1",
+    "school_apocalypse",
+    "curfew_after_dlc",
+    "gold_phone_case",
+    "bear_core_analysis",
+    "gansu_boyfriend",
+    "aerospace_base",
+    "imitate_cat_actions",
+    "anhe_bridge",
+    "northeast_grace",
+    "airport_closed",
+    "defend_radish",
+    "simba_daniel",
+    "biscuit_union",
+    "little_penguin",
+    "firecracker_bag",
+    "geely_ad",
+    "xiongda_kuaipao",
+    "silent_hill_mother",
+}
+
 DEFAULT_REQUEST = {
     "prefix": {"size": 5, "scan_limit": 128},
     "correction": {
@@ -51,14 +77,16 @@ def flatten_cases(sources):
             payload = source.get(mode)
             if not payload:
                 continue
+            label = case_label(source["id"], mode, payload)
             expected = payload.get("expected", {})
             top_k = expected.get("top_k", DEFAULT_REQUEST[mode]["size"])
             cases.append(
                 {
                     "id": payload.get("id", f"{source['id']}_{mode}"),
                     "mode": mode,
+                    "label": label,
                     "text": payload["text"],
-                    "fields": payload.get("fields", DEFAULT_FIELDS[mode]),
+                    "fields": payload.get("fields", default_fields(mode, label)),
                     "request": payload.get("request", {}),
                     "expected": {
                         "any_of": [
@@ -72,6 +100,22 @@ def flatten_cases(sources):
                 }
             )
     return cases
+
+
+def case_label(source_id, mode, payload):
+    if mode != "next_token":
+        return mode
+    if payload.get("kind"):
+        return payload["kind"]
+    if source_id in NEXT_TOKEN_PHRASE_CONTINUATION_IDS:
+        return "phrase_continuation"
+    return "associative_completion"
+
+
+def default_fields(mode, label):
+    if mode == "next_token" and label == "phrase_continuation":
+        return ["title.words"]
+    return DEFAULT_FIELDS[mode]
 
 
 def build_request(case):
@@ -110,6 +154,7 @@ def evaluate_case(base_url, auth_header, ssl_context, index_name, case):
     return {
         "id": case["id"],
         "mode": case["mode"],
+        "label": case["label"],
         "text": case["text"],
         "source": case["source"],
         "regression": case["regression"],
@@ -124,7 +169,7 @@ def evaluate_case(base_url, auth_header, ssl_context, index_name, case):
 
 
 def summarize(results):
-    summary = {"overall": {}, "by_mode": {}, "regression": {}}
+    summary = {"overall": {}, "by_mode": {}, "by_label": {}, "regression": {}}
 
     def stats(items):
         total = len(items)
@@ -140,6 +185,16 @@ def summarize(results):
     for mode in ("prefix", "correction", "next_token"):
         mode_results = [item for item in results if item["mode"] == mode]
         summary["by_mode"][mode] = stats(mode_results)
+
+    for label in (
+        "prefix",
+        "correction",
+        "phrase_continuation",
+        "associative_completion",
+    ):
+        label_results = [item for item in results if item["label"] == label]
+        if label_results:
+            summary["by_label"][label] = stats(label_results)
 
     regression_results = [item for item in results if item["regression"]]
     summary["regression"] = stats(regression_results)

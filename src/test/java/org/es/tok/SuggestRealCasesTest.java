@@ -32,6 +32,30 @@ import static org.junit.Assert.assertTrue;
 public class SuggestRealCasesTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Path CASE_FILE = Path.of("testing/golden/suggest_real_cases.json");
+    private static final Set<String> NEXT_TOKEN_PHRASE_CONTINUATION_IDS = Set.of(
+            "campus_hide_seek",
+            "neighbor_likes_dad",
+            "teacher_raise_head",
+            "qingyu_account_case",
+            "xiongda_no1",
+            "school_apocalypse",
+            "curfew_after_dlc",
+            "gold_phone_case",
+            "bear_core_analysis",
+            "gansu_boyfriend",
+            "aerospace_base",
+            "imitate_cat_actions",
+            "anhe_bridge",
+            "northeast_grace",
+            "airport_closed",
+            "defend_radish",
+            "simba_daniel",
+            "biscuit_union",
+            "little_penguin",
+            "firecracker_bag",
+            "geely_ad",
+            "xiongda_kuaipao",
+            "silent_hill_mother");
 
     private RestClient client;
 
@@ -152,9 +176,7 @@ public class SuggestRealCasesTest {
                     }
                 }
                 if (fieldList.isEmpty()) {
-                    fieldList = "next_token".equals(mode)
-                            ? List.of("title.words", "tags.words")
-                            : List.of("title.words", "tags.words");
+                    fieldList = defaultFields(sourceNode.path("id").asText(), mode, caseNode);
                 }
 
                 cases.add(new RealCase(
@@ -195,6 +217,21 @@ public class SuggestRealCasesTest {
             return collapsed.replace(" ", "");
         }
         return collapsed;
+    }
+
+    private static List<String> defaultFields(String sourceId, String mode, JsonNode caseNode) {
+        if (!"next_token".equals(mode)) {
+            return List.of("title.words", "tags.words");
+        }
+
+        String kind = caseNode.path("kind").asText();
+        if (kind.isBlank() && NEXT_TOKEN_PHRASE_CONTINUATION_IDS.contains(sourceId)) {
+            kind = "phrase_continuation";
+        }
+        if ("phrase_continuation".equals(kind)) {
+            return List.of("title.words");
+        }
+        return List.of("title.words", "tags.words");
     }
 
     private record RealCase(

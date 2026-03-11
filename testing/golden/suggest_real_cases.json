@@ -28,7 +28,11 @@
             "regression": true
         },
         "next_token": {
+            "kind": "phrase_continuation",
             "text": "校园",
+            "fields": [
+                "title.words"
+            ],
             "expected": {
                 "any_of": [
                     "躲猫猫",
@@ -67,7 +71,11 @@
             "regression": true
         },
         "next_token": {
+            "kind": "phrase_continuation",
             "text": "邻居",
+            "fields": [
+                "title.words"
+            ],
             "expected": {
                 "any_of": [
                     "喜欢",
@@ -103,7 +111,11 @@
             }
         },
         "next_token": {
+            "kind": "phrase_continuation",
             "text": "老师",
+            "fields": [
+                "title.words"
+            ],
             "expected": {
                 "any_of": [
                     "今天",
@@ -140,7 +152,11 @@
             "regression": true
         },
         "next_token": {
+            "kind": "phrase_continuation",
             "text": "清雨",
+            "fields": [
+                "title.words"
+            ],
             "expected": {
                 "any_of": [
                     "毁号",
@@ -761,13 +777,18 @@
             }
         },
         "next_token": {
+            "kind": "phrase_continuation",
             "text": "航天",
+            "fields": [
+                "title.words"
+            ],
             "expected": {
                 "any_of": [
                     "基地"
                 ],
                 "top_k": 10
-            }
+            },
+            "regression": true
         }
     },
     {
@@ -785,8 +806,7 @@
                     "狸花猫"
                 ],
                 "top_k": 5
-            },
-            "regression": true
+            }
         },
         "correction": {
             "text": "小描",
@@ -833,13 +853,18 @@
             }
         },
         "next_token": {
+            "kind": "phrase_continuation",
             "text": "安河",
+            "fields": [
+                "title.words"
+            ],
             "expected": {
                 "any_of": [
                     "桥"
                 ],
                 "top_k": 10
-            }
+            },
+            "regression": true
         }
     },
     {
@@ -939,7 +964,11 @@
             }
         },
         "next_token": {
+            "kind": "phrase_continuation",
             "text": "保卫萝卜",
+            "fields": [
+                "title.words"
+            ],
             "expected": {
                 "any_of": [
                     "炮塔"
@@ -1179,8 +1208,7 @@
                     "小企鹅"
                 ],
                 "top_k": 5
-            },
-            "regression": true
+            }
         },
         "correction": {
             "text": "企鵝",
@@ -1192,7 +1220,11 @@
             }
         },
         "next_token": {
+            "kind": "phrase_continuation",
             "text": "小企鹅",
+            "fields": [
+                "title.words"
+            ],
             "expected": {
                 "any_of": [
                     "尾巴"
@@ -1298,13 +1330,18 @@
             }
         },
         "next_token": {
+            "kind": "phrase_continuation",
             "text": "熊大",
+            "fields": [
+                "title.words"
+            ],
             "expected": {
                 "any_of": [
                     "快跑"
                 ],
                 "top_k": 10
-            }
+            },
+            "regression": true
         }
     },
     {
@@ -1623,7 +1660,11 @@
             }
         },
         "next_token": {
+            "kind": "phrase_continuation",
             "text": "寂静岭",
+            "fields": [
+                "title.words"
+            ],
             "expected": {
                 "any_of": [
                     "母亲"
