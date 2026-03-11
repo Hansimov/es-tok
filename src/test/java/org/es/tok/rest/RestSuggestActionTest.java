@@ -72,4 +72,22 @@ public class RestSuggestActionTest {
         assertEquals(2, request.correctionMaxEdits());
         assertEquals(1, request.correctionPrefixLength());
     }
+
+    @Test
+    public void testAutoModeParametersAreParsed() {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("text", "老师");
+        payload.put("mode", "auto");
+        payload.put("fields", List.of("content"));
+        payload.put("size", 8);
+        payload.put("scan_limit", 96);
+        payload.put("correction_min_length", 2);
+
+        EsTokSuggestRequest request = RestSuggestAction.buildRequest(payload, new String[] { "idx" });
+
+        assertEquals("auto", request.mode());
+        assertEquals(8, request.size());
+        assertEquals(96, request.scanLimit());
+        assertEquals(2, request.correctionMinLength());
+    }
 }

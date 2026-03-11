@@ -14,6 +14,7 @@ DEFAULT_FIELDS = {
     "prefix": ["title.words", "tags.words"],
     "correction": ["title.words", "tags.words"],
     "next_token": ["title.words", "tags.words"],
+    "auto": ["title.words", "tags.words"],
 }
 
 NEXT_TOKEN_PHRASE_CONTINUATION_IDS = {
@@ -51,6 +52,13 @@ DEFAULT_REQUEST = {
         "correction_prefix_length": 1,
     },
     "next_token": {"size": 10, "scan_limit": 128},
+    "auto": {
+        "size": 8,
+        "scan_limit": 128,
+        "correction_min_length": 2,
+        "correction_max_edits": 2,
+        "correction_prefix_length": 1,
+    },
 }
 
 
@@ -73,7 +81,7 @@ def normalize_text(text: str) -> str:
 def flatten_cases(sources):
     cases = []
     for source in sources:
-        for mode in ("prefix", "correction", "next_token"):
+        for mode in ("prefix", "correction", "next_token", "auto"):
             payload = source.get(mode)
             if not payload:
                 continue
@@ -103,17 +111,17 @@ def flatten_cases(sources):
 
 
 def case_label(source_id, mode, payload):
-    if mode != "next_token":
+    if mode not in ("next_token", "auto"):
         return mode
     if payload.get("kind"):
         return payload["kind"]
     if source_id in NEXT_TOKEN_PHRASE_CONTINUATION_IDS:
         return "phrase_continuation"
-    return "associative_completion"
+    return "associative_completion" if mode == "next_token" else "auto"
 
 
 def default_fields(mode, label):
-    if mode == "next_token" and label == "phrase_continuation":
+    if mode in ("next_token", "auto") and label == "phrase_continuation":
         return ["title.words"]
     return DEFAULT_FIELDS[mode]
 
@@ -182,7 +190,7 @@ def summarize(results):
         }
 
     summary["overall"] = stats(results)
-    for mode in ("prefix", "correction", "next_token"):
+    for mode in ("prefix", "correction", "next_token", "auto"):
         mode_results = [item for item in results if item["mode"] == mode]
         summary["by_mode"][mode] = stats(mode_results)
 
@@ -191,6 +199,7 @@ def summarize(results):
         "correction",
         "phrase_continuation",
         "associative_completion",
+        "auto",
     ):
         label_results = [item for item in results if item["label"] == label]
         if label_results:
@@ -242,6 +251,7 @@ def main():
                 {
                     "id": case["id"],
                     "mode": case["mode"],
+                    "label": case["label"],
                     "text": case["text"],
                     "source": case["source"],
                     "regression": case["regression"],

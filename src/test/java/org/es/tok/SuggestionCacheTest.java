@@ -116,6 +116,36 @@ public class SuggestionCacheTest {
         }
     }
 
+    @Test
+    public void testAutoModeCanHitCache() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory()) {
+            writeDocuments(directory, "github copilot", "github actions", "github color");
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                CachedShardSuggestService service = new CachedShardSuggestService(8);
+                CachedShardSuggestService.SuggestResult first = service.suggest(
+                        reader,
+                        "auto",
+                        List.of("content"),
+                        "github",
+                        LuceneIndexSuggester.CompletionConfig.defaults(),
+                        LuceneIndexSuggester.CorrectionConfig.defaults(),
+                        true);
+                CachedShardSuggestService.SuggestResult second = service.suggest(
+                        reader,
+                        "auto",
+                        List.of("content"),
+                        "github",
+                        LuceneIndexSuggester.CompletionConfig.defaults(),
+                        LuceneIndexSuggester.CorrectionConfig.defaults(),
+                        true);
+
+                assertFalse(first.cacheHit());
+                assertTrue(second.cacheHit());
+                assertFalse(second.options().isEmpty());
+            }
+        }
+    }
+
     private void writeDocuments(Directory directory, String... contents) throws Exception {
         try (IndexWriter writer = new IndexWriter(directory, new IndexWriterConfig(new StandardAnalyzer()))) {
             for (String content : contents) {

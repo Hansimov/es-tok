@@ -198,11 +198,51 @@ public class LuceneIndexSuggester {
         Map<String, CompletionAccumulator> candidates = new HashMap<>();
         for (String field : normalizeFields(fields)) {
             collectSpacedBigramMatches(field, token + " ", effectiveConfig, candidates);
-            if (effectiveConfig.allowCompactBigrams()) {
+            if (effectiveConfig.allowCompactBigrams() && shouldCollectCompactBigramMatches(token)) {
                 collectCompactBigramMatches(field, token, effectiveConfig, candidates);
             }
         }
         return finalizeCompletions(candidates, effectiveConfig.size());
+    }
+
+    public List<SuggestionOption> suggestAuto(
+            Collection<String> fields,
+            String text,
+            CompletionConfig config,
+            CorrectionConfig correctionConfig) throws IOException {
+        if (text == null || text.isBlank()) {
+            return List.of();
+        }
+
+        CompletionConfig effectiveCompletionConfig = config != null ? config : CompletionConfig.defaults();
+        CorrectionConfig effectiveCorrectionConfig = correctionConfig != null ? correctionConfig : CorrectionConfig.defaults();
+        Map<String, AutoSuggestionAccumulator> merged = new HashMap<>();
+
+        mergeAutoCompletionCandidates(
+                merged,
+                suggestPrefixCompletions(fields, text, effectiveCompletionConfig),
+                "prefix",
+                1.0f);
+
+        if (shouldIncludeNextTokenInAuto(text)) {
+            mergeAutoCompletionCandidates(
+                    merged,
+                    suggestNextTokenCompletions(fields, text, effectiveCompletionConfig),
+                    "next_token",
+                    autoNextTokenWeight(text));
+        }
+
+        mergeAutoCorrectionCandidates(
+                merged,
+                suggestCorrections(fields, text, effectiveCorrectionConfig),
+                text,
+                0.92f);
+
+        return merged.values().stream()
+                .sorted(AutoSuggestionAccumulator.ORDER)
+                .limit(effectiveCompletionConfig.size())
+                .map(AutoSuggestionAccumulator::toSuggestionOption)
+                .toList();
     }
 
     private DirectSpellChecker createSpellChecker(CorrectionConfig config) {
@@ -515,6 +555,50 @@ public class LuceneIndexSuggester {
                 .toList();
     }
 
+    private void mergeAutoCompletionCandidates(
+            Map<String, AutoSuggestionAccumulator> merged,
+            List<CompletionCandidate> candidates,
+            String sourceType,
+            float branchWeight) {
+        if (candidates.isEmpty()) {
+            return;
+        }
+
+        float topScore = Math.max(1.0f, candidates.get(0).score());
+        for (int index = 0; index < candidates.size(); index++) {
+            CompletionCandidate candidate = candidates.get(index);
+            float fusedScore = branchWeight * autoBranchScore(candidate.score(), topScore, candidate.docFreq(), index);
+            merged.computeIfAbsent(candidate.text(), AutoSuggestionAccumulator::new)
+                    .add(candidate.text(), candidate.docFreq(), fusedScore, sourceType);
+        }
+    }
+
+    private void mergeAutoCorrectionCandidates(
+            Map<String, AutoSuggestionAccumulator> merged,
+            List<SuggestionOption> candidates,
+            String originalText,
+            float branchWeight) {
+        if (candidates.isEmpty()) {
+            return;
+        }
+
+        String normalizedOriginal = normalizeSuggestionSurface(originalText);
+        float topScore = Math.max(1.0f, candidates.get(0).score());
+        for (int index = 0; index < candidates.size(); index++) {
+            SuggestionOption candidate = candidates.get(index);
+            float affinity = 1.0f + (Math.min(2, sharedLeadingCodePointCount(normalizedOriginal, candidate.text())) * 0.08f);
+            float fusedScore = branchWeight * affinity * autoBranchScore(candidate.score(), topScore, candidate.docFreq(), index);
+            merged.computeIfAbsent(candidate.text(), AutoSuggestionAccumulator::new)
+                    .add(candidate.text(), candidate.docFreq(), fusedScore, candidate.type());
+        }
+    }
+
+    private static float autoBranchScore(float score, float topScore, int docFreq, int rank) {
+        float normalizedScore = Math.max(0.0f, score) / Math.max(1.0f, topScore);
+        float rankBonus = Math.max(0.0f, 1.0f - (rank * 0.08f));
+        return (normalizedScore * 100.0f) + (rankBonus * 8.0f) + (float) (Math.log1p(Math.max(0, docFreq)) * 3.0d);
+    }
+
     private List<String> normalizeFields(Collection<String> fields) {
         if (fields == null || fields.isEmpty()) {
             return List.of();
@@ -532,6 +616,35 @@ public class LuceneIndexSuggester {
 
     private boolean isSingleTokenTail(String tail) {
         return !tail.isBlank() && containsWhitespace(tail) == false;
+    }
+
+    private boolean shouldCollectCompactBigramMatches(String token) {
+        String normalized = normalizeSuggestionSurface(token);
+        if (normalized.isBlank() || containsWhitespace(normalized)) {
+            return false;
+        }
+        return normalized.codePointCount(0, normalized.length()) >= 2;
+    }
+
+    private static boolean shouldIncludeNextTokenInAuto(String text) {
+        String normalized = normalizeSuggestionSurface(text);
+        if (normalized.isBlank()) {
+            return false;
+        }
+        if (containsWhitespace(normalized)) {
+            return true;
+        }
+        return normalized.codePointCount(0, normalized.length()) >= 2;
+    }
+
+    private static float autoNextTokenWeight(String text) {
+        String normalized = normalizeSuggestionSurface(text);
+        int codePointLength = normalized.codePointCount(0, normalized.length());
+        boolean asciiOnly = normalized.chars().allMatch(ch -> ch < 128 || Character.isWhitespace(ch));
+        if (codePointLength <= 2 && !asciiOnly) {
+            return 0.9f;
+        }
+        return 0.96f;
     }
 
     private boolean isAcceptableNextTokenTail(String tail, int minCandidateLength) {
@@ -1081,6 +1194,57 @@ public class LuceneIndexSuggester {
 
         private CompletionCandidate toCandidate() {
             return new CompletionCandidate(text, docFreq, score(), type);
+        }
+    }
+
+    private static final class AutoSuggestionAccumulator {
+        private static final Comparator<AutoSuggestionAccumulator> ORDER = Comparator
+                .comparingDouble(AutoSuggestionAccumulator::rankingScore).reversed()
+                .thenComparing(Comparator.comparingInt(AutoSuggestionAccumulator::docFreq).reversed())
+                .thenComparing(AutoSuggestionAccumulator::type)
+                .thenComparing(AutoSuggestionAccumulator::text);
+
+        private final String text;
+        private final LinkedHashSet<String> sources = new LinkedHashSet<>();
+        private int docFreq;
+        private float totalScore;
+        private float bestBranchScore;
+        private String type = "prefix";
+
+        private AutoSuggestionAccumulator(String text) {
+            this.text = text;
+        }
+
+        private void add(String suggestionText, int suggestionDocFreq, float score, String suggestionType) {
+            sources.add(suggestionType);
+            if (suggestionDocFreq > docFreq) {
+                docFreq = suggestionDocFreq;
+            }
+            totalScore += score;
+            if (score > bestBranchScore) {
+                bestBranchScore = score;
+                type = suggestionType;
+            }
+        }
+
+        private float rankingScore() {
+            return totalScore + Math.max(0, sources.size() - 1) * 6.0f;
+        }
+
+        private int docFreq() {
+            return docFreq;
+        }
+
+        private String type() {
+            return sources.size() > 1 ? "auto" : type;
+        }
+
+        private String text() {
+            return text;
+        }
+
+        private SuggestionOption toSuggestionOption() {
+            return new SuggestionOption(text, docFreq, rankingScore(), type());
         }
     }
 

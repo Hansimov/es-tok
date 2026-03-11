@@ -293,6 +293,27 @@ public class SuggestionEngineTest {
     }
 
     @Test
+    public void testNextTokenSkipsCompactOverlapForSingleCharacterSeed() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "校园",
+                    "校园生活",
+                    "校园活动");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestNextTokenCompletions(
+                        List.of("content"),
+                        "校",
+                        new LuceneIndexSuggester.CompletionConfig(5, 32, 1, 1, true));
+
+                assertTrue(completions.isEmpty());
+            }
+        }
+    }
+
+    @Test
     public void testNextTokenRejectsWhitespaceSeparatedTail() throws Exception {
         try (Directory directory = new ByteBuffersDirectory();
                 Analyzer analyzer = new KeywordAnalyzer()) {
@@ -413,6 +434,55 @@ public class SuggestionEngineTest {
 
                 assertFalse(corrections.isEmpty());
                 assertEquals("老师", corrections.get(0).text());
+            }
+        }
+    }
+
+    @Test
+    public void testAutoUsesPrefixForShortChineseSeed() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "校园",
+                    "校园",
+                    "校园生活",
+                    "老师",
+                    "老师 今天");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.SuggestionOption> suggestions = suggester.suggestAuto(
+                        List.of("content"),
+                        "校",
+                        new LuceneIndexSuggester.CompletionConfig(3, 32, 1, 1, true),
+                        new LuceneIndexSuggester.CorrectionConfig(0, 2, 2, 1, 3, 1, 0.5f));
+
+                assertFalse(suggestions.isEmpty());
+                assertEquals("校园", suggestions.get(0).text());
+            }
+        }
+    }
+
+    @Test
+    public void testAutoReturnsCorrectionForMisspelledChineseEntity() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "老师",
+                    "老师",
+                    "老师 今天",
+                    "老人");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.SuggestionOption> suggestions = suggester.suggestAuto(
+                        List.of("content"),
+                        "老狮",
+                        new LuceneIndexSuggester.CompletionConfig(3, 32, 1, 1, true),
+                        new LuceneIndexSuggester.CorrectionConfig(0, 2, 2, 1, 3, 1, 0.5f));
+
+                assertFalse(suggestions.isEmpty());
+                assertEquals("老师", suggestions.get(0).text());
             }
         }
     }

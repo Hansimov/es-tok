@@ -72,9 +72,9 @@ public class EsTokSuggestRequest extends BroadcastRequest<EsTokSuggestRequest> {
                     "fields size exceeds max_fields=" + maxFields,
                     validationException);
         }
-        if (mode.equals("prefix") == false && mode.equals("next_token") == false && mode.equals("correction") == false) {
+        if (isSupportedMode(mode) == false) {
             validationException = ValidateActions.addValidationError(
-                "mode must be 'prefix', 'next_token' or 'correction'",
+                "mode must be 'prefix', 'next_token', 'correction' or 'auto'",
                     validationException);
         }
         if (correctionMaxEdits < 1 || correctionMaxEdits > 2) {
@@ -219,6 +219,13 @@ public class EsTokSuggestRequest extends BroadcastRequest<EsTokSuggestRequest> {
             return fields;
         }
         return new ArrayList<>(fields.subList(0, maxFields));
+    }
+
+    private static boolean isSupportedMode(String mode) {
+        return "prefix".equals(mode)
+                || "next_token".equals(mode)
+                || "correction".equals(mode)
+                || "auto".equals(mode);
     }
 
     @Override

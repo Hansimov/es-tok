@@ -139,6 +139,12 @@ public class SuggestRealCasesTest {
             request.put("correction_min_length", 2);
             request.put("correction_max_edits", 2);
             request.put("correction_prefix_length", 1);
+        } else if ("auto".equals(mode)) {
+            request.put("size", 8);
+            request.put("scan_limit", 128);
+            request.put("correction_min_length", 2);
+            request.put("correction_max_edits", 2);
+            request.put("correction_prefix_length", 1);
         }
         return request;
     }
@@ -147,7 +153,7 @@ public class SuggestRealCasesTest {
         JsonNode root = MAPPER.readTree(Files.readString(CASE_FILE, StandardCharsets.UTF_8));
         List<RealCase> cases = new ArrayList<>();
         for (JsonNode sourceNode : root) {
-            for (String mode : List.of("prefix", "correction", "next_token")) {
+            for (String mode : List.of("prefix", "correction", "next_token", "auto")) {
                 JsonNode caseNode = sourceNode.path(mode);
                 if (caseNode.isMissingNode() || caseNode.isNull() || !caseNode.path("regression").asBoolean(false)) {
                     continue;
@@ -185,11 +191,21 @@ public class SuggestRealCasesTest {
                         caseNode.path("text").asText(),
                         fieldList,
                         expected,
-                        caseNode.path("expected").path("top_k").asInt("next_token".equals(mode) ? 10 : 5),
+                        caseNode.path("expected").path("top_k").asInt(defaultTopK(mode)),
                         overrides));
             }
         }
         return cases;
+    }
+
+    private static int defaultTopK(String mode) {
+        if ("next_token".equals(mode)) {
+            return 10;
+        }
+        if ("auto".equals(mode)) {
+            return 8;
+        }
+        return 5;
     }
 
     private static String normalize(String text) {
@@ -220,7 +236,7 @@ public class SuggestRealCasesTest {
     }
 
     private static List<String> defaultFields(String sourceId, String mode, JsonNode caseNode) {
-        if (!"next_token".equals(mode)) {
+        if (!"next_token".equals(mode) && !"auto".equals(mode)) {
             return List.of("title.words", "tags.words");
         }
 

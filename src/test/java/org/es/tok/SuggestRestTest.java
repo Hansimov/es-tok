@@ -167,6 +167,24 @@ public class SuggestRestTest {
         assertTrue(result.contains("\"type\":\"correction\""));
       }
 
+    @Test
+    public void testAutoSuggestEndpoint() throws Exception {
+        String query = """
+                {
+                  "text": "github",
+                  "mode": "auto",
+                  "fields": ["content"],
+                  "size": 5,
+                  "scan_limit": 32,
+                  "correction_min_length": 2,
+                  "cache": true
+                }
+                """;
+
+        String result = performSuggest(query);
+        assertTrue(result.contains("copilot") || result.contains("actions") || result.contains("github"));
+    }
+
     private void indexDocument(String id, String content) throws Exception {
         Request request = new Request("PUT", "/" + TEST_INDEX + "/_doc/" + id);
         request.setJsonEntity("{\"content\":\"" + content + "\"}");

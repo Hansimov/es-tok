@@ -44,7 +44,11 @@ public class CachedShardSuggestService {
         Objects.requireNonNull(text, "text");
         Objects.requireNonNull(config, "config");
 
-        Object configKey = "correction".equals(mode) ? correctionConfig : config;
+        Object configKey = switch (mode) {
+            case "correction" -> correctionConfig;
+            case "auto" -> new AutoConfigKey(config, correctionConfig);
+            default -> config;
+        };
         CacheKey cacheKey = cacheEnabled ? createKey(reader, mode, fields, text, configKey) : null;
         if (cacheKey != null) {
             synchronized (cache) {
@@ -72,6 +76,7 @@ public class CachedShardSuggestService {
                             candidate.type().name().toLowerCase()))
                     .toList();
             case "correction" -> suggester.suggestCorrections(fields, text, correctionConfig);
+                case "auto" -> suggester.suggestAuto(fields, text, config, correctionConfig);
             default -> throw new IllegalArgumentException("Unsupported suggest mode: " + mode);
         };
         List<LuceneIndexSuggester.SuggestionOption> immutable = List.copyOf(computed);
@@ -108,4 +113,9 @@ public class CachedShardSuggestService {
             String text,
             Object config) {
     }
+
+        private record AutoConfigKey(
+            LuceneIndexSuggester.CompletionConfig completionConfig,
+            LuceneIndexSuggester.CorrectionConfig correctionConfig) {
+        }
 }
