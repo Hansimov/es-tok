@@ -12,15 +12,28 @@ import org.es.tok.config.EsTokConfig;
 import org.es.tok.config.EsTokConfigLoader;
 import org.es.tok.core.facade.EsTokEngine;
 import org.es.tok.core.model.AnalysisVersion;
+import org.es.tok.suggest.PinyinWarmupIndexListener;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 import static org.elasticsearch.rest.RestRequest.Method.GET;
 
 public class RestInfoAction extends AbstractCatAction {
 
+    private final Supplier<PinyinWarmupIndexListener.WarmupSummary> warmupSummarySupplier;
+
+    public RestInfoAction() {
+        this(() -> new PinyinWarmupIndexListener.WarmupSummary(0, 0, 0, 0));
+    }
+
+    public RestInfoAction(Supplier<PinyinWarmupIndexListener.WarmupSummary> warmupSummarySupplier) {
+        this.warmupSummarySupplier = warmupSummarySupplier;
+    }
+
     InfoSnapshot buildInfoSnapshot(String path) {
         AnalysisVersion version = resolveDiagnosticVersion();
+        PinyinWarmupIndexListener.WarmupSummary warmupSummary = warmupSummarySupplier.get();
         if (path.endsWith("/version")) {
             return new InfoSnapshot(
                     "es_tok",
@@ -29,16 +42,24 @@ public class RestInfoAction extends AbstractCatAction {
                     version.getAnalysisHash(),
                     version.getVocabHash(),
                     version.getRulesHash(),
+                    warmupSummary.readyShards(),
+                    warmupSummary.totalShards(),
+                    warmupSummary.runningShards(),
+                    warmupSummary.queuedShards(),
                     "ES-TOK plugin");
         }
         return new InfoSnapshot(
                 "es_tok",
-                "Ready",
+                warmupSummary.isReady() ? "Ready" : "Warming " + warmupSummary.readyShards() + "/" + warmupSummary.totalShards(),
                 EsTokPlugin.VERSION,
                 version.getAnalysisHash(),
                 version.getVocabHash(),
                 version.getRulesHash(),
-                "ES-TOK plugin");
+                warmupSummary.readyShards(),
+                warmupSummary.totalShards(),
+                warmupSummary.runningShards(),
+                warmupSummary.queuedShards(),
+                warmupSummary.isReady() ? "ES-TOK plugin" : "ES-TOK plugin warmup in progress");
     }
 
     private AnalysisVersion resolveDiagnosticVersion() {
@@ -77,6 +98,10 @@ public class RestInfoAction extends AbstractCatAction {
         table.addCell(snapshot.analysisHash());
         table.addCell(snapshot.vocabHash());
         table.addCell(snapshot.rulesHash());
+        table.addCell(snapshot.warmupReadyShards());
+        table.addCell(snapshot.warmupTotalShards());
+        table.addCell(snapshot.warmupRunningShards());
+        table.addCell(snapshot.warmupQueuedShards());
         table.addCell(snapshot.description());
         table.endRow();
         return channel -> {
@@ -104,6 +129,10 @@ public class RestInfoAction extends AbstractCatAction {
         table.addCell("analysis_hash", "desc:diagnostic analysis hash");
         table.addCell("vocab_hash", "desc:diagnostic vocab hash");
         table.addCell("rules_hash", "desc:diagnostic rules hash");
+        table.addCell("warmup_ready_shards", "desc:ready business shards");
+        table.addCell("warmup_total_shards", "desc:tracked business shards");
+        table.addCell("warmup_running_shards", "desc:business shards currently warming");
+        table.addCell("warmup_queued_shards", "desc:business shards queued for warmup");
         table.addCell("description", "desc:plugin description");
         table.endHeaders();
         return table;
@@ -116,6 +145,10 @@ public class RestInfoAction extends AbstractCatAction {
             String analysisHash,
             String vocabHash,
             String rulesHash,
+            int warmupReadyShards,
+            int warmupTotalShards,
+            int warmupRunningShards,
+            int warmupQueuedShards,
             String description) {
     }
 }

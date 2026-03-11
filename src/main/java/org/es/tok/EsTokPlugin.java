@@ -68,9 +68,15 @@ public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin,
             final Supplier<DiscoveryNodes> nodesInCluster,
             final Predicate<NodeFeature> clusterSupportsFeature) {
         return List.of(
-                new RestInfoAction(),
+                new RestInfoAction(pinyinWarmupIndexListener::businessWarmupSummary),
                 new RestAnalyzeAction(),
                 new RestSuggestAction());
+    }
+
+    @Override
+    public java.util.Collection<?> createComponents(PluginServices services) {
+        pinyinWarmupIndexListener.configureExecutor(services.threadPool().generic());
+        return List.of(pinyinWarmupIndexListener);
     }
 
     @Override

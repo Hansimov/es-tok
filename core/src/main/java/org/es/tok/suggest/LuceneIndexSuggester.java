@@ -32,6 +32,12 @@ import java.util.PriorityQueue;
 public class LuceneIndexSuggester {
 
     private static final List<String> COMPLETION_WARMUP_ANCHORS = buildCompletionWarmupAnchors();
+    private static final int EXACT_FULL_PINYIN_PREFIX_LENGTH = 8;
+    private static final int EXACT_INITIALS_PINYIN_PREFIX_LENGTH = 8;
+    private static final int EXACT_FULL_PINYIN_PREFIX_MIN_LENGTH = 4;
+    private static final int EXACT_INITIALS_PINYIN_PREFIX_MIN_LENGTH = 3;
+    private static final int EXACT_PREFIX_COARSE_FALLBACK_THRESHOLD = 24;
+    private static final int COARSE_PINYIN_BUCKET_LIMIT = 2048;
 
     private final IndexReader reader;
 
@@ -1049,7 +1055,8 @@ public class LuceneIndexSuggester {
                 .sorted(Comparator.comparingInt(PinyinIndexedTerm::docFreq).reversed().thenComparing(PinyinIndexedTerm::text))
                 .toList();
         return new PinyinFieldIndex(
-                termsList,
+            buildExactPinyinPrefixBuckets(termsList, false),
+            buildExactPinyinPrefixBuckets(termsList, true),
                 buildPinyinPrefixBuckets(termsList, true),
                 buildPinyinPrefixBuckets(termsList, false));
     }
@@ -1090,7 +1097,8 @@ public class LuceneIndexSuggester {
                 .sorted(Comparator.comparingInt(PinyinIndexedTerm::docFreq).reversed().thenComparing(PinyinIndexedTerm::text))
                 .toList();
         return new PinyinFieldIndex(
-                termsList,
+            buildExactPinyinPrefixBuckets(termsList, false),
+            buildExactPinyinPrefixBuckets(termsList, true),
                 buildPinyinPrefixBuckets(termsList, true),
                 buildPinyinPrefixBuckets(termsList, false));
     }
@@ -1100,7 +1108,29 @@ public class LuceneIndexSuggester {
             boolean fullPinyin) {
         Map<String, List<PinyinIndexedTerm>> buckets = new HashMap<>();
         for (PinyinIndexedTerm term : terms) {
-            addPinyinPrefixes(buckets, PinyinSupport.bucketKeys(term.pinyinKey(), fullPinyin), term);
+            addPinyinPrefixes(buckets, PinyinSupport.bucketKeys(term.pinyinKey(), fullPinyin), term, COARSE_PINYIN_BUCKET_LIMIT);
+        }
+        return buckets;
+    }
+
+    private static Map<String, List<PinyinIndexedTerm>> buildExactPinyinPrefixBuckets(
+            List<PinyinIndexedTerm> terms,
+            boolean initialsOnly) {
+        Map<String, List<PinyinIndexedTerm>> buckets = new HashMap<>();
+        int maxPrefixLength = initialsOnly ? EXACT_INITIALS_PINYIN_PREFIX_LENGTH : EXACT_FULL_PINYIN_PREFIX_LENGTH;
+        int minPrefixLength = initialsOnly ? EXACT_INITIALS_PINYIN_PREFIX_MIN_LENGTH : EXACT_FULL_PINYIN_PREFIX_MIN_LENGTH;
+        for (PinyinIndexedTerm term : terms) {
+            String key = initialsOnly ? term.pinyinKey().initials() : term.pinyinKey().full();
+            if (key == null || key.isBlank()) {
+                continue;
+            }
+            int effectiveMaxLength = Math.min(maxPrefixLength, key.length());
+            if (effectiveMaxLength < minPrefixLength) {
+                continue;
+            }
+            for (int length = minPrefixLength; length <= effectiveMaxLength; length++) {
+                addPinyinPrefix(buckets, key.substring(0, length), term, exactPinyinBucketLimit(length, initialsOnly));
+            }
         }
         return buckets;
     }
@@ -1108,20 +1138,48 @@ public class LuceneIndexSuggester {
     private static void addPinyinPrefixes(
             Map<String, List<PinyinIndexedTerm>> buckets,
             List<String> keys,
-            PinyinIndexedTerm term) {
+            PinyinIndexedTerm term,
+            int bucketLimit) {
         if (keys == null || keys.isEmpty()) {
             return;
         }
 
         for (String prefix : keys) {
-            if (prefix == null || prefix.isBlank()) {
-                continue;
-            }
-            List<PinyinIndexedTerm> bucket = buckets.computeIfAbsent(prefix, ignored -> new ArrayList<>());
-            if (bucket.size() < 2048) {
-                bucket.add(term);
-            }
+            addPinyinPrefix(buckets, prefix, term, bucketLimit);
         }
+    }
+
+    private static void addPinyinPrefix(
+            Map<String, List<PinyinIndexedTerm>> buckets,
+            String prefix,
+            PinyinIndexedTerm term,
+            int bucketLimit) {
+        if (prefix == null || prefix.isBlank()) {
+            return;
+        }
+        List<PinyinIndexedTerm> bucket = buckets.computeIfAbsent(prefix, ignored -> new ArrayList<>());
+        if (bucket.size() < bucketLimit) {
+            bucket.add(term);
+        }
+    }
+
+    private static int exactPinyinBucketLimit(int prefixLength, boolean initialsOnly) {
+        if (initialsOnly) {
+            if (prefixLength >= 6) {
+                return 32;
+            }
+            if (prefixLength >= 4) {
+                return 48;
+            }
+            return 72;
+        }
+        if (prefixLength >= 7) {
+            return 48;
+        }
+        if (prefixLength >= 5) {
+            return 72;
+        }
+        return 96;
     }
 
     private static int compareIndexedTerms(PinyinIndexedTerm left, PinyinIndexedTerm right) {
@@ -1798,13 +1856,15 @@ public class LuceneIndexSuggester {
     }
 
     private record PinyinFieldIndex(
-            List<PinyinIndexedTerm> terms,
+            Map<String, List<PinyinIndexedTerm>> exactFullPrefixBuckets,
+            Map<String, List<PinyinIndexedTerm>> exactInitialsPrefixBuckets,
             Map<String, List<PinyinIndexedTerm>> fullPrefixBuckets,
             Map<String, List<PinyinIndexedTerm>> initialsPrefixBuckets) {
-        private static final PinyinFieldIndex EMPTY = new PinyinFieldIndex(List.of(), Map.of(), Map.of());
+        private static final PinyinFieldIndex EMPTY = new PinyinFieldIndex(Map.of(), Map.of(), Map.of(), Map.of());
 
         private List<PinyinIndexedTerm> candidates(String input) {
-            if (terms.isEmpty()) {
+            if (exactFullPrefixBuckets.isEmpty() && exactInitialsPrefixBuckets.isEmpty()
+                    && fullPrefixBuckets.isEmpty() && initialsPrefixBuckets.isEmpty()) {
                 return List.of();
             }
 
@@ -1814,16 +1874,28 @@ public class LuceneIndexSuggester {
             }
 
             LinkedHashMap<String, PinyinIndexedTerm> merged = new LinkedHashMap<>();
-            addCandidates(merged, bucket(fullPrefixBuckets, inputKey.full()));
+            addCandidates(merged, exactBucket(exactFullPrefixBuckets, inputKey.full()));
             if (PinyinSupport.shouldUseInitialsBuckets(input)) {
-                addCandidates(merged, bucket(initialsPrefixBuckets, inputKey.initials()));
+                addCandidates(merged, exactBucket(exactInitialsPrefixBuckets, inputKey.initials()));
+            }
+            if (merged.size() < EXACT_PREFIX_COARSE_FALLBACK_THRESHOLD) {
+                addCandidates(merged, bucket(fullPrefixBuckets, inputKey.full()));
+                if (PinyinSupport.shouldUseInitialsBuckets(input)) {
+                    addCandidates(merged, bucket(initialsPrefixBuckets, inputKey.initials()));
+                }
             }
 
             String normalizedInput = PinyinSupport.normalizeInput(input);
             if (merged.isEmpty() && !normalizedInput.isEmpty()) {
-                addCandidates(merged, bucket(fullPrefixBuckets, normalizedInput));
+                addCandidates(merged, exactBucket(exactFullPrefixBuckets, normalizedInput));
                 if (PinyinSupport.shouldUseInitialsBuckets(input)) {
-                    addCandidates(merged, bucket(initialsPrefixBuckets, normalizedInput));
+                    addCandidates(merged, exactBucket(exactInitialsPrefixBuckets, normalizedInput));
+                }
+                if (merged.size() < EXACT_PREFIX_COARSE_FALLBACK_THRESHOLD) {
+                    addCandidates(merged, bucket(fullPrefixBuckets, normalizedInput));
+                    if (PinyinSupport.shouldUseInitialsBuckets(input)) {
+                        addCandidates(merged, bucket(initialsPrefixBuckets, normalizedInput));
+                    }
                 }
             }
             return List.copyOf(merged.values());
@@ -1845,6 +1917,15 @@ public class LuceneIndexSuggester {
             }
             int anchorLength = Math.min(4, queryKey.length());
             return buckets.getOrDefault(queryKey.substring(0, anchorLength), List.of());
+        }
+
+        private static List<PinyinIndexedTerm> exactBucket(
+                Map<String, List<PinyinIndexedTerm>> buckets,
+                String queryKey) {
+            if (queryKey == null || queryKey.isBlank()) {
+                return List.of();
+            }
+            return buckets.getOrDefault(queryKey, List.of());
         }
     }
 
