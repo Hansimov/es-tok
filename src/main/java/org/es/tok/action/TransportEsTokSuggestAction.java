@@ -185,7 +185,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
                 request.usePinyin());
             LuceneIndexSuggester.CorrectionConfig correctionConfig = new LuceneIndexSuggester.CorrectionConfig(
                 request.correctionRareDocFreq(),
-                request.correctionMinLength(),
+                effectiveCorrectionMinLength(request),
                 request.correctionMaxEdits(),
                 request.correctionPrefixLength(),
                 request.size(),
@@ -240,7 +240,11 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
                 completionConfig,
                 correctionConfig,
                 request.useCache());
-            List<LuceneIndexSuggester.SuggestionOption> associateOptions = shouldIncludeAssociateInAuto(request.text(), request.usePinyin())
+            List<LuceneIndexSuggester.SuggestionOption> associateOptions = shouldRunAssociateInAuto(
+                request.text(),
+                request.usePinyin(),
+                prefixResult.options(),
+                correctionResult.options())
                 ? associateSuggester.suggestAssociate(
                     searcher,
                     indexService,
@@ -315,6 +319,48 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
 
         private static boolean shouldIncludeAssociateInAuto(String text, boolean usePinyin) {
         return !(usePinyin && PinyinSupport.containsChinese(text));
+        }
+
+        private static boolean shouldRunAssociateInAuto(
+            String text,
+            boolean usePinyin,
+            List<LuceneIndexSuggester.SuggestionOption> prefixOptions,
+            List<LuceneIndexSuggester.SuggestionOption> correctionOptions) {
+        if (!shouldIncludeAssociateInAuto(text, usePinyin)) {
+            return false;
+        }
+        if (hasStrongDirectAutoCoverage(text, prefixOptions, correctionOptions)) {
+            return false;
+        }
+        return true;
+        }
+
+        private static boolean hasStrongDirectAutoCoverage(
+            String text,
+            List<LuceneIndexSuggester.SuggestionOption> prefixOptions,
+            List<LuceneIndexSuggester.SuggestionOption> correctionOptions) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String normalized = text.trim().toLowerCase(java.util.Locale.ROOT);
+        boolean asciiOnly = normalized.chars().allMatch(ch -> ch < 128);
+        boolean hasWhitespace = normalized.chars().anyMatch(Character::isWhitespace);
+        if (!prefixOptions.isEmpty()) {
+            if (asciiOnly) {
+                return true;
+            }
+            if (hasWhitespace) {
+                return true;
+            }
+        }
+        return prefixOptions.isEmpty() && !correctionOptions.isEmpty() && asciiOnly && hasWhitespace;
+        }
+
+        private static int effectiveCorrectionMinLength(ShardEsTokSuggestRequest request) {
+        if (!request.usePinyin() || !PinyinSupport.containsChinese(request.text())) {
+            return request.correctionMinLength();
+        }
+        return Math.min(request.correctionMinLength(), 2);
         }
 
         private static float autoPrefixWeight(String text, boolean usePinyin) {

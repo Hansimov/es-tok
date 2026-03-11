@@ -30,6 +30,7 @@ public class ConfigBuilder {
     private boolean dropDuplicates = false;
     private boolean dropCategs = false;
     private boolean dropVocabs = false;
+    private boolean emitPinyinTerms = false;
     private boolean useRules = false;
     private AnalyzeRules analyzeRules = AnalyzeRules.EMPTY;
 
@@ -120,6 +121,11 @@ public class ConfigBuilder {
         return this;
     }
 
+    public ConfigBuilder withEmitPinyinTerms() {
+        this.emitPinyinTerms = true;
+        return this;
+    }
+
     // Rules settings
     public ConfigBuilder withRules(AnalyzeRules rules) {
         this.useRules = true;
@@ -142,7 +148,13 @@ public class ConfigBuilder {
     }
 
     public EsTokConfig build() {
-        ExtraConfig extraConfig = new ExtraConfig(ignoreCase, ignoreHant, dropDuplicates, dropCategs, dropVocabs);
+        ExtraConfig extraConfig = new ExtraConfig(
+            ignoreCase,
+            ignoreHant,
+            dropDuplicates,
+            dropCategs,
+            dropVocabs,
+            emitPinyinTerms);
         CategConfig categConfig = new CategConfig(useCateg, splitWord);
         VocabConfig vocabConfig = new VocabConfig(useVocab, vocabs);
         NgramConfig ngramConfig = new NgramConfig(useNgram, useBigram, useVcgram, useVbgram, dropCogram);

@@ -95,6 +95,19 @@ public class RestSuggestActionTest {
     }
 
     @Test
+    public void testChinesePinyinRequestLowersImplicitCorrectionMinLength() {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("text", "俞利均");
+        payload.put("mode", "auto");
+        payload.put("fields", List.of("content"));
+        payload.put("use_pinyin", true);
+
+        EsTokSuggestRequest request = RestSuggestAction.buildRequest(payload, new String[] { "idx" });
+
+        assertEquals(2, request.correctionMinLength());
+    }
+
+    @Test
     public void testPrewarmPinyinAllowsEmptyText() {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("mode", "prefix");

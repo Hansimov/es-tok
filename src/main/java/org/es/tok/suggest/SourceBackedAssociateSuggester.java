@@ -54,6 +54,7 @@ public class SourceBackedAssociateSuggester {
         if (seedTerms.isEmpty()) {
             seedTerms.add(normalizeToken(text));
         }
+        AssociateQueryProfile queryProfile = AssociateQueryProfile.from(seedTerms);
 
         BooleanQuery.Builder queryBuilder = new BooleanQuery.Builder();
         for (FieldContext fieldContext : fieldContexts) {
@@ -85,7 +86,7 @@ public class SourceBackedAssociateSuggester {
             LeafReaderContext leaf = leaves.get(leafIndex);
             int leafDocId = scoreDoc.doc - leaf.docBase;
             Source source = sourceProvider.getSource(leaf, leafDocId);
-            collectCandidatesFromSource(candidates, fieldContexts, source, seedTerms, scoreDoc.score, rank);
+            collectCandidatesFromSource(candidates, fieldContexts, source, seedTerms, queryProfile, scoreDoc.score, rank);
         }
 
         return candidates.values().stream()
@@ -98,10 +99,57 @@ public class SourceBackedAssociateSuggester {
     private LinkedHashSet<String> analyzeSeedTerms(List<FieldContext> fieldContexts, String text) throws IOException {
         LinkedHashSet<String> seedTerms = new LinkedHashSet<>();
         for (FieldContext fieldContext : fieldContexts) {
-            seedTerms.addAll(analyze(fieldContext.analyzer(), fieldContext.indexField(), text));
+            for (String seedTerm : analyze(fieldContext.analyzer(), fieldContext.indexField(), text)) {
+                if (isUsefulSeedTerm(seedTerm)) {
+                    seedTerms.add(seedTerm);
+                }
+            }
         }
+        pruneAsciiSeedTerms(seedTerms, text);
         seedTerms.remove("");
         return seedTerms;
+    }
+
+    private static void pruneAsciiSeedTerms(LinkedHashSet<String> seedTerms, String originalText) {
+        if (seedTerms.isEmpty() || originalText == null || originalText.isBlank()) {
+            return;
+        }
+
+        List<String> queryParts = extractAsciiQueryParts(originalText);
+        if (queryParts.isEmpty()) {
+            return;
+        }
+
+        LinkedHashSet<String> retained = new LinkedHashSet<>();
+        for (String queryPart : queryParts) {
+            String bestSeed = null;
+            for (String seedTerm : seedTerms) {
+                if (seedTerm == null || seedTerm.isBlank()) {
+                    continue;
+                }
+                if (seedTerm.chars().allMatch(ch -> ch < 128 && Character.isLetterOrDigit(ch)) == false) {
+                    continue;
+                }
+                if (queryPart.startsWith(seedTerm) == false) {
+                    continue;
+                }
+                if (bestSeed == null || seedTerm.length() > bestSeed.length()) {
+                    bestSeed = seedTerm;
+                }
+            }
+            if (bestSeed != null) {
+                retained.add(bestSeed);
+            }
+        }
+
+        if (retained.isEmpty()) {
+            return;
+        }
+
+        seedTerms.removeIf(seedTerm -> seedTerm != null
+                && seedTerm.isBlank() == false
+                && seedTerm.chars().allMatch(ch -> ch < 128 && Character.isLetterOrDigit(ch))
+                && retained.contains(seedTerm) == false);
     }
 
     private void collectCandidatesFromSource(
@@ -109,6 +157,7 @@ public class SourceBackedAssociateSuggester {
             List<FieldContext> fieldContexts,
             Source source,
             Set<String> seedTerms,
+            AssociateQueryProfile queryProfile,
             float hitScore,
             int rank) throws IOException {
         float docWeight = (float) ((Math.log1p(Math.max(1.0f, hitScore)) + 1.0d) / (1.0d + (rank * 0.08d)));
@@ -117,7 +166,7 @@ public class SourceBackedAssociateSuggester {
             Object rawValue = source.extractValue(fieldContext.sourcePath(), null);
             for (String value : flattenSourceValues(rawValue)) {
                 for (String token : analyze(fieldContext.analyzer(), fieldContext.indexField(), value)) {
-                    if (!isAcceptableAssociateCandidate(token, seedTerms)) {
+                    if (!isAcceptableAssociateCandidate(token, seedTerms, queryProfile)) {
                         continue;
                     }
                     if (!seenInDoc.add(token)) {
@@ -177,6 +226,21 @@ public class SourceBackedAssociateSuggester {
         return List.of(value.toString());
     }
 
+    private static List<String> extractAsciiQueryParts(String text) {
+        if (text == null || text.isBlank()) {
+            return List.of();
+        }
+
+        List<String> parts = new ArrayList<>();
+        for (String rawPart : text.trim().split("\\s+")) {
+            String normalized = normalizeToken(rawPart);
+            if (!normalized.isBlank() && normalized.chars().allMatch(ch -> ch < 128 && Character.isLetterOrDigit(ch))) {
+                parts.add(normalized);
+            }
+        }
+        return parts;
+    }
+
     private static List<String> analyze(Analyzer analyzer, String field, String text) throws IOException {
         if (text == null || text.isBlank()) {
             return List.of();
@@ -196,7 +260,7 @@ public class SourceBackedAssociateSuggester {
         return tokens;
     }
 
-    private static boolean isAcceptableAssociateCandidate(String token, Set<String> seedTerms) {
+    private static boolean isAcceptableAssociateCandidate(String token, Set<String> seedTerms, AssociateQueryProfile queryProfile) {
         if (token == null || token.isBlank() || seedTerms.contains(token)) {
             return false;
         }
@@ -214,7 +278,51 @@ public class SourceBackedAssociateSuggester {
         if (!hasMeaningfulLetter) {
             return false;
         }
-        return token.chars().anyMatch(ch -> Character.isLetterOrDigit(ch) || Character.UnicodeScript.of(ch) == Character.UnicodeScript.HAN);
+        if (token.chars().anyMatch(ch -> Character.isLetterOrDigit(ch) || Character.UnicodeScript.of(ch) == Character.UnicodeScript.HAN) == false) {
+            return false;
+        }
+        return isUsefulAssociateCandidate(token, queryProfile);
+    }
+
+    private static boolean isUsefulSeedTerm(String token) {
+        if (token == null || token.isBlank()) {
+            return false;
+        }
+        if (PinyinSupport.containsChinese(token)) {
+            return true;
+        }
+
+        int codePointLength = token.codePointCount(0, token.length());
+        boolean asciiAlphaNum = token.chars().allMatch(ch -> ch < 128 && Character.isLetterOrDigit(ch));
+        if (asciiAlphaNum) {
+            return codePointLength >= 3;
+        }
+        return codePointLength >= 2;
+    }
+
+    private static boolean isUsefulAssociateCandidate(String token, AssociateQueryProfile queryProfile) {
+        if (token == null || token.isBlank()) {
+            return false;
+        }
+
+        int codePointLength = token.codePointCount(0, token.length());
+        boolean asciiAlphaNum = token.chars().allMatch(ch -> ch < 128 && Character.isLetterOrDigit(ch));
+        if (asciiAlphaNum) {
+            boolean hasDigit = token.chars().anyMatch(Character::isDigit);
+            if (codePointLength < (hasDigit ? 3 : 4)) {
+                return false;
+            }
+            if (queryProfile.hasAsciiSeeds() && !queryProfile.isAnchoredAsciiCandidate(token)) {
+                return false;
+            }
+            return true;
+        }
+
+        if (PinyinSupport.containsChinese(token)) {
+            return codePointLength >= 2;
+        }
+
+        return codePointLength >= 2;
     }
 
     private static String normalizeToken(String token) {
@@ -254,6 +362,50 @@ public class SourceBackedAssociateSuggester {
     }
 
     private record FieldContext(String indexField, String sourcePath, Analyzer analyzer) {
+    }
+
+    private static final class AssociateQueryProfile {
+        private final List<String> asciiSeeds;
+
+        private AssociateQueryProfile(List<String> asciiSeeds) {
+            this.asciiSeeds = asciiSeeds;
+        }
+
+        private static AssociateQueryProfile from(Set<String> seedTerms) {
+            List<String> asciiSeeds = seedTerms.stream()
+                    .filter(seed -> seed != null && !seed.isBlank())
+                    .filter(seed -> seed.chars().allMatch(ch -> ch < 128 && Character.isLetterOrDigit(ch)))
+                    .filter(seed -> seed.codePointCount(0, seed.length()) >= 3)
+                    .toList();
+            return new AssociateQueryProfile(asciiSeeds);
+        }
+
+        private boolean hasAsciiSeeds() {
+            return !asciiSeeds.isEmpty();
+        }
+
+        private boolean isAnchoredAsciiCandidate(String token) {
+            boolean candidateHasDigit = token.chars().anyMatch(Character::isDigit);
+            for (String seed : asciiSeeds) {
+                if (!candidateHasDigit && token.length() < seed.length()) {
+                    continue;
+                }
+                int sharedPrefix = sharedLeadingPrefixLength(seed, token);
+                if (sharedPrefix >= Math.min(3, Math.min(seed.length(), token.length()))) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static int sharedLeadingPrefixLength(String left, String right) {
+            int limit = Math.min(left.length(), right.length());
+            int shared = 0;
+            while (shared < limit && left.charAt(shared) == right.charAt(shared)) {
+                shared++;
+            }
+            return shared;
+        }
     }
 
     private static final class AssociateAccumulator {

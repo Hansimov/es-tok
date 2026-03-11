@@ -8,13 +8,17 @@ import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
 import org.es.tok.config.EsTokConfig;
 import org.es.tok.core.facade.EsTokEngine;
 import org.es.tok.extra.HantToHansConverter;
+import org.es.tok.suggest.PinyinSupport;
 import org.es.tok.strategy.CategStrategy;
 import org.es.tok.strategy.NgramStrategy;
 import org.es.tok.strategy.TokenStrategy;
 import org.es.tok.strategy.VocabStrategy;
 
 import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Queue;
 
 public final class EsTokTokenizer extends Tokenizer {
     private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
@@ -23,14 +27,17 @@ public final class EsTokTokenizer extends Tokenizer {
     private final TypeAttribute typeAtt = addAttribute(TypeAttribute.class);
     private final GroupAttribute groupAtt = addAttribute(GroupAttribute.class);
 
+    private final EsTokConfig config;
     private final EsTokEngine engine;
 
     private String inputText;
     private Iterator<TokenStrategy.TokenInfo> tokenIterator;
+    private final Queue<TokenStrategy.TokenInfo> pendingTokens = new ArrayDeque<>();
     private boolean isInitialized = false;
 
     // New constructor using EsTokConfig
     public EsTokTokenizer(EsTokConfig config) {
+        this.config = config;
         if (!config.getVocabConfig().isUseVocab() && !config.getCategConfig().isUseCateg()) {
             throw new IllegalArgumentException("Must use at least one strategy: use_vocab, use_categ");
         }
@@ -62,6 +69,7 @@ public final class EsTokTokenizer extends Tokenizer {
     // Performance-optimized constructor using pre-built strategies
     public EsTokTokenizer(EsTokConfig config, VocabStrategy vocabStrategy, CategStrategy categStrategy,
             NgramStrategy ngramStrategy, HantToHansConverter hantToHansConverter) {
+        this.config = config;
         if (vocabStrategy == null && categStrategy == null) {
             throw new IllegalArgumentException("Must use at least one strategy: use_vocab, use_categ");
         }
@@ -75,8 +83,12 @@ public final class EsTokTokenizer extends Tokenizer {
             initialize();
         }
 
-        if (tokenIterator != null && tokenIterator.hasNext()) {
-            TokenStrategy.TokenInfo token = tokenIterator.next();
+        while (pendingTokens.isEmpty() && tokenIterator != null && tokenIterator.hasNext()) {
+            enqueueToken(tokenIterator.next());
+        }
+
+        if (!pendingTokens.isEmpty()) {
+            TokenStrategy.TokenInfo token = pendingTokens.poll();
             clearAttributes();
 
             termAtt.copyBuffer(token.getText().toCharArray(), 0, token.getText().length());
@@ -109,11 +121,30 @@ public final class EsTokTokenizer extends Tokenizer {
         isInitialized = true;
     }
 
+    private void enqueueToken(TokenStrategy.TokenInfo token) {
+        pendingTokens.add(token);
+        if (!config.getExtraConfig().isEmitPinyinTerms()) {
+            return;
+        }
+
+        List<String> pinyinTerms = PinyinSupport.precomputedSuggestionTerms(token.getText());
+        for (String pinyinTerm : pinyinTerms) {
+            pendingTokens.add(new TokenStrategy.TokenInfo(
+                    pinyinTerm,
+                    token.getStartOffset(),
+                    token.getEndOffset(),
+                    "pinyin",
+                    token.getPosition(),
+                    "pinyin"));
+        }
+    }
+
     @Override
     public void reset() throws IOException {
         super.reset();
         isInitialized = false;
         tokenIterator = null;
         inputText = null;
+        pendingTokens.clear();
     }
 }

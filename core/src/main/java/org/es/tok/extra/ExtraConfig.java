@@ -6,14 +6,16 @@ public class ExtraConfig {
     private final boolean dropDuplicates;
     private final boolean dropCategs;
     private final boolean dropVocabs;
+    private final boolean emitPinyinTerms;
 
     public ExtraConfig(boolean ignoreCase, boolean ignoreHant, boolean dropDuplicates, boolean dropCategs,
-            boolean dropVocabs) {
+            boolean dropVocabs, boolean emitPinyinTerms) {
         this.ignoreCase = ignoreCase;
         this.ignoreHant = ignoreHant;
         this.dropDuplicates = dropDuplicates;
         this.dropCategs = dropCategs;
         this.dropVocabs = dropVocabs;
+        this.emitPinyinTerms = emitPinyinTerms;
     }
 
     public boolean isIgnoreCase() {
@@ -36,10 +38,14 @@ public class ExtraConfig {
         return dropVocabs;
     }
 
+    public boolean isEmitPinyinTerms() {
+        return emitPinyinTerms;
+    }
+
     @Override
     public String toString() {
         return String.format(
-                "ExtraConfig{ignoreCase=%s, ignoreHant=%s, dropDuplicates=%s, dropCategs=%s, dropVocabs=%s}",
-                ignoreCase, ignoreHant, dropDuplicates, dropCategs, dropVocabs);
+                "ExtraConfig{ignoreCase=%s, ignoreHant=%s, dropDuplicates=%s, dropCategs=%s, dropVocabs=%s, emitPinyinTerms=%s}",
+                ignoreCase, ignoreHant, dropDuplicates, dropCategs, dropVocabs, emitPinyinTerms);
     }
 }

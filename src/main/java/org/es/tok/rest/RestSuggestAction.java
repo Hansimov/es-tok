@@ -8,6 +8,7 @@ import org.elasticsearch.rest.action.RestBuilderListener;
 import org.es.tok.action.EsTokSuggestAction;
 import org.es.tok.action.EsTokSuggestRequest;
 import org.es.tok.action.EsTokSuggestResponse;
+import org.es.tok.suggest.PinyinSupport;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -123,6 +124,11 @@ public class RestSuggestAction extends BaseRestHandler {
         }
         if (payload.containsKey("correction_prefix_length")) {
             request.correctionPrefixLength(asInt(payload.get("correction_prefix_length"), 1));
+        }
+        if (payload.containsKey("correction_min_length") == false
+                && request.usePinyin()
+                && PinyinSupport.containsChinese(request.text())) {
+            request.correctionMinLength(2);
         }
         return request;
     }

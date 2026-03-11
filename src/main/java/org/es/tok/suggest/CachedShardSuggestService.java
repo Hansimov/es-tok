@@ -93,7 +93,9 @@ public class CachedShardSuggestService {
     public void prewarmPinyin(IndexReader reader, List<String> fields) throws IOException {
         Objects.requireNonNull(reader, "reader");
         Objects.requireNonNull(fields, "fields");
-        new LuceneIndexSuggester(reader).prewarmPinyinIndices(fields);
+        LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+        suggester.prewarmCompletionIndices(fields);
+        suggester.prewarmPinyinIndices(fields);
     }
 
     private CacheKey createKey(
@@ -120,8 +122,8 @@ public class CachedShardSuggestService {
             Object config) {
     }
 
-        private record AutoConfigKey(
+    private record AutoConfigKey(
             LuceneIndexSuggester.CompletionConfig completionConfig,
             LuceneIndexSuggester.CorrectionConfig correctionConfig) {
-        }
+    }
 }

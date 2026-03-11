@@ -12,6 +12,9 @@ import java.util.Set;
 public final class PinyinSupport {
 
     private static final float MIN_CHINESE_ANCHOR_SCORE = 0.34f;
+    public static final String PRECOMPUTED_FULL_PREFIX = "__pyf__";
+    public static final String PRECOMPUTED_INITIALS_PREFIX = "__pyi__";
+    public static final String PRECOMPUTED_SEPARATOR = "|";
 
     private PinyinSupport() {
     }
@@ -68,6 +71,26 @@ public final class PinyinSupport {
         return containsChinese(text) && hasAsciiLettersOrDigits(text) == false;
     }
 
+    static boolean isAsciiAlphaNumericQuery(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+
+        boolean sawAlphaNumeric = false;
+        for (int index = 0; index < text.length(); ) {
+            int codePoint = text.codePointAt(index);
+            index += Character.charCount(codePoint);
+            if (Character.isWhitespace(codePoint)) {
+                continue;
+            }
+            if (codePoint >= 128 || Character.isLetterOrDigit(codePoint) == false) {
+                return false;
+            }
+            sawAlphaNumeric = true;
+        }
+        return sawAlphaNumeric;
+    }
+
     static boolean matchesChineseAnchor(String input, String candidate) {
         return chineseAnchorScore(input, candidate) >= MIN_CHINESE_ANCHOR_SCORE;
     }
@@ -84,24 +107,39 @@ public final class PinyinSupport {
         boolean chineseAnchoredInput = containsChinese(input);
         boolean pureChineseInput = isPureChineseQuery(input);
         boolean literalChinesePrefix = pureChineseInput && literalPrefixMatch(input, candidate);
+        boolean asciiLiteralQuery = isAsciiAlphaNumericQuery(input);
+        boolean literalPrefix = literalPrefixMatch(input, candidate);
+        boolean hasDigits = normalizeInput(input).chars().anyMatch(Character::isDigit);
         if (pureChineseInput && !literalChinesePrefix) {
             return 0.0f;
         }
         if (candidateKey.full().startsWith(inputFull)) {
             float baseScore = 1.0f - lengthPenalty(candidateKey.full().length() - inputFull.length(), 0.04f, 0.32f);
+            if (asciiLiteralQuery && !literalPrefix) {
+                baseScore *= asciiNonLiteralPinyinPenalty(inputFull.length(), hasDigits, false);
+            }
             baseScore = applyLiteralChinesePrefixBias(baseScore, pureChineseInput, literalChinesePrefix);
             return applyChineseAnchor(baseScore, chineseAnchoredInput, chineseAnchorScore);
         }
         if (!chineseAnchoredInput && !inputInitials.isEmpty() && candidateKey.initials().startsWith(inputInitials)) {
             int extraInitials = Math.max(0, candidateKey.initials().length() - inputInitials.length());
+            float baseScore;
             if (extraInitials == 0) {
-                return 1.72f;
+                baseScore = 1.72f;
+            } else {
+                baseScore = 0.76f - lengthPenalty(extraInitials, 0.12f, 0.6f);
             }
-            return 0.76f - lengthPenalty(extraInitials, 0.12f, 0.6f);
+            if (asciiLiteralQuery && !literalPrefix) {
+                baseScore *= asciiNonLiteralPinyinPenalty(inputInitials.length(), hasDigits, true);
+            }
+            return baseScore;
         }
         if (matchesSyllablePrefixes(inputFull, candidateKey.syllables())) {
             int extraSyllables = Math.max(0, candidateKey.syllables().size() - estimateConsumedSyllables(inputFull, candidateKey.syllables()));
             float baseScore = 0.88f - lengthPenalty(extraSyllables, 0.06f, 0.36f);
+            if (asciiLiteralQuery && !literalPrefix) {
+                baseScore *= asciiNonLiteralPinyinPenalty(inputFull.length(), hasDigits, false);
+            }
             baseScore = applyLiteralChinesePrefixBias(baseScore, pureChineseInput, literalChinesePrefix);
             return applyChineseAnchor(baseScore, chineseAnchoredInput, chineseAnchorScore);
         }
@@ -137,24 +175,49 @@ public final class PinyinSupport {
 
         boolean chineseAnchoredInput = containsChinese(input);
         float chineseAnchorScore = chineseAnchorScore(input, candidate);
+        boolean asciiLiteralQuery = isAsciiAlphaNumericQuery(input);
+        boolean literalPrefix = literalPrefixMatch(input, candidate);
+        boolean hasDigits = normalizeInput(input).chars().anyMatch(Character::isDigit);
         if (inputKey.full().equals(candidateKey.full())) {
-            return applyChineseAnchor(2.4f, chineseAnchoredInput, chineseAnchorScore);
+            float score = 2.4f;
+            if (asciiLiteralQuery && !literalPrefix) {
+                score *= asciiNonLiteralPinyinPenalty(inputKey.full().length(), hasDigits, false);
+            }
+            return applyChineseAnchor(score, chineseAnchoredInput, chineseAnchorScore);
         }
         if (!chineseAnchoredInput && !inputKey.initials().isEmpty() && inputKey.initials().equals(candidateKey.initials())) {
-            return 1.45f;
+            float score = 1.45f;
+            if (asciiLiteralQuery && !literalPrefix) {
+                score *= asciiNonLiteralPinyinPenalty(inputKey.initials().length(), hasDigits, true);
+            }
+            return score;
         }
         if (!chineseAnchoredInput && candidateKey.initials().startsWith(inputKey.full())) {
             int extraInitials = Math.max(0, candidateKey.initials().length() - inputKey.full().length());
+            float score;
             if (extraInitials == 0) {
-                return 1.08f;
+                score = 1.08f;
+            } else {
+                score = 0.72f - lengthPenalty(extraInitials, 0.12f, 0.48f);
             }
-            return 0.72f - lengthPenalty(extraInitials, 0.12f, 0.48f);
+            if (asciiLiteralQuery && !literalPrefix) {
+                score *= asciiNonLiteralPinyinPenalty(inputKey.full().length(), hasDigits, true);
+            }
+            return score;
         }
         if (candidateKey.full().startsWith(inputKey.full())) {
-            return applyChineseAnchor(0.94f, chineseAnchoredInput, chineseAnchorScore);
+            float score = 0.94f;
+            if (asciiLiteralQuery && !literalPrefix) {
+                score *= asciiNonLiteralPinyinPenalty(inputKey.full().length(), hasDigits, false);
+            }
+            return applyChineseAnchor(score, chineseAnchoredInput, chineseAnchorScore);
         }
         if (matchesSyllablePrefixes(inputKey.full(), candidateKey.syllables())) {
-            return applyChineseAnchor(0.9f, chineseAnchoredInput, chineseAnchorScore);
+            float score = 0.9f;
+            if (asciiLiteralQuery && !literalPrefix) {
+                score *= asciiNonLiteralPinyinPenalty(inputKey.full().length(), hasDigits, false);
+            }
+            return applyChineseAnchor(score, chineseAnchoredInput, chineseAnchorScore);
         }
         return 0.0f;
     }
@@ -190,8 +253,79 @@ public final class PinyinSupport {
         return false;
     }
 
+    public static List<String> precomputedSuggestionTerms(String text) {
+        String normalized = normalizeLiteralText(text);
+        if (!shouldIndexTerm(normalized)) {
+            return List.of();
+        }
+
+        PinyinKey key = pinyinKey(normalized);
+        if (key.isEmpty()) {
+            return List.of();
+        }
+
+        Set<String> encoded = new LinkedHashSet<>();
+        addPrecomputedTerms(encoded, PRECOMPUTED_FULL_PREFIX, bucketKeys(key, true), normalized);
+        addPrecomputedTerms(encoded, PRECOMPUTED_INITIALS_PREFIX, bucketKeys(key, false), normalized);
+        return List.copyOf(encoded);
+    }
+
+    public static String precomputedPrefix(boolean fullPinyin, String queryKey) {
+        if (queryKey == null || queryKey.isBlank()) {
+            return "";
+        }
+        int anchorLength = Math.min(4, queryKey.length());
+        return (fullPinyin ? PRECOMPUTED_FULL_PREFIX : PRECOMPUTED_INITIALS_PREFIX)
+                + queryKey.substring(0, anchorLength)
+                + PRECOMPUTED_SEPARATOR;
+    }
+
+    public static boolean isPrecomputedSuggestionTerm(String term) {
+        if (term == null || term.isBlank()) {
+            return false;
+        }
+        return term.startsWith(PRECOMPUTED_FULL_PREFIX) || term.startsWith(PRECOMPUTED_INITIALS_PREFIX);
+    }
+
+    public static String decodePrecomputedSuggestionSurface(String term) {
+        if (!isPrecomputedSuggestionTerm(term)) {
+            return "";
+        }
+        int separatorIndex = term.indexOf(PRECOMPUTED_SEPARATOR);
+        if (separatorIndex < 0 || separatorIndex + PRECOMPUTED_SEPARATOR.length() >= term.length()) {
+            return "";
+        }
+        return term.substring(separatorIndex + PRECOMPUTED_SEPARATOR.length());
+    }
+
     private static boolean hasAsciiLettersOrDigits(String text) {
         return text.chars().anyMatch(ch -> ch < 128 && Character.isLetterOrDigit(ch));
+    }
+
+    private static void addPrecomputedTerms(Set<String> encoded, String prefix, List<String> keys, String surface) {
+        for (String key : keys) {
+            if (key == null || key.isBlank()) {
+                continue;
+            }
+            encoded.add(prefix + key + PRECOMPUTED_SEPARATOR + surface);
+        }
+    }
+
+    private static float asciiNonLiteralPinyinPenalty(int queryLength, boolean hasDigits, boolean initialsOnly) {
+        float penalty;
+        if (queryLength <= 3) {
+            penalty = initialsOnly ? 0.01f : 0.03f;
+        } else if (queryLength <= 5) {
+            penalty = initialsOnly ? 0.02f : 0.06f;
+        } else if (queryLength <= 8) {
+            penalty = initialsOnly ? 0.03f : 0.1f;
+        } else {
+            penalty = initialsOnly ? 0.05f : 0.16f;
+        }
+        if (hasDigits) {
+            penalty *= 0.9f;
+        }
+        return penalty;
     }
 
     private static float applyChineseAnchor(float baseScore, boolean chineseAnchoredInput, float chineseAnchorScore) {

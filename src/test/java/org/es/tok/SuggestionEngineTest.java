@@ -1,7 +1,10 @@
 package org.es.tok;
 
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.core.KeywordAnalyzer;
+import org.apache.lucene.analysis.core.WhitespaceAnalyzer;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
@@ -12,8 +15,11 @@ import org.apache.lucene.store.ByteBuffersDirectory;
 import org.apache.lucene.store.Directory;
 import org.es.tok.analysis.EsTokAnalyzer;
 import org.es.tok.suggest.LuceneIndexSuggester;
+import org.es.tok.suggest.PinyinSupport;
 import org.junit.Test;
 
+import java.io.StringReader;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
@@ -235,6 +241,204 @@ public class SuggestionEngineTest {
 
                 assertFalse(completions.isEmpty());
                 assertTrue(completions.toString(), completions.stream().anyMatch(candidate -> candidate.text().equals("影视飓风")));
+            }
+        }
+    }
+
+    @Test
+    public void testSuggestAnalyzerEmitsPrecomputedPinyinTerms() throws Exception {
+        try (Analyzer analyzer = new EsTokAnalyzer(
+                ConfigBuilder.create()
+                        .withVocab("影视飓风")
+                        .withIgnoreCase()
+                        .withDropDuplicates()
+                        .withEmitPinyinTerms()
+                        .build());
+                TokenStream stream = analyzer.tokenStream("content", new StringReader("影视飓风"))) {
+            CharTermAttribute termAttribute = stream.addAttribute(CharTermAttribute.class);
+            List<String> terms = new ArrayList<>();
+            stream.reset();
+            while (stream.incrementToken()) {
+                terms.add(termAttribute.toString());
+            }
+            stream.end();
+
+            assertTrue(terms.contains("影视飓风"));
+            assertTrue(terms.contains("__pyf__yins|影视飓风"));
+            assertTrue(terms.contains("__pyi__ysjf|影视飓风"));
+        }
+    }
+
+    @Test
+    public void testPrecomputedPinyinPrefixWorksWithoutRuntimeChineseTerms() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new WhitespaceAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    String.join(" ", PinyinSupport.precomputedSuggestionTerms("影视飓风")),
+                    String.join(" ", PinyinSupport.precomputedSuggestionTerms("影视飓风")),
+                    String.join(" ", PinyinSupport.precomputedSuggestionTerms("影视剧风")));
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestPrefixCompletions(
+                        List.of("content"),
+                        "yinsjf",
+                        new LuceneIndexSuggester.CompletionConfig(3, 32, 1, 1, true, true));
+
+                assertFalse(completions.isEmpty());
+                assertEquals("影视飓风", completions.get(0).text());
+            }
+        }
+    }
+
+    @Test
+    public void testAsciiExactPrefixBeatsPinyinInitialsAlias() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new WhitespaceAnalyzer()) {
+            List<String> chineseTerms = new ArrayList<>();
+            chineseTerms.add("给他爱5");
+            chineseTerms.addAll(PinyinSupport.precomputedSuggestionTerms("给他爱5"));
+
+            for (int index = 0; index < 44; index++) {
+                buildIndex(directory, analyzer, "gta5");
+            }
+            for (int index = 0; index < 7; index++) {
+                buildIndex(directory, analyzer, String.join(" ", chineseTerms));
+            }
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestPrefixCompletions(
+                        List.of("content"),
+                        "gta5",
+                        new LuceneIndexSuggester.CompletionConfig(5, 64, 1, 1, true, true));
+
+                assertFalse(completions.isEmpty());
+                assertEquals("gta5", completions.get(0).text());
+            }
+        }
+    }
+
+    @Test
+    public void testShortAsciiExactPrefixBeatsChineseHomophoneNoise() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new WhitespaceAnalyzer()) {
+            List<String> chineseTerms = new ArrayList<>();
+            chineseTerms.add("怪谈");
+            chineseTerms.addAll(PinyinSupport.precomputedSuggestionTerms("怪谈"));
+
+            for (int index = 0; index < 360; index++) {
+                buildIndex(directory, analyzer, "gta");
+            }
+            for (int index = 0; index < 275; index++) {
+                buildIndex(directory, analyzer, String.join(" ", chineseTerms));
+            }
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestPrefixCompletions(
+                        List.of("content"),
+                        "gta",
+                        new LuceneIndexSuggester.CompletionConfig(5, 64, 1, 1, true, true));
+
+                assertFalse(completions.isEmpty());
+                assertEquals("gta", completions.get(0).text());
+            }
+        }
+    }
+
+    @Test
+    public void testAsciiBrandPrefixBeatsChinesePinyinAliasNoise() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new WhitespaceAnalyzer()) {
+            List<String> chineseTerms = new ArrayList<>();
+            chineseTerms.add("小妙");
+            chineseTerms.addAll(PinyinSupport.precomputedSuggestionTerms("小妙"));
+
+            for (int index = 0; index < 105; index++) {
+                buildIndex(directory, analyzer, "xiaomi");
+            }
+            for (int index = 0; index < 604; index++) {
+                buildIndex(directory, analyzer, String.join(" ", chineseTerms));
+            }
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestPrefixCompletions(
+                        List.of("content"),
+                        "xiaomi",
+                        new LuceneIndexSuggester.CompletionConfig(5, 64, 1, 1, true, true));
+
+                assertFalse(completions.isEmpty());
+                assertEquals("xiaomi", completions.get(0).text());
+            }
+        }
+    }
+
+    @Test
+    public void testCrowdedPrecomputedPinyinBucketStillRecallsHighFrequencyChineseAlias() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new WhitespaceAnalyzer()) {
+            for (int index = 0; index < 105; index++) {
+                buildIndex(directory, analyzer, "xiaomi");
+            }
+
+            List<String> xiaomiTerms = new ArrayList<>();
+            xiaomiTerms.add("小米");
+            xiaomiTerms.addAll(PinyinSupport.precomputedSuggestionTerms("小米"));
+            for (int index = 0; index < 420; index++) {
+                buildIndex(directory, analyzer, String.join(" ", xiaomiTerms));
+            }
+
+            int crowdedTerms = 0;
+            for (int codePoint = 0x4E00; codePoint < 0x7C73 && crowdedTerms < 320; codePoint++) {
+                if (Character.UnicodeScript.of(codePoint) != Character.UnicodeScript.HAN) {
+                    continue;
+                }
+                String candidate = "小" + new String(Character.toChars(codePoint));
+                if (candidate.equals("小米")) {
+                    continue;
+                }
+
+                List<String> noisyTerms = new ArrayList<>();
+                noisyTerms.add(candidate);
+                noisyTerms.addAll(PinyinSupport.precomputedSuggestionTerms(candidate));
+                buildIndex(directory, analyzer, String.join(" ", noisyTerms));
+                crowdedTerms++;
+            }
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestPrefixCompletions(
+                        List.of("content"),
+                        "xiaomi",
+                        new LuceneIndexSuggester.CompletionConfig(10, 1, 1, 1, true, true));
+
+                assertFalse(completions.isEmpty());
+                assertEquals("xiaomi", completions.get(0).text());
+                assertTrue(completions.toString(), completions.stream().anyMatch(candidate -> candidate.text().equals("小米")));
+            }
+        }
+    }
+
+    @Test
+    public void testPrecomputedPinyinCorrectionWorksWithoutRuntimeChineseTerms() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new WhitespaceAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    String.join(" ", PinyinSupport.precomputedSuggestionTerms("俞俐均")),
+                    String.join(" ", PinyinSupport.precomputedSuggestionTerms("俞俐均")),
+                    String.join(" ", PinyinSupport.precomputedSuggestionTerms("月亮计划")));
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.SuggestionOption> corrections = suggester.suggestCorrections(
+                        List.of("content"),
+                        "俞利均",
+                        new LuceneIndexSuggester.CorrectionConfig(0, 1, 2, 0, 5, 1, 0.5f, true));
+
+                assertFalse(corrections.isEmpty());
+                assertEquals("俞俐均", corrections.get(0).text());
             }
         }
     }

@@ -128,6 +128,7 @@ public class EsTokEngine {
                 Boolean.toString(config.getExtraConfig().isDropDuplicates()),
                 Boolean.toString(config.getExtraConfig().isDropCategs()),
                 Boolean.toString(config.getExtraConfig().isDropVocabs()),
+                Boolean.toString(config.getExtraConfig().isEmitPinyinTerms()),
                 Boolean.toString(config.getCategConfig().isUseCateg()),
                 Boolean.toString(config.getCategConfig().isSplitWord()),
                 Boolean.toString(config.getVocabConfig().isUseVocab()),

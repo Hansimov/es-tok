@@ -11,6 +11,7 @@ public class ExtraLoader {
         boolean dropDuplicates;
         boolean dropCategs;
         boolean dropVocabs;
+        boolean emitPinyinTerms;
 
         if (extraConfig != null && !extraConfig.isEmpty()) {
             ignoreCase = extraConfig.getAsBoolean("ignore_case", true);
@@ -18,14 +19,16 @@ public class ExtraLoader {
             dropDuplicates = extraConfig.getAsBoolean("drop_duplicates", true);
             dropCategs = extraConfig.getAsBoolean("drop_categs", true);
             dropVocabs = extraConfig.getAsBoolean("drop_vocabs", true);
+            emitPinyinTerms = extraConfig.getAsBoolean("emit_pinyin_terms", false);
         } else {
             ignoreCase = settings.getAsBoolean("ignore_case", true);
             ignoreHant = settings.getAsBoolean("ignore_hant", true);
             dropDuplicates = settings.getAsBoolean("drop_duplicates", true);
             dropCategs = settings.getAsBoolean("drop_categs", true);
             dropVocabs = settings.getAsBoolean("drop_vocabs", true);
+            emitPinyinTerms = settings.getAsBoolean("emit_pinyin_terms", false);
         }
 
-        return new ExtraConfig(ignoreCase, ignoreHant, dropDuplicates, dropCategs, dropVocabs);
+        return new ExtraConfig(ignoreCase, ignoreHant, dropDuplicates, dropCategs, dropVocabs, emitPinyinTerms);
     }
 }

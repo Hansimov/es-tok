@@ -11,7 +11,6 @@ import org.elasticsearch.index.mapper.MapperService;
 import org.elasticsearch.index.shard.IndexEventListener;
 import org.elasticsearch.index.shard.IndexShard;
 import org.elasticsearch.indices.cluster.IndexRemovalReason;
-import org.elasticsearch.threadpool.ThreadPool;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -56,7 +55,7 @@ public final class PinyinWarmupIndexListener implements IndexEventListener, Clos
         if (warmupFields == null || warmupFields.isEmpty()) {
             return;
         }
-        indexShard.getThreadPool().executor(ThreadPool.Names.GENERIC).execute(() -> prewarmShard(indexShard, warmupFields));
+        prewarmShard(indexShard, warmupFields);
     }
 
     @Override
@@ -92,7 +91,9 @@ public final class PinyinWarmupIndexListener implements IndexEventListener, Clos
     private void prewarmShard(IndexShard indexShard, List<String> warmupFields) {
         try (Engine.Searcher searcher = indexShard.acquireSearcher("es_tok_pinyin_warmup")) {
             IndexReader reader = searcher.getIndexReader();
-            new LuceneIndexSuggester(reader).prewarmPinyinIndices(warmupFields);
+            LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+            suggester.prewarmCompletionIndices(warmupFields);
+            suggester.prewarmPinyinIndices(warmupFields);
         } catch (Exception exception) {
             LOGGER.debug(
                     "failed to prewarm es_tok pinyin cache for shard {} and fields {}",
