@@ -16,6 +16,7 @@ import org.elasticsearch.cluster.routing.ShardRouting;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.index.IndexService;
+import org.elasticsearch.index.mapper.MappingLookup;
 import org.elasticsearch.index.engine.Engine;
 import org.elasticsearch.index.shard.IndexShard;
 import org.elasticsearch.indices.IndicesService;
@@ -35,6 +36,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
 public class TransportEsTokSuggestAction extends TransportBroadcastAction<
@@ -165,10 +167,11 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
     protected ShardEsTokSuggestResponse shardOperation(ShardEsTokSuggestRequest request, Task task) throws IOException {
         IndexService indexService = indicesService.indexServiceSafe(request.shardId().getIndex());
         IndexShard indexShard = indexService.getShard(request.shardId().id());
+        List<String> suggestFields = resolveSuggestFields(indexService, request.fields(), request.usePinyin());
         try (Engine.Searcher searcher = indexShard.acquireSearcher("es_tok_suggest")) {
             IndexReader reader = searcher.getIndexReader();
             if (request.prewarmPinyin()) {
-                suggestService.prewarmPinyin(reader, request.fields());
+                suggestService.prewarmPinyin(reader, suggestFields);
                 if (request.text() == null || request.text().isBlank()) {
                     return new ShardEsTokSuggestResponse(request.shardId(), List.of(), false);
                 }
@@ -195,6 +198,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
                 indexService,
                 reader,
                 request,
+                suggestFields,
                 completionConfig,
                 correctionConfig);
 
@@ -210,6 +214,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             IndexService indexService,
             IndexReader reader,
             ShardEsTokSuggestRequest request,
+                List<String> suggestFields,
             LuceneIndexSuggester.CompletionConfig completionConfig,
             LuceneIndexSuggester.CorrectionConfig correctionConfig) throws IOException {
         String mode = normalizeMode(request.mode());
@@ -222,7 +227,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             CachedShardSuggestService.SuggestResult prefixResult = suggestService.suggest(
                 reader,
                 "prefix",
-                request.fields(),
+                suggestFields,
                 request.text(),
                 completionConfig,
                 correctionConfig,
@@ -230,7 +235,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             CachedShardSuggestService.SuggestResult correctionResult = suggestService.suggest(
                 reader,
                 "correction",
-                request.fields(),
+                suggestFields,
                 request.text(),
                 completionConfig,
                 correctionConfig,
@@ -251,12 +256,36 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         CachedShardSuggestService.SuggestResult result = suggestService.suggest(
             reader,
             mode,
-            request.fields(),
+            suggestFields,
             request.text(),
             completionConfig,
             correctionConfig,
             request.useCache());
         return new ShardSuggestExecution(result.options(), result.cacheHit());
+        }
+
+        private static List<String> resolveSuggestFields(IndexService indexService, List<String> requestFields, boolean usePinyin) {
+        if (!usePinyin || requestFields == null || requestFields.isEmpty()) {
+            return requestFields;
+        }
+
+        MappingLookup mappingLookup = indexService.mapperService().mappingLookup();
+        Set<String> mappedFields = mappingLookup.getFullNameToFieldType().keySet();
+        LinkedHashSet<String> resolved = new LinkedHashSet<>();
+        for (String field : requestFields) {
+            if (field == null || field.isBlank()) {
+                continue;
+            }
+            if (field.endsWith(".words")) {
+                String suggestField = field.substring(0, field.length() - ".words".length()) + ".suggest";
+                if (mappedFields.contains(suggestField)) {
+                    resolved.add(suggestField);
+                    continue;
+                }
+            }
+            resolved.add(field);
+        }
+        return List.copyOf(resolved);
         }
 
         private static String normalizeMode(String mode) {
@@ -285,7 +314,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         }
 
         private static boolean shouldIncludeAssociateInAuto(String text, boolean usePinyin) {
-        return !(usePinyin && PinyinSupport.isPinyinLikeQuery(text));
+        return !(usePinyin && PinyinSupport.containsChinese(text));
         }
 
         private static float autoPrefixWeight(String text, boolean usePinyin) {

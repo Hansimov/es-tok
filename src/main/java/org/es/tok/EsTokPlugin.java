@@ -9,6 +9,7 @@ import org.elasticsearch.common.settings.IndexScopedSettings;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.settings.SettingsFilter;
 import org.elasticsearch.features.NodeFeature;
+import org.elasticsearch.index.IndexModule;
 import org.elasticsearch.index.analysis.AnalyzerProvider;
 import org.elasticsearch.index.analysis.TokenizerFactory;
 import org.elasticsearch.indices.analysis.AnalysisModule.AnalysisProvider;
@@ -25,9 +26,11 @@ import org.es.tok.query.EsTokConstraintsQueryBuilder;
 import org.es.tok.query.EsTokQueryStringQueryBuilder;
 import org.es.tok.rest.RestInfoAction;
 import org.es.tok.rest.RestSuggestAction;
+import org.es.tok.suggest.PinyinWarmupIndexListener;
 import org.es.tok.tokenize.EsTokTokenizerFactory;
 import org.es.tok.rest.RestAnalyzeAction;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +39,8 @@ import java.util.function.Supplier;
 
 public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin, SearchPlugin {
     public static final String VERSION = "0.10.0";
+
+    private final PinyinWarmupIndexListener pinyinWarmupIndexListener = new PinyinWarmupIndexListener();
 
     @Override
     public Map<String, AnalysisProvider<TokenizerFactory>> getTokenizers() {
@@ -64,14 +69,19 @@ public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin,
             final Predicate<NodeFeature> clusterSupportsFeature) {
         return List.of(
                 new RestInfoAction(),
-            new RestAnalyzeAction(),
-            new RestSuggestAction());
-        }
+                new RestAnalyzeAction(),
+                new RestSuggestAction());
+    }
 
-        @Override
-        public List<ActionHandler> getActions() {
+    @Override
+    public List<ActionHandler> getActions() {
         return List.of(
-            new ActionHandler(EsTokSuggestAction.INSTANCE, TransportEsTokSuggestAction.class));
+                new ActionHandler(EsTokSuggestAction.INSTANCE, TransportEsTokSuggestAction.class));
+    }
+
+    @Override
+    public void onIndexModule(IndexModule indexModule) {
+        indexModule.addIndexEventListener(pinyinWarmupIndexListener);
     }
 
     @Override
@@ -85,5 +95,10 @@ public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin,
                         EsTokConstraintsQueryBuilder.NAME,
                         EsTokConstraintsQueryBuilder::new,
                         EsTokConstraintsQueryBuilder::fromXContent));
+    }
+
+    @Override
+    public void close() throws IOException {
+        pinyinWarmupIndexListener.close();
     }
 }

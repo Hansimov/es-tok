@@ -69,30 +69,36 @@ public class LuceneIndexSuggester {
             return List.of(Correction.unchanged(token, originalDocFreq));
         }
 
-        DirectSpellChecker checker = createSpellChecker(effectiveConfig);
+        boolean skipDirectSpellChecker = effectiveConfig.usePinyin() && PinyinSupport.containsChinese(token);
+        DirectSpellChecker checker = skipDirectSpellChecker ? null : createSpellChecker(effectiveConfig);
         Map<String, CorrectionCandidateAccumulator> candidates = new HashMap<>();
 
         for (int fieldIndex = 0; fieldIndex < normalizedFields.size(); fieldIndex++) {
             String field = normalizedFields.get(fieldIndex);
             float fieldWeight = orderedFieldWeight(fieldIndex, normalizedFields.size());
-            SuggestWord[] words = checker.suggestSimilar(
-                    new Term(field, token),
-                    effectiveConfig.maxSuggestions(),
-                    reader,
-                    SuggestMode.SUGGEST_MORE_POPULAR);
+            if (checker != null) {
+                SuggestWord[] words = checker.suggestSimilar(
+                        new Term(field, token),
+                        effectiveConfig.maxSuggestions(),
+                        reader,
+                        SuggestMode.SUGGEST_MORE_POPULAR);
 
-            for (SuggestWord word : words) {
-                if (word == null || word.string == null || token.equals(word.string)) {
-                    continue;
+                for (SuggestWord word : words) {
+                    if (word == null || word.string == null || token.equals(word.string)) {
+                        continue;
+                    }
+                    if (!isAcceptableCorrectionCandidate(token, word.string)) {
+                        continue;
+                    }
+                    if (PinyinSupport.containsChinese(token) && !PinyinSupport.matchesChineseAnchor(token, word.string)) {
+                        continue;
+                    }
+                    String normalizedSuggestion = normalizeSuggestionSurface(word.string);
+                    CorrectionCandidateAccumulator accumulator = candidates.computeIfAbsent(
+                            normalizedSuggestion,
+                            ignored -> new CorrectionCandidateAccumulator(normalizedSuggestion));
+                    accumulator.add(field, word, docFreq(field, word.string));
                 }
-                if (!isAcceptableCorrectionCandidate(token, word.string)) {
-                    continue;
-                }
-                String normalizedSuggestion = normalizeSuggestionSurface(word.string);
-                CorrectionCandidateAccumulator accumulator = candidates.computeIfAbsent(
-                        normalizedSuggestion,
-                        ignored -> new CorrectionCandidateAccumulator(normalizedSuggestion));
-                accumulator.add(field, word, docFreq(field, word.string));
             }
 
             collectShortCjkCorrectionCandidates(field, token, effectiveConfig, candidates);
@@ -554,6 +560,9 @@ public class LuceneIndexSuggester {
                 if (candidateDocFreq < config.minCandidateDocFreq()) {
                     continue;
                 }
+                if (PinyinSupport.containsChinese(token) && !PinyinSupport.matchesChineseAnchor(token, candidate)) {
+                    continue;
+                }
 
                 float score = shortCjkCorrectionScore(token, candidate, candidateDocFreq, distance);
                 candidates.computeIfAbsent(candidate, CorrectionCandidateAccumulator::new)
@@ -611,7 +620,7 @@ public class LuceneIndexSuggester {
             Map<String, CompletionAccumulator> candidates,
             float fieldWeight) throws IOException {
         for (PinyinIndexedTerm indexedTerm : pinyinFieldIndex(field).candidates(prefix)) {
-            float pinyinScore = PinyinSupport.prefixMatchScore(prefix, indexedTerm.pinyinKey());
+            float pinyinScore = PinyinSupport.prefixMatchScore(prefix, indexedTerm.text(), indexedTerm.pinyinKey());
             if (pinyinScore <= 0.0f) {
                 continue;
             }
@@ -1415,12 +1424,16 @@ public class LuceneIndexSuggester {
 
             LinkedHashMap<String, PinyinIndexedTerm> merged = new LinkedHashMap<>();
             addCandidates(merged, bucket(fullPrefixBuckets, inputKey.full()));
-            addCandidates(merged, bucket(initialsPrefixBuckets, inputKey.initials()));
+            if (PinyinSupport.shouldUseInitialsBuckets(input)) {
+                addCandidates(merged, bucket(initialsPrefixBuckets, inputKey.initials()));
+            }
 
             String normalizedInput = PinyinSupport.normalizeInput(input);
             if (merged.isEmpty() && !normalizedInput.isEmpty()) {
                 addCandidates(merged, bucket(fullPrefixBuckets, normalizedInput));
-                addCandidates(merged, bucket(initialsPrefixBuckets, normalizedInput));
+                if (PinyinSupport.shouldUseInitialsBuckets(input)) {
+                    addCandidates(merged, bucket(initialsPrefixBuckets, normalizedInput));
+                }
             }
             return List.copyOf(merged.values());
         }

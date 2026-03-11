@@ -311,6 +311,67 @@ public class SuggestionEngineTest {
     }
 
     @Test
+    public void testPinyinCorrectionKeepsChineseAnchorAheadOfInitialsNoise() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "俞俐均",
+                    "俞俐均",
+                    "俞俐均",
+                    "养老金",
+                    "养老金",
+                    "养老金",
+                    "养老金",
+                    "养老金",
+                    "要牢记",
+                    "要牢记",
+                    "要牢记",
+                    "月亮计划",
+                    "月亮计划");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.SuggestionOption> corrections = suggester.suggestCorrections(
+                        List.of("content"),
+                        "俞利均",
+                        new LuceneIndexSuggester.CorrectionConfig(0, 1, 2, 0, 5, 1, 0.5f, true));
+
+                assertFalse(corrections.isEmpty());
+                assertEquals("俞俐均", corrections.get(0).text());
+            }
+        }
+    }
+
+    @Test
+    public void testPinyinPrefixKeepsChineseAnchorAheadOfInitialsNoise() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "影视飓风",
+                    "影视飓风",
+                    "影视飓风",
+                    "影视剧风",
+                    "影视剧风",
+                    "益生菌粉",
+                    "益生菌粉",
+                    "益生菌粉",
+                    "益生菌粉",
+                    "益生菌粉");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestPrefixCompletions(
+                        List.of("content"),
+                        "影视jf",
+                        new LuceneIndexSuggester.CompletionConfig(5, 32, 1, 1, true, true));
+
+                assertFalse(completions.isEmpty());
+                assertEquals("影视飓风", completions.get(0).text());
+            }
+        }
+    }
+
+    @Test
     public void testNextTokenCompletionUsesEsTokBigrams() throws Exception {
         try (Directory directory = new ByteBuffersDirectory();
                 Analyzer analyzer = new EsTokAnalyzer(
