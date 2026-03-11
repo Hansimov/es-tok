@@ -232,7 +232,7 @@ public class LuceneIndexSuggester {
             }
             visited++;
             if (text.length() >= config.minCandidateLength()) {
-                addCompletionCandidate(candidates, text, termsEnum.docFreq(), CompletionType.PREFIX);
+                addCompletionCandidate(candidates, text, termsEnum.docFreq(), termsEnum.docFreq(), CompletionType.PREFIX);
             }
             current = termsEnum.next();
         }
@@ -261,9 +261,9 @@ public class LuceneIndexSuggester {
                 break;
             }
             visited++;
-            String tail = text.substring(prefix.length()).trim();
-            if (isSingleTokenTail(tail) && tail.length() >= config.minCandidateLength()) {
-                addCompletionCandidate(candidates, tail, termsEnum.docFreq(), CompletionType.NEXT_TOKEN);
+            String tail = text.substring(prefix.length()).strip();
+            if (isAcceptableNextTokenTail(tail, config.minCandidateLength())) {
+                addCompletionCandidate(candidates, tail, termsEnum.docFreq(), docFreq(field, tail), CompletionType.NEXT_TOKEN);
             }
             current = termsEnum.next();
         }
@@ -292,14 +292,15 @@ public class LuceneIndexSuggester {
                 break;
             }
             visited++;
-            if (text.indexOf(' ') >= 0 || text.length() <= token.length()) {
+            if (containsWhitespace(text) || text.length() <= token.length()) {
                 current = termsEnum.next();
                 continue;
             }
 
             String tail = text.substring(token.length());
-            if (tail.length() >= config.minCandidateLength() && docFreq(field, tail) > 0) {
-                addCompletionCandidate(candidates, tail, termsEnum.docFreq(), CompletionType.NEXT_TOKEN);
+            int tailDocFreq = docFreq(field, tail);
+            if (tailDocFreq > 0 && isAcceptableNextTokenTail(tail, config.minCandidateLength())) {
+                addCompletionCandidate(candidates, tail, termsEnum.docFreq(), tailDocFreq, CompletionType.NEXT_TOKEN);
             }
             current = termsEnum.next();
         }
@@ -309,9 +310,50 @@ public class LuceneIndexSuggester {
             Map<String, CompletionAccumulator> candidates,
             String text,
             int docFreq,
+            int tailDocFreq,
             CompletionType type) {
         CompletionAccumulator accumulator = candidates.computeIfAbsent(text, CompletionAccumulator::new);
-        accumulator.add(docFreq, type);
+        accumulator.add(docFreq, tailDocFreq, type);
+    }
+
+    private static float nextTokenScore(String text, int docFreq, int tailDocFreq) {
+        float score = docFreq;
+        if (text == null || text.isBlank()) {
+            return score;
+        }
+
+        int codePointLength = text.codePointCount(0, text.length());
+        boolean asciiOnly = text.chars().allMatch(ch -> ch < 128);
+        boolean hasWhitespace = containsWhitespace(text);
+        boolean hasDigit = text.chars().anyMatch(Character::isDigit);
+
+        if (tailDocFreq > 0) {
+            score = (float) ((docFreq / (double) tailDocFreq) * Math.log1p(docFreq) * 10.0);
+        }
+
+        float shapeFactor = 1.0f;
+        if (codePointLength == 1) {
+            shapeFactor *= 0.35f;
+        } else if (codePointLength <= 4) {
+            shapeFactor *= 1.15f;
+        } else if (codePointLength <= 6) {
+            shapeFactor *= 0.92f;
+        } else {
+            shapeFactor *= 0.72f;
+        }
+
+        if (asciiOnly && codePointLength >= 4) {
+            shapeFactor *= 1.05f;
+        }
+
+        if (hasWhitespace) {
+            shapeFactor *= 0.4f;
+        }
+        if (hasDigit) {
+            shapeFactor *= 0.85f;
+        }
+
+        return score * shapeFactor;
     }
 
     private List<CompletionCandidate> finalizeCompletions(
@@ -343,7 +385,55 @@ public class LuceneIndexSuggester {
     }
 
     private boolean isSingleTokenTail(String tail) {
-        return !tail.isBlank() && tail.indexOf(' ') < 0;
+        return !tail.isBlank() && containsWhitespace(tail) == false;
+    }
+
+    private boolean isAcceptableNextTokenTail(String tail, int minCandidateLength) {
+        if (tail == null) {
+            return false;
+        }
+
+        String normalized = tail.strip();
+        if (normalized.isBlank() || normalized.length() < minCandidateLength || !isSingleTokenTail(normalized)) {
+            return false;
+        }
+
+        int codePointLength = normalized.codePointCount(0, normalized.length());
+        boolean asciiOnly = normalized.chars().allMatch(ch -> ch < 128);
+        if (asciiOnly) {
+            if (codePointLength > 24) {
+                return false;
+            }
+        } else if (codePointLength > 4) {
+            return false;
+        }
+
+        return normalized.chars().anyMatch(LuceneIndexSuggester::isDisallowedNextTokenChar) == false;
+    }
+
+    private static boolean containsWhitespace(String text) {
+        return text != null && text.chars().anyMatch(Character::isWhitespace);
+    }
+
+    private static boolean isDisallowedNextTokenChar(int ch) {
+        if (Character.isWhitespace(ch)) {
+            return true;
+        }
+
+        return switch (Character.getType(ch)) {
+            case Character.START_PUNCTUATION,
+                    Character.END_PUNCTUATION,
+                    Character.INITIAL_QUOTE_PUNCTUATION,
+                    Character.FINAL_QUOTE_PUNCTUATION,
+                    Character.OTHER_PUNCTUATION,
+                    Character.CONNECTOR_PUNCTUATION,
+                    Character.DASH_PUNCTUATION,
+                    Character.MATH_SYMBOL,
+                    Character.CURRENCY_SYMBOL,
+                    Character.MODIFIER_SYMBOL,
+                    Character.OTHER_SYMBOL -> true;
+            default -> false;
+        };
     }
 
     private int maxDocFreq(Collection<String> fields, String token) throws IOException {
@@ -537,24 +627,29 @@ public class LuceneIndexSuggester {
 
     private static final class CompletionAccumulator {
         private static final Comparator<CompletionAccumulator> ORDER = Comparator
-                .comparingInt(CompletionAccumulator::docFreq).reversed()
+                .comparingDouble(CompletionAccumulator::score).reversed()
+                .thenComparing(Comparator.comparingInt(CompletionAccumulator::docFreq).reversed())
                 .thenComparing(CompletionAccumulator::type)
                 .thenComparing(CompletionAccumulator::text);
 
         private final String text;
         private int docFreq;
+        private int tailDocFreq;
         private CompletionType type = CompletionType.PREFIX;
 
         private CompletionAccumulator(String text) {
             this.text = text;
         }
 
-        private void add(int docFreq, CompletionType type) {
+        private void add(int docFreq, int tailDocFreq, CompletionType type) {
             if (docFreq > this.docFreq) {
                 this.docFreq = docFreq;
             }
             if (type == CompletionType.NEXT_TOKEN) {
                 this.type = CompletionType.NEXT_TOKEN;
+                if (tailDocFreq > 0 && (this.tailDocFreq == 0 || tailDocFreq < this.tailDocFreq)) {
+                    this.tailDocFreq = tailDocFreq;
+                }
             }
         }
 
@@ -566,16 +661,19 @@ public class LuceneIndexSuggester {
             return type;
         }
 
+        private float score() {
+            if (type == CompletionType.NEXT_TOKEN) {
+                return nextTokenScore(text, docFreq, tailDocFreq);
+            }
+            return docFreq;
+        }
+
         private String text() {
             return text;
         }
 
         private CompletionCandidate toCandidate() {
-            float score = docFreq;
-            if (type == CompletionType.NEXT_TOKEN) {
-                score += 0.25f;
-            }
-            return new CompletionCandidate(text, docFreq, score, type);
+            return new CompletionCandidate(text, docFreq, score(), type);
         }
     }
 }

@@ -1,6 +1,7 @@
 package org.es.tok;
 
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.core.KeywordAnalyzer;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
@@ -194,6 +195,94 @@ public class SuggestionEngineTest {
 
                 assertFalse(completions.isEmpty());
                 assertTrue(completions.stream().anyMatch(candidate -> candidate.text().equals("学习")));
+            }
+        }
+    }
+
+    @Test
+    public void testNextTokenPrefersInformativeContinuationOverSingleCharacter() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+            Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                "治愈 系",
+                "治愈 系",
+                "治愈 系",
+                "治愈 时光",
+                "治愈 时光",
+                "治愈 时光",
+                "治愈 时光",
+                "治愈 时光",
+                "系",
+                "系",
+                "系",
+                "系",
+                "系",
+                "系",
+                "时光",
+                "时光",
+                "时光",
+                "时光",
+                "时光");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestNextTokenCompletions(
+                        List.of("content"),
+                        "治愈",
+                        new LuceneIndexSuggester.CompletionConfig(3, 32, 1, 1, true));
+
+                assertFalse(completions.isEmpty());
+                assertEquals("时光", completions.get(0).text());
+                assertEquals(LuceneIndexSuggester.CompletionType.NEXT_TOKEN, completions.get(0).type());
+                assertTrue(completions.stream().anyMatch(candidate -> candidate.text().equals("系")));
+            }
+        }
+    }
+
+    @Test
+    public void testNextTokenRejectsWhitespaceSeparatedTail() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "三丽鸥\u3000库 洛米",
+                    "三丽鸥家族",
+                    "家族");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestNextTokenCompletions(
+                        List.of("content"),
+                        "三丽鸥",
+                        new LuceneIndexSuggester.CompletionConfig(5, 32, 1, 1, true));
+
+                assertFalse(completions.stream().anyMatch(candidate -> candidate.text().contains(" ")));
+                assertTrue(completions.stream().anyMatch(candidate -> candidate.text().equals("家族")));
+            }
+        }
+    }
+
+    @Test
+    public void testNextTokenRejectsOverlongPhraseTail() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "治愈 时光",
+                    "治愈 时光",
+                    "治愈 所有不开心",
+                    "治愈 所有不开心",
+                    "时光",
+                    "时光",
+                    "所有不开心");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestNextTokenCompletions(
+                        List.of("content"),
+                        "治愈",
+                        new LuceneIndexSuggester.CompletionConfig(5, 32, 1, 1, true));
+
+                assertTrue(completions.stream().anyMatch(candidate -> candidate.text().equals("时光")));
+                assertFalse(completions.stream().anyMatch(candidate -> candidate.text().equals("所有不开心")));
             }
         }
     }

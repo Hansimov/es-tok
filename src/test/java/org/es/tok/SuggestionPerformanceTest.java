@@ -1,6 +1,7 @@
 package org.es.tok;
 
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.es.tok.suggest.LuceneIndexSuggester.SuggestionOption;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.DirectoryReader;
@@ -25,6 +26,31 @@ public class SuggestionPerformanceTest {
             try (DirectoryReader reader = DirectoryReader.open(directory)) {
                 CachedShardSuggestService cachedService = new CachedShardSuggestService(2048);
                 LuceneIndexSuggester.CompletionConfig prefixConfig = new LuceneIndexSuggester.CompletionConfig(5, 64, 1, 1, true);
+
+                printProbeResult("Prefix probe: git", cachedService.suggest(
+                    reader,
+                    "prefix",
+                    List.of("content"),
+                    "git",
+                    prefixConfig,
+                    LuceneIndexSuggester.CorrectionConfig.defaults(),
+                    false).options());
+                printProbeResult("Next-token probe: github", cachedService.suggest(
+                    reader,
+                    "next_token",
+                    List.of("content"),
+                    "github",
+                    prefixConfig,
+                    LuceneIndexSuggester.CorrectionConfig.defaults(),
+                    false).options());
+                printProbeResult("Correction probe: gihtub copolit", cachedService.suggest(
+                    reader,
+                    "correction",
+                    List.of("content"),
+                    "gihtub copolit",
+                    prefixConfig,
+                    LuceneIndexSuggester.CorrectionConfig.defaults(),
+                    false).options());
 
                 benchmark("Prefix Completion (cold)", 5000, () -> cachedService.suggest(
                         reader,
@@ -84,6 +110,21 @@ public class SuggestionPerformanceTest {
                 totalMs,
                 totalMs / iterations,
                 iterations / (totalMs / 1000.0));
+    }
+
+    private static void printProbeResult(String title, List<SuggestionOption> options) {
+        System.out.println(title + ":");
+        if (options.isEmpty()) {
+            System.out.println("  <no options>");
+            return;
+        }
+        for (SuggestionOption option : options) {
+            System.out.printf("  %s | freq=%d | score=%.4f | type=%s%n",
+                    option.text(),
+                    option.docFreq(),
+                    option.score(),
+                    option.type());
+        }
     }
 
     private static void indexSuggestionCorpus(Directory directory) throws Exception {

@@ -133,7 +133,7 @@ public class SuggestRestTest {
                   "text": "github",
                   "mode": "next_token",
                   "fields": ["content"],
-                  "size": 3,
+                  "size": 5,
                   "scan_limit": 32,
                   "cache": true
                 }
@@ -142,6 +142,7 @@ public class SuggestRestTest {
         String result = performSuggest(query);
         assertTrue(result.contains("copilot"));
         assertTrue(result.contains("actions"));
+        assertTrue(result.contains("\"type\":\"next_token\""));
     }
 
       @Test
