@@ -15,10 +15,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.PriorityQueue;
 
 /**
  * Index-level spell-correction and completion helper backed by Lucene terms.
@@ -64,7 +66,9 @@ public class LuceneIndexSuggester {
         DirectSpellChecker checker = createSpellChecker(effectiveConfig);
         Map<String, CorrectionCandidateAccumulator> candidates = new HashMap<>();
 
-        for (String field : normalizedFields) {
+        for (int fieldIndex = 0; fieldIndex < normalizedFields.size(); fieldIndex++) {
+            String field = normalizedFields.get(fieldIndex);
+            float fieldWeight = orderedFieldWeight(fieldIndex, normalizedFields.size());
             SuggestWord[] words = checker.suggestSimilar(
                     new Term(field, token),
                     effectiveConfig.maxSuggestions(),
@@ -86,6 +90,9 @@ public class LuceneIndexSuggester {
             }
 
             collectShortCjkCorrectionCandidates(field, token, effectiveConfig, candidates);
+            if (effectiveConfig.usePinyin()) {
+                collectPinyinCorrectionCandidates(field, token, effectiveConfig, candidates, fieldWeight);
+            }
         }
 
         List<Correction> corrections = candidates.values().stream()
@@ -176,8 +183,15 @@ public class LuceneIndexSuggester {
         }
 
         Map<String, CompletionAccumulator> candidates = new HashMap<>();
-        for (String field : normalizeFields(fields)) {
+        List<String> normalizedFields = normalizeFields(fields);
+        for (int fieldIndex = 0; fieldIndex < normalizedFields.size(); fieldIndex++) {
+            String field = normalizedFields.get(fieldIndex);
+            float fieldWeight = orderedFieldWeight(fieldIndex, normalizedFields.size());
             collectPrefixMatches(field, prefix, effectiveConfig, candidates);
+            if (effectiveConfig.usePinyin()) {
+                collectPinyinPrefixMatches(field, prefix, effectiveConfig, candidates, fieldWeight);
+                collectPinyinCorrectionStylePrefixMatches(field, prefix, effectiveConfig, candidates, fieldWeight);
+            }
         }
         return finalizeCompletions(candidates, effectiveConfig.size());
     }
@@ -542,6 +556,70 @@ public class LuceneIndexSuggester {
         }
     }
 
+    private void collectPinyinCorrectionCandidates(
+            String field,
+            String token,
+            CorrectionConfig config,
+            Map<String, CorrectionCandidateAccumulator> candidates,
+            float fieldWeight) throws IOException {
+        for (PinyinIndexedTerm indexedTerm : pinyinFieldIndex(field).terms()) {
+            if (token.equals(indexedTerm.text())) {
+                continue;
+            }
+            float pinyinScore = PinyinSupport.correctionMatchScore(token, indexedTerm.text());
+            if (pinyinScore <= 0.0f) {
+                continue;
+            }
+            float score = fieldWeight * correctionScore(indexedTerm.text(), (pinyinScore * 3.0f) + 0.6f, indexedTerm.docFreq());
+            candidates.computeIfAbsent(indexedTerm.text(), CorrectionCandidateAccumulator::new)
+                    .add(field, indexedTerm.text(), score, indexedTerm.docFreq());
+        }
+    }
+
+    private void collectPinyinCorrectionStylePrefixMatches(
+            String field,
+            String prefix,
+            CompletionConfig config,
+            Map<String, CompletionAccumulator> candidates,
+            float fieldWeight) throws IOException {
+        for (PinyinIndexedTerm indexedTerm : pinyinFieldIndex(field).terms()) {
+            float pinyinScore = PinyinSupport.correctionMatchScore(prefix, indexedTerm.text());
+            if (pinyinScore <= 0.0f) {
+                continue;
+            }
+            float score = fieldWeight * (float) ((Math.log1p(indexedTerm.docFreq()) * 8.0d) * pinyinScore);
+            addCompletionCandidate(
+                    candidates,
+                    indexedTerm.text(),
+                    indexedTerm.docFreq(),
+                    indexedTerm.docFreq(),
+                    CompletionType.PREFIX,
+                    score);
+        }
+    }
+
+    private void collectPinyinPrefixMatches(
+            String field,
+            String prefix,
+            CompletionConfig config,
+            Map<String, CompletionAccumulator> candidates,
+            float fieldWeight) throws IOException {
+        for (PinyinIndexedTerm indexedTerm : pinyinFieldIndex(field).terms()) {
+            float pinyinScore = PinyinSupport.prefixMatchScore(prefix, indexedTerm.pinyinKey());
+            if (pinyinScore <= 0.0f) {
+                continue;
+            }
+            float score = fieldWeight * (float) ((Math.log1p(indexedTerm.docFreq()) * 10.0d) * pinyinScore);
+            addCompletionCandidate(
+                    candidates,
+                    indexedTerm.text(),
+                    indexedTerm.docFreq(),
+                    indexedTerm.docFreq(),
+                    CompletionType.PREFIX,
+                    score);
+        }
+    }
+
     private List<CompletionCandidate> finalizeCompletions(
             Map<String, CompletionAccumulator> candidates,
             int limit) {
@@ -612,6 +690,65 @@ public class LuceneIndexSuggester {
             normalized.add(field);
         }
         return List.copyOf(normalized);
+    }
+
+    private static float orderedFieldWeight(int fieldIndex, int totalFields) {
+        if (totalFields <= 1) {
+            return 1.0f;
+        }
+        return 1.0f + (((totalFields - 1) - fieldIndex) * 1.2f);
+    }
+
+    private PinyinFieldIndex pinyinFieldIndex(String field) throws IOException {
+        IndexReader.CacheHelper cacheHelper = reader.getReaderCacheHelper();
+        Object cacheKey = cacheHelper != null ? cacheHelper.getKey() : reader;
+        return PinyinIndexCache.getOrBuild(cacheKey, field, () -> buildPinyinFieldIndex(field));
+    }
+
+    private PinyinFieldIndex buildPinyinFieldIndex(String field) throws IOException {
+        Terms terms = MultiTerms.getTerms(reader, field);
+        if (terms == null) {
+            return PinyinFieldIndex.EMPTY;
+        }
+
+        final int maxPinyinTerms = 200_000;
+        PriorityQueue<PinyinIndexedTerm> retained = new PriorityQueue<>(Comparator
+                .comparingInt(PinyinIndexedTerm::docFreq)
+                .thenComparing(PinyinIndexedTerm::text));
+        TermsEnum termsEnum = terms.iterator();
+        BytesRef current;
+        while ((current = termsEnum.next()) != null) {
+            String normalized = normalizeSuggestionSurface(current.utf8ToString());
+            if (!PinyinSupport.shouldIndexTerm(normalized) || containsWhitespace(normalized)) {
+                continue;
+            }
+            PinyinIndexedTerm indexedTerm = new PinyinIndexedTerm(normalized, termsEnum.docFreq(), PinyinSupport.pinyinKey(normalized));
+            if (indexedTerm.pinyinKey().isEmpty()) {
+                continue;
+            }
+            if (retained.size() < maxPinyinTerms) {
+                retained.add(indexedTerm);
+                continue;
+            }
+            PinyinIndexedTerm smallest = retained.peek();
+            if (smallest != null && compareIndexedTerms(indexedTerm, smallest) > 0) {
+                retained.poll();
+                retained.add(indexedTerm);
+            }
+        }
+
+        List<PinyinIndexedTerm> termsList = retained.stream()
+                .sorted(Comparator.comparingInt(PinyinIndexedTerm::docFreq).reversed().thenComparing(PinyinIndexedTerm::text))
+                .toList();
+        return new PinyinFieldIndex(termsList);
+    }
+
+    private static int compareIndexedTerms(PinyinIndexedTerm left, PinyinIndexedTerm right) {
+        int docFreqCompare = Integer.compare(left.docFreq(), right.docFreq());
+        if (docFreqCompare != 0) {
+            return docFreqCompare;
+        }
+        return right.text().compareTo(left.text());
     }
 
     private boolean isSingleTokenTail(String tail) {
@@ -985,10 +1122,22 @@ public class LuceneIndexSuggester {
             int prefixLength,
             int maxSuggestions,
             int minCandidateDocFreq,
-            float accuracy) {
+            float accuracy,
+            boolean usePinyin) {
+
+        public CorrectionConfig(
+                int rareTermDocFreq,
+                int minTokenLength,
+                int maxEdits,
+                int prefixLength,
+                int maxSuggestions,
+                int minCandidateDocFreq,
+                float accuracy) {
+            this(rareTermDocFreq, minTokenLength, maxEdits, prefixLength, maxSuggestions, minCandidateDocFreq, accuracy, false);
+        }
 
         public static CorrectionConfig defaults() {
-            return new CorrectionConfig(0, 4, 2, 1, 3, 1, 0.5f);
+            return new CorrectionConfig(0, 4, 2, 1, 3, 1, 0.5f, false);
         }
 
         public CorrectionConfig {
@@ -1021,10 +1170,20 @@ public class LuceneIndexSuggester {
             int scanLimit,
             int minPrefixLength,
             int minCandidateLength,
-            boolean allowCompactBigrams) {
+            boolean allowCompactBigrams,
+            boolean usePinyin) {
+
+        public CompletionConfig(
+                int size,
+                int scanLimit,
+                int minPrefixLength,
+                int minCandidateLength,
+                boolean allowCompactBigrams) {
+            this(size, scanLimit, minPrefixLength, minCandidateLength, allowCompactBigrams, false);
+        }
 
         public static CompletionConfig defaults() {
-            return new CompletionConfig(5, 64, 1, 1, true);
+            return new CompletionConfig(5, 64, 1, 1, true, false);
         }
 
         public CompletionConfig {
@@ -1195,6 +1354,40 @@ public class LuceneIndexSuggester {
         private CompletionCandidate toCandidate() {
             return new CompletionCandidate(text, docFreq, score(), type);
         }
+    }
+
+    private record PinyinIndexedTerm(String text, int docFreq, PinyinSupport.PinyinKey pinyinKey) {
+    }
+
+    private record PinyinFieldIndex(List<PinyinIndexedTerm> terms) {
+        private static final PinyinFieldIndex EMPTY = new PinyinFieldIndex(List.of());
+    }
+
+    private static final class PinyinIndexCache {
+        private static final int MAX_READERS = 8;
+        private static final Map<Object, Map<String, PinyinFieldIndex>> CACHE = new LinkedHashMap<>(16, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<Object, Map<String, PinyinFieldIndex>> eldest) {
+                return size() > MAX_READERS;
+            }
+        };
+
+        private static synchronized PinyinFieldIndex getOrBuild(Object readerKey, String field, PinyinFieldIndexLoader loader)
+                throws IOException {
+            Map<String, PinyinFieldIndex> byField = CACHE.computeIfAbsent(readerKey, ignored -> new HashMap<>());
+            PinyinFieldIndex cached = byField.get(field);
+            if (cached != null) {
+                return cached;
+            }
+            PinyinFieldIndex built = loader.load();
+            byField.put(field, built);
+            return built;
+        }
+    }
+
+    @FunctionalInterface
+    private interface PinyinFieldIndexLoader {
+        PinyinFieldIndex load() throws IOException;
     }
 
     private static final class AutoSuggestionAccumulator {

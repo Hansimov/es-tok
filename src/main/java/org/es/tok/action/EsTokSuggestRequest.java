@@ -30,6 +30,7 @@ public class EsTokSuggestRequest extends BroadcastRequest<EsTokSuggestRequest> {
     private int correctionMinLength = 4;
     private int correctionMaxEdits = 2;
     private int correctionPrefixLength = 1;
+    private boolean usePinyin = false;
 
     public EsTokSuggestRequest() {
         this(Strings.EMPTY_ARRAY);
@@ -56,6 +57,7 @@ public class EsTokSuggestRequest extends BroadcastRequest<EsTokSuggestRequest> {
         correctionMinLength = in.readVInt();
         correctionMaxEdits = in.readVInt();
         correctionPrefixLength = in.readVInt();
+        usePinyin = in.readBoolean();
     }
 
     @Override
@@ -74,7 +76,7 @@ public class EsTokSuggestRequest extends BroadcastRequest<EsTokSuggestRequest> {
         }
         if (isSupportedMode(mode) == false) {
             validationException = ValidateActions.addValidationError(
-                "mode must be 'prefix', 'next_token', 'correction' or 'auto'",
+                "mode must be 'prefix', 'associate', 'correction' or 'auto'",
                     validationException);
         }
         if (correctionMaxEdits < 1 || correctionMaxEdits > 2) {
@@ -211,6 +213,15 @@ public class EsTokSuggestRequest extends BroadcastRequest<EsTokSuggestRequest> {
         return this;
     }
 
+    public boolean usePinyin() {
+        return usePinyin;
+    }
+
+    public EsTokSuggestRequest usePinyin(boolean usePinyin) {
+        this.usePinyin = usePinyin;
+        return this;
+    }
+
     public List<String> limitedFields() {
         if (fields == null || fields.isEmpty()) {
             return List.of();
@@ -223,6 +234,7 @@ public class EsTokSuggestRequest extends BroadcastRequest<EsTokSuggestRequest> {
 
     private static boolean isSupportedMode(String mode) {
         return "prefix".equals(mode)
+            || "associate".equals(mode)
                 || "next_token".equals(mode)
                 || "correction".equals(mode)
                 || "auto".equals(mode);
@@ -245,5 +257,6 @@ public class EsTokSuggestRequest extends BroadcastRequest<EsTokSuggestRequest> {
         out.writeVInt(correctionMinLength);
         out.writeVInt(correctionMaxEdits);
         out.writeVInt(correctionPrefixLength);
+        out.writeBoolean(usePinyin);
     }
 }

@@ -7,6 +7,7 @@ dependencies {
     api "org.ahocorasick:ahocorasick:0.6.3"
     api "com.fasterxml.jackson.core:jackson-databind:2.15.2"
     api "org.apache.lucene:lucene-suggest:${rootProject.ext.luceneVersion}"
+    api "com.github.houbb:pinyin:0.4.0"
 
     testImplementation("junit:junit:4.13.2") {
         exclude group: 'org.hamcrest', module: 'hamcrest-core'

@@ -93,6 +93,9 @@ public class SuggestRestTest {
         indexDocument("5", "github color");
         indexDocument("6", "github color");
         indexDocument("7", "github colon");
+        indexDocument("8", "影视飓风");
+        indexDocument("9", "红警");
+        indexDocument("10", "战鹰");
 
         client.performRequest(new Request("POST", "/" + TEST_INDEX + "/_refresh"));
         Thread.sleep(500);
@@ -127,11 +130,11 @@ public class SuggestRestTest {
     }
 
     @Test
-    public void testNextTokenSuggestEndpoint() throws Exception {
+    public void testAssociateSuggestEndpoint() throws Exception {
         String query = """
                 {
                   "text": "github",
-                  "mode": "next_token",
+                  "mode": "associate",
                   "fields": ["content"],
                   "size": 5,
                   "scan_limit": 32,
@@ -142,7 +145,45 @@ public class SuggestRestTest {
         String result = performSuggest(query);
         assertTrue(result.contains("copilot"));
         assertTrue(result.contains("actions"));
-        assertTrue(result.contains("\"type\":\"next_token\""));
+        assertTrue(result.contains("\"type\":\"associate\""));
+    }
+
+    @Test
+    public void testPinyinPrefixSuggestEndpoint() throws Exception {
+        String query = """
+                {
+                  "text": "ysjf",
+                  "mode": "prefix",
+                  "fields": ["content"],
+                  "size": 3,
+                  "scan_limit": 32,
+                  "use_pinyin": true
+                }
+                """;
+
+        String result = performSuggest(query);
+        assertTrue(result.contains("影视飓风"));
+    }
+
+    @Test
+    public void testPinyinCorrectionSuggestEndpoint() throws Exception {
+        String query = """
+                {
+                  "text": "红井",
+                  "mode": "correction",
+                  "fields": ["content"],
+                  "size": 3,
+                  "cache": true,
+                  "correction_rare_doc_freq": 0,
+                  "correction_min_length": 1,
+                  "correction_max_edits": 2,
+                  "correction_prefix_length": 0,
+                  "use_pinyin": true
+                }
+                """;
+
+        String result = performSuggest(query);
+        assertTrue(result.contains("红警"));
     }
 
       @Test

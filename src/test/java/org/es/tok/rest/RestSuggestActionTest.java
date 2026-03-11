@@ -17,7 +17,7 @@ public class RestSuggestActionTest {
     public void testBuildRequestFromPayloadMap() {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("text", "github");
-        payload.put("mode", "next_token");
+        payload.put("mode", "associate");
         payload.put("fields", List.of("content", "title"));
         payload.put("size", 7);
         payload.put("scan_limit", 80);
@@ -25,12 +25,13 @@ public class RestSuggestActionTest {
         payload.put("min_candidate_length", 3);
         payload.put("allow_compact_bigrams", false);
         payload.put("cache", false);
+        payload.put("use_pinyin", true);
         payload.put("max_fields", 4);
 
         EsTokSuggestRequest request = RestSuggestAction.buildRequest(payload, new String[] { "my_index" });
 
         assertEquals("github", request.text());
-        assertEquals("next_token", request.mode());
+        assertEquals("associate", request.mode());
         assertEquals(List.of("content", "title"), request.fields());
         assertEquals(7, request.size());
         assertEquals(80, request.scanLimit());
@@ -38,6 +39,7 @@ public class RestSuggestActionTest {
         assertEquals(3, request.minCandidateLength());
         assertTrue(request.allowCompactBigrams() == false);
         assertTrue(request.useCache() == false);
+        assertTrue(request.usePinyin());
         assertEquals(4, request.maxFields());
         assertArrayEquals(new String[] { "my_index" }, request.indices());
     }

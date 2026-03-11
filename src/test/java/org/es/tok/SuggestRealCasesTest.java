@@ -107,7 +107,7 @@ public class SuggestRealCasesTest {
     private List<String> performSuggest(RealCase realCase) throws Exception {
         Map<String, Object> requestBody = new LinkedHashMap<>();
         requestBody.put("text", realCase.text());
-        requestBody.put("mode", realCase.mode());
+        requestBody.put("mode", requestMode(realCase.mode()));
         requestBody.put("fields", realCase.fields());
         requestBody.putAll(defaultRequest(realCase.mode()));
         requestBody.putAll(realCase.requestOverrides());
@@ -131,7 +131,7 @@ public class SuggestRealCasesTest {
         if ("prefix".equals(mode)) {
             request.put("size", 5);
             request.put("scan_limit", 128);
-        } else if ("next_token".equals(mode)) {
+        } else if ("associate".equals(mode) || "next_token".equals(mode)) {
             request.put("size", 10);
             request.put("scan_limit", 128);
         } else if ("correction".equals(mode)) {
@@ -153,7 +153,7 @@ public class SuggestRealCasesTest {
         JsonNode root = MAPPER.readTree(Files.readString(CASE_FILE, StandardCharsets.UTF_8));
         List<RealCase> cases = new ArrayList<>();
         for (JsonNode sourceNode : root) {
-            for (String mode : List.of("prefix", "correction", "next_token", "auto")) {
+            for (String mode : List.of("prefix", "correction", "associate", "next_token", "auto")) {
                 JsonNode caseNode = sourceNode.path(mode);
                 if (caseNode.isMissingNode() || caseNode.isNull() || !caseNode.path("regression").asBoolean(false)) {
                     continue;
@@ -185,13 +185,14 @@ public class SuggestRealCasesTest {
                     fieldList = defaultFields(sourceNode.path("id").asText(), mode, caseNode);
                 }
 
+                String normalizedMode = normalizeMode(mode);
                 cases.add(new RealCase(
-                        sourceNode.path("id").asText() + "_" + mode,
-                        mode,
+                        sourceNode.path("id").asText() + "_" + normalizedMode,
+                        normalizedMode,
                         caseNode.path("text").asText(),
                         fieldList,
                         expected,
-                        caseNode.path("expected").path("top_k").asInt(defaultTopK(mode)),
+                        caseNode.path("expected").path("top_k").asInt(defaultTopK(normalizedMode)),
                         overrides));
             }
         }
@@ -199,7 +200,7 @@ public class SuggestRealCasesTest {
     }
 
     private static int defaultTopK(String mode) {
-        if ("next_token".equals(mode)) {
+        if ("associate".equals(mode) || "next_token".equals(mode)) {
             return 10;
         }
         if ("auto".equals(mode)) {
@@ -236,7 +237,7 @@ public class SuggestRealCasesTest {
     }
 
     private static List<String> defaultFields(String sourceId, String mode, JsonNode caseNode) {
-        if (!"next_token".equals(mode) && !"auto".equals(mode)) {
+        if (!"associate".equals(mode) && !"next_token".equals(mode) && !"auto".equals(mode)) {
             return List.of("title.words", "tags.words");
         }
 
@@ -248,6 +249,14 @@ public class SuggestRealCasesTest {
             return List.of("title.words");
         }
         return List.of("title.words", "tags.words");
+    }
+
+    private static String normalizeMode(String mode) {
+        return "next_token".equals(mode) ? "associate" : mode;
+    }
+
+    private static String requestMode(String mode) {
+        return normalizeMode(mode);
     }
 
     private record RealCase(

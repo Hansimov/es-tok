@@ -13,6 +13,7 @@ from pathlib import Path
 DEFAULT_FIELDS = {
     "prefix": ["title.words", "tags.words"],
     "correction": ["title.words", "tags.words"],
+    "associate": ["title.words", "tags.words"],
     "next_token": ["title.words", "tags.words"],
     "auto": ["title.words", "tags.words"],
 }
@@ -51,6 +52,7 @@ DEFAULT_REQUEST = {
         "correction_max_edits": 2,
         "correction_prefix_length": 1,
     },
+    "associate": {"size": 10, "scan_limit": 128},
     "next_token": {"size": 10, "scan_limit": 128},
     "auto": {
         "size": 8,
@@ -81,20 +83,23 @@ def normalize_text(text: str) -> str:
 def flatten_cases(sources):
     cases = []
     for source in sources:
-        for mode in ("prefix", "correction", "next_token", "auto"):
+        for mode in ("prefix", "correction", "associate", "next_token", "auto"):
             payload = source.get(mode)
             if not payload:
                 continue
+            normalized_mode = normalize_mode(mode)
             label = case_label(source["id"], mode, payload)
             expected = payload.get("expected", {})
-            top_k = expected.get("top_k", DEFAULT_REQUEST[mode]["size"])
+            top_k = expected.get("top_k", DEFAULT_REQUEST[normalized_mode]["size"])
             cases.append(
                 {
-                    "id": payload.get("id", f"{source['id']}_{mode}"),
-                    "mode": mode,
+                    "id": payload.get("id", f"{source['id']}_{normalized_mode}"),
+                    "mode": normalized_mode,
                     "label": label,
                     "text": payload["text"],
-                    "fields": payload.get("fields", default_fields(mode, label)),
+                    "fields": payload.get(
+                        "fields", default_fields(normalized_mode, label)
+                    ),
                     "request": payload.get("request", {}),
                     "expected": {
                         "any_of": [
@@ -111,17 +116,17 @@ def flatten_cases(sources):
 
 
 def case_label(source_id, mode, payload):
-    if mode not in ("next_token", "auto"):
+    if mode not in ("associate", "next_token", "auto"):
         return mode
     if payload.get("kind"):
         return payload["kind"]
     if source_id in NEXT_TOKEN_PHRASE_CONTINUATION_IDS:
         return "phrase_continuation"
-    return "associative_completion" if mode == "next_token" else "auto"
+    return "associative_completion" if mode in ("associate", "next_token") else "auto"
 
 
 def default_fields(mode, label):
-    if mode in ("next_token", "auto") and label == "phrase_continuation":
+    if mode in ("associate", "next_token", "auto") and label == "phrase_continuation":
         return ["title.words"]
     return DEFAULT_FIELDS[mode]
 
@@ -129,12 +134,16 @@ def default_fields(mode, label):
 def build_request(case):
     request = {
         "text": case["text"],
-        "mode": case["mode"],
+        "mode": normalize_mode(case["mode"]),
         "fields": case["fields"],
     }
     request.update(DEFAULT_REQUEST[case["mode"]])
     request.update(case["request"])
     return request
+
+
+def normalize_mode(mode):
+    return "associate" if mode == "next_token" else mode
 
 
 def evaluate_case(base_url, auth_header, ssl_context, index_name, case):
@@ -190,7 +199,7 @@ def summarize(results):
         }
 
     summary["overall"] = stats(results)
-    for mode in ("prefix", "correction", "next_token", "auto"):
+    for mode in ("prefix", "correction", "associate", "auto"):
         mode_results = [item for item in results if item["mode"] == mode]
         summary["by_mode"][mode] = stats(mode_results)
 

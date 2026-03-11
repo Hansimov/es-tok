@@ -65,6 +65,7 @@ public class RestSuggestAction extends BaseRestHandler {
         putInt(payload, "max_fields", request.param("max_fields"));
         putBoolean(payload, "allow_compact_bigrams", request.param("allow_compact_bigrams"));
         putBoolean(payload, "cache", request.param("cache"));
+        putBoolean(payload, "use_pinyin", request.param("use_pinyin"));
         putInt(payload, "correction_rare_doc_freq", request.param("correction_rare_doc_freq"));
         putInt(payload, "correction_min_length", request.param("correction_min_length"));
         putInt(payload, "correction_max_edits", request.param("correction_max_edits"));
@@ -100,6 +101,9 @@ public class RestSuggestAction extends BaseRestHandler {
         }
         if (payload.containsKey("cache")) {
             request.useCache(asBoolean(payload.get("cache"), true));
+        }
+        if (payload.containsKey("use_pinyin")) {
+            request.usePinyin(asBoolean(payload.get("use_pinyin"), false));
         }
         if (payload.containsKey("max_fields")) {
             request.maxFields(asInt(payload.get("max_fields"), 8));

@@ -41,7 +41,7 @@
 结论：
 
 - 原生 Elasticsearch 对“前缀补全”支持很好。
-- 但它并不会自动复用 `es_tok` 的分词结果、词表和 ngram 语义，也不会天然给出“基于 es_tok token 共现的 next-token 预测”。
+- 但它并不会自动复用 `es_tok` 的分词结果、词表和 ngram 语义，也不会天然给出“基于同文档共现的关联词建议”。
 
 ## 2. 当前插件实现
 
@@ -71,17 +71,18 @@
 
 ### 2.2 索引级补全引擎
 
-仓库里还新增了一个 Lucene term-dictionary 驱动的补全引擎，当前作为可复用核心能力存在：
+仓库里当前提供两类建议能力：
 
 - prefix completion：对 term dictionary 做 bounded prefix scan
-- next-token completion：优先读取 es_tok bigram / vcgram / vbgram 产生的相邻 token 组合
-- compact bigram completion：可处理没有空格的相邻 token 组合，例如 `深度学习`
+- correction：对 rare / missing token 做 Lucene spell 候选生成，并支持可选拼音匹配
+- associate：在 shard 内做 bounded doc search，重用字段 analyzer 重新切词，聚合同一 doc 中高频共现 token
+- use_pinyin：可选拼音匹配，支持全拼、首字母和混合输入，例如 `ysjf`、`yingshjf`、`战ying`
 
 这套实现的特点是：
 
-- 只访问 term dictionary，不扫 doc
-- 对 prefix 和 next-token 都有固定的扫描上限
-- 在已经启用 es_tok ngram 的字段上，可以复用已有索引信息做轻量共现预测
+- prefix / correction 主要访问 term dictionary，延迟稳定
+- associate 只对 top-N 命中文档做 source 读取和 analyzer 重放，不做全量扫描
+- 拼音匹配只在 `use_pinyin=true` 时启用，并且只缓存高频中文 term 的拼音索引
 
 ## 3. 性能与规模考虑
 
@@ -97,7 +98,7 @@
 
 - 罕见 token 个数
 - 每个 token 的候选数上限
-- prefix / next-token 的词典扫描上限
+- prefix 的词典扫描上限，以及 associate 的文档扫描上限
 
 因此建议：
 
@@ -105,7 +106,8 @@
 - `spell_correct_size` 保持在 `3` 到 `5`
 - `spell_correct_max_edits` 通常不要超过 `2`
 - 补全扫描上限保持小而稳定，优先做 top-K 高频返回
-- next-token 预测优先依赖索引期 bigram / vcgram / vbgram，而不是运行时文档共现统计
+- associate 的 `scan_limit` 不要开太大，优先让它服务于高相关候选聚合，而不是近似全局统计
+- `use_pinyin` 只在确实需要中文拼音召回时开启
 
 ## 4. 什么时候仍然使用原生 ES
 
@@ -119,17 +121,18 @@
 
 - 需要复用 es_tok analyzer 输出的 token 语义
 - 想把 typo 纠正前置到查询解析阶段，避免 fuzzy 主查询扩展
-- 想把补全建立在已索引的 es_tok ngram token 上，而不是额外维护一套 completion 字段
+- 想复用 es_tok analyzer，并在不增加额外 suggest 字段的前提下获得 prefix、correction、associate 三种建议
 
 ## 5. 当前边界与后续扩展
 
 当前仓库里已经落地：
 
 - `es_tok_query_string` 查询侧输入纠错
-- 可单测的索引级 prefix / next-token completion 引擎
+- 可单测的索引级 prefix / correction 引擎，以及 shard 内 `associate` 聚合
 - 正式 REST suggest 接口：`/_es_tok/suggest` 与 `/{index}/_es_tok/suggest`
-- 统一 suggest 协议下的 `correction` 模式
+- 统一 suggest 协议下的 `prefix` / `correction` / `associate` / `auto` 模式
 - shard-local LRU 缓存和 `max_fields` / `scan_limit` 等限流参数
+- 可选 `use_pinyin` 参数
 
 当前还没有直接暴露一个稳定的 cluster 级 REST suggest 端点，原因是：
 

@@ -194,6 +194,98 @@ public class SuggestionEngineTest {
     }
 
     @Test
+    public void testPinyinPrefixSupportsInitials() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "影视飓风",
+                    "影视飓风",
+                    "影视飓风",
+                    "影视前线");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestPrefixCompletions(
+                        List.of("content"),
+                        "ysjf",
+                        new LuceneIndexSuggester.CompletionConfig(3, 32, 1, 1, true, true));
+
+                assertFalse(completions.isEmpty());
+                assertTrue(completions.toString(), completions.stream().anyMatch(candidate -> candidate.text().equals("影视飓风")));
+            }
+        }
+    }
+
+    @Test
+    public void testPinyinPrefixSupportsMixedFullAndInitialInput() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "影视飓风",
+                    "影视飓风",
+                    "影视飓风",
+                    "影视风云");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestPrefixCompletions(
+                        List.of("content"),
+                        "yingshjf",
+                        new LuceneIndexSuggester.CompletionConfig(3, 32, 1, 1, true, true));
+
+                assertFalse(completions.isEmpty());
+                assertTrue(completions.toString(), completions.stream().anyMatch(candidate -> candidate.text().equals("影视飓风")));
+            }
+        }
+    }
+
+    @Test
+    public void testPinyinCorrectionSupportsHomophoneRepair() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "红警",
+                    "红警",
+                    "红警",
+                    "红井盖");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.SuggestionOption> corrections = suggester.suggestCorrections(
+                        List.of("content"),
+                        "红井",
+                        new LuceneIndexSuggester.CorrectionConfig(0, 1, 2, 0, 3, 1, 0.5f, true));
+
+                assertFalse(corrections.isEmpty());
+                assertTrue(corrections.toString(), corrections.stream().anyMatch(candidate -> candidate.text().equals("红警")));
+            }
+        }
+    }
+
+    @Test
+    public void testPinyinCorrectionSupportsMixedChineseAndLatinInput() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "战鹰",
+                    "战鹰",
+                    "战鹰",
+                    "战衣");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.SuggestionOption> corrections = suggester.suggestCorrections(
+                        List.of("content"),
+                        "战ying",
+                        new LuceneIndexSuggester.CorrectionConfig(0, 1, 2, 0, 3, 1, 0.5f, true));
+
+                assertFalse(corrections.isEmpty());
+                assertTrue(corrections.toString(), corrections.stream().anyMatch(candidate -> candidate.text().equals("战鹰")));
+            }
+        }
+    }
+
+    @Test
     public void testNextTokenCompletionUsesEsTokBigrams() throws Exception {
         try (Directory directory = new ByteBuffersDirectory();
                 Analyzer analyzer = new EsTokAnalyzer(
