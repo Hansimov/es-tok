@@ -1,0 +1,1635 @@
+[
+    {
+        "id": "campus_hide_seek",
+        "source": {
+            "bvid": "BV1ocPXzTEvV",
+            "title": "校园躲猫猫大赛！失败就去北极生存100小时！",
+            "view": 6836778
+        },
+        "prefix": {
+            "text": "校",
+            "expected": {
+                "any_of": [
+                    "校园",
+                    "校园捉迷藏"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "校圆",
+            "expected": {
+                "any_of": [
+                    "校园"
+                ],
+                "top_k": 3
+            },
+            "regression": true
+        },
+        "next_token": {
+            "text": "校园",
+            "expected": {
+                "any_of": [
+                    "躲猫猫",
+                    "躲猫猫大赛",
+                    "末日"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "neighbor_likes_dad",
+        "source": {
+            "bvid": "BV12uPYzFEC2",
+            "title": "邻居喜欢我爸",
+            "view": 6745981
+        },
+        "prefix": {
+            "text": "邻",
+            "expected": {
+                "any_of": [
+                    "邻居"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "邻据",
+            "expected": {
+                "any_of": [
+                    "邻居"
+                ],
+                "top_k": 3
+            },
+            "regression": true
+        },
+        "next_token": {
+            "text": "邻居",
+            "expected": {
+                "any_of": [
+                    "喜欢",
+                    "我爸"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "teacher_raise_head",
+        "source": {
+            "bvid": "BV1fuPLzKER6",
+            "title": "老师：今天抬头率这么高？",
+            "view": 6598224
+        },
+        "prefix": {
+            "text": "老",
+            "expected": {
+                "any_of": [
+                    "老师"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "老狮",
+            "expected": {
+                "any_of": [
+                    "老师"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "老师",
+            "expected": {
+                "any_of": [
+                    "今天",
+                    "抬头率"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "qingyu_account_case",
+        "source": {
+            "bvid": "BV188P4zHEC7",
+            "title": "清雨毁号事件再爆猛料？！后续我们将持续跟进！",
+            "view": 6318069
+        },
+        "prefix": {
+            "text": "清",
+            "expected": {
+                "any_of": [
+                    "清雨"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "毁耗",
+            "expected": {
+                "any_of": [
+                    "毁号"
+                ],
+                "top_k": 3
+            },
+            "regression": true
+        },
+        "next_token": {
+            "text": "清雨",
+            "expected": {
+                "any_of": [
+                    "毁号",
+                    "后续"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "mother_movie",
+        "source": {
+            "bvid": "BV1YJPsznE2f",
+            "title": "有的人就不配称为母亲！一个母亲究竟如何毁掉儿子的一生！",
+            "view": 6220202
+        },
+        "prefix": {
+            "text": "母",
+            "expected": {
+                "any_of": [
+                    "母亲",
+                    "母爱"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "母琴",
+            "expected": {
+                "any_of": [
+                    "母亲"
+                ],
+                "top_k": 3
+            },
+            "regression": true
+        },
+        "next_token": {
+            "text": "母亲",
+            "expected": {
+                "any_of": [
+                    "母爱",
+                    "究竟"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "barbecue_people",
+        "source": {
+            "bvid": "BV1RoPiz9Eaj",
+            "title": "和你一起吃烤肉的两种人",
+            "view": 6098321
+        },
+        "prefix": {
+            "text": "烤",
+            "expected": {
+                "any_of": [
+                    "烤肉"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "烤内",
+            "expected": {
+                "any_of": [
+                    "烤肉"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "烤肉",
+            "expected": {
+                "any_of": [
+                    "搭子",
+                    "两种人",
+                    "一起吃"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "viral_snacks",
+        "source": {
+            "bvid": "BV15DPpzHEfv",
+            "title": "网红按斤称零食来袭！这一口下去会很疯狂！",
+            "view": 5945304
+        },
+        "prefix": {
+            "text": "网红",
+            "expected": {
+                "any_of": [
+                    "网红零食",
+                    "网红按斤称零食"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "网红零实",
+            "expected": {
+                "any_of": [
+                    "网红零食"
+                ],
+                "top_k": 3
+            },
+            "regression": true
+        },
+        "next_token": {
+            "text": "网红",
+            "expected": {
+                "any_of": [
+                    "零食",
+                    "按斤称零食",
+                    "按斤称"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "catmeme_story",
+        "source": {
+            "bvid": "BV1hZPCzTEBd",
+            "title": "非凡机缘我和一只黄鼠狼，不得不说的事",
+            "view": 5619736
+        },
+        "prefix": {
+            "text": "猫m",
+            "expected": {
+                "any_of": [
+                    "猫meme"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "猫mem",
+            "expected": {
+                "any_of": [
+                    "猫meme"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "猫meme",
+            "expected": {
+                "any_of": [
+                    "故事会",
+                    "小剧场",
+                    "日常"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "buffet_people",
+        "source": {
+            "bvid": "BV1ytPCzoEvK",
+            "title": "吃自助时的几种人",
+            "view": 5612372
+        },
+        "prefix": {
+            "text": "自助",
+            "expected": {
+                "any_of": [
+                    "自助餐",
+                    "自助"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "自助残",
+            "expected": {
+                "any_of": [
+                    "自助餐"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "自助",
+            "expected": {
+                "any_of": [
+                    "餐",
+                    "搭子",
+                    "时"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "property_truth",
+        "source": {
+            "bvid": "BV1fwPCzyErG",
+            "title": "物业：贵有贵的道理！",
+            "view": 5561359
+        },
+        "prefix": {
+            "text": "物",
+            "expected": {
+                "any_of": [
+                    "物业"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "物页",
+            "expected": {
+                "any_of": [
+                    "物业"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "物业",
+            "expected": {
+                "any_of": [
+                    "道理",
+                    "贵有贵的道理"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "diaoyu_island",
+        "source": {
+            "bvid": "BV1VZPszsES1",
+            "title": "声称登陆钓鱼岛？无底线的造谣只会作茧自缚",
+            "view": 5235779
+        },
+        "prefix": {
+            "text": "钓鱼",
+            "expected": {
+                "any_of": [
+                    "钓鱼岛"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "钓鱼到",
+            "expected": {
+                "any_of": [
+                    "钓鱼岛"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "钓鱼岛",
+            "expected": {
+                "any_of": [
+                    "登陆"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "xiongda_no1",
+        "source": {
+            "bvid": "BV1kaPrzjEXk",
+            "title": "国一熊大",
+            "view": 4972428
+        },
+        "prefix": {
+            "text": "熊",
+            "expected": {
+                "any_of": [
+                    "熊大",
+                    "熊出没"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "next_token": {
+            "text": "熊大",
+            "expected": {
+                "any_of": [
+                    "快跑",
+                    "国一"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "sleep_turn_over",
+        "source": {
+            "bvid": "BV1sLPWzNEmy",
+            "title": "睡觉时身体为什么总会不自觉地翻身？",
+            "view": 4735667
+        },
+        "prefix": {
+            "text": "睡",
+            "expected": {
+                "any_of": [
+                    "睡觉"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "睡交",
+            "expected": {
+                "any_of": [
+                    "睡觉"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "睡觉",
+            "expected": {
+                "any_of": [
+                    "翻身",
+                    "身体"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "school_apocalypse",
+        "source": {
+            "bvid": "BV1CZPWzvEWu",
+            "title": "开学末日宿舍",
+            "view": 4734947
+        },
+        "prefix": {
+            "text": "开",
+            "expected": {
+                "any_of": [
+                    "开学"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "开血",
+            "expected": {
+                "any_of": [
+                    "开学"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "开学",
+            "expected": {
+                "any_of": [
+                    "末日",
+                    "宿舍"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "curfew_after_dlc",
+        "source": {
+            "bvid": "BV14qP4z2EQz",
+            "title": "我通关了老师！宵禁之后2DLC",
+            "view": 4682811
+        },
+        "prefix": {
+            "text": "宵禁",
+            "expected": {
+                "any_of": [
+                    "宵禁之后"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "2DCL",
+            "expected": {
+                "any_of": [
+                    "2dlc"
+                ],
+                "top_k": 3
+            },
+            "regression": true
+        },
+        "next_token": {
+            "text": "宵禁之后",
+            "expected": {
+                "any_of": [
+                    "2dlc"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "child_eyes",
+        "source": {
+            "bvid": "BV1BvPzziEnS",
+            "title": "这些习惯正在悄悄伤害孩子的眼睛",
+            "view": 4441742
+        },
+        "prefix": {
+            "text": "眼",
+            "expected": {
+                "any_of": [
+                    "眼睛"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "眼晴",
+            "expected": {
+                "any_of": [
+                    "眼睛"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "孩子",
+            "expected": {
+                "any_of": [
+                    "眼睛"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "gold_phone_case",
+        "source": {
+            "bvid": "BV1GPPxznEAb",
+            "title": "100克的纯金手机壳？",
+            "view": 4387973
+        },
+        "prefix": {
+            "text": "手机",
+            "expected": {
+                "any_of": [
+                    "手机壳"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "手机科",
+            "expected": {
+                "any_of": [
+                    "手机壳"
+                ],
+                "top_k": 3
+            },
+            "regression": true
+        },
+        "next_token": {
+            "text": "纯金",
+            "expected": {
+                "any_of": [
+                    "手机壳"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "drive_to_iceland",
+        "source": {
+            "bvid": "BV1krP1zoELy",
+            "title": "从中国自驾到冰岛只需要7天？",
+            "view": 4385822
+        },
+        "prefix": {
+            "text": "冰",
+            "expected": {
+                "any_of": [
+                    "冰岛"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "兵岛",
+            "expected": {
+                "any_of": [
+                    "冰岛"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "中国",
+            "expected": {
+                "any_of": [
+                    "自驾",
+                    "冰岛"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "bear_core_analysis",
+        "source": {
+            "bvid": "BV1ZbPWzsEuW",
+            "title": "熊出没伴我熊芯深度解析",
+            "view": 4284966
+        },
+        "prefix": {
+            "text": "伴我",
+            "expected": {
+                "any_of": [
+                    "伴我熊芯"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "伴我熊心",
+            "expected": {
+                "any_of": [
+                    "伴我熊芯"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "熊出没",
+            "expected": {
+                "any_of": [
+                    "伴我熊芯"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "gansu_boyfriend",
+        "source": {
+            "bvid": "BV1xpPrzWEUF",
+            "title": "当你有个甘肃男朋友",
+            "view": 3843469
+        },
+        "prefix": {
+            "text": "甘",
+            "expected": {
+                "any_of": [
+                    "甘肃"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "甘数",
+            "expected": {
+                "any_of": [
+                    "甘肃"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "甘肃",
+            "expected": {
+                "any_of": [
+                    "男朋友"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "aerospace_base",
+        "source": {
+            "bvid": "BV1tPPyzAE9X",
+            "title": "航天基地还有这些彩蛋",
+            "view": 3646912
+        },
+        "prefix": {
+            "text": "航天",
+            "expected": {
+                "any_of": [
+                    "航天基地"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "航天基底",
+            "expected": {
+                "any_of": [
+                    "航天基地"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "航天",
+            "expected": {
+                "any_of": [
+                    "基地"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "imitate_cat_actions",
+        "source": {
+            "bvid": "BV1ffPkz2EzE",
+            "title": "关于小猫疯狂模仿我的动作这件事",
+            "view": 3466211
+        },
+        "prefix": {
+            "text": "小猫",
+            "expected": {
+                "any_of": [
+                    "小猫",
+                    "狸花猫"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "小描",
+            "expected": {
+                "any_of": [
+                    "小猫"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "狸花",
+            "expected": {
+                "any_of": [
+                    "猫"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "anhe_bridge",
+        "source": {
+            "bvid": "BV1iyPrzMESB",
+            "title": "所以，你的顶级遗憾是什么",
+            "view": 3461672
+        },
+        "prefix": {
+            "text": "安",
+            "expected": {
+                "any_of": [
+                    "安河桥"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "安和桥",
+            "expected": {
+                "any_of": [
+                    "安河桥"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "安河",
+            "expected": {
+                "any_of": [
+                    "桥"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "northeast_grace",
+        "source": {
+            "bvid": "BV1V4PQzhEd4",
+            "title": "东北格蕾丝这一块",
+            "view": 3437543
+        },
+        "prefix": {
+            "text": "格",
+            "expected": {
+                "any_of": [
+                    "格蕾丝"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "格雷丝",
+            "expected": {
+                "any_of": [
+                    "格蕾丝"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "东北",
+            "expected": {
+                "any_of": [
+                    "格蕾丝"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "airport_closed",
+        "source": {
+            "bvid": "BV1LePvzQEDb",
+            "title": "全球最大机场但是倒闭了",
+            "view": 3375275
+        },
+        "prefix": {
+            "text": "机",
+            "expected": {
+                "any_of": [
+                    "机场"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "机杨",
+            "expected": {
+                "any_of": [
+                    "机场"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "最大",
+            "expected": {
+                "any_of": [
+                    "机场"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "defend_radish",
+        "source": {
+            "bvid": "BV1B4PWzoECP",
+            "title": "保卫萝卜炮塔实力排行",
+            "view": 3356599
+        },
+        "prefix": {
+            "text": "保卫",
+            "expected": {
+                "any_of": [
+                    "保卫萝卜"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "保卫罗卜",
+            "expected": {
+                "any_of": [
+                    "保卫萝卜"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "保卫萝卜",
+            "expected": {
+                "any_of": [
+                    "炮塔"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "simba_daniel",
+        "source": {
+            "bvid": "BV1eRPCzuEjs",
+            "title": "辛巴巴巴噜比啦丹尼尔本人教学",
+            "view": 3325759
+        },
+        "prefix": {
+            "text": "丹",
+            "expected": {
+                "any_of": [
+                    "丹尼尔"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "丹聂尔",
+            "expected": {
+                "any_of": [
+                    "丹尼尔"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "辛巴巴巴噜比啦",
+            "expected": {
+                "any_of": [
+                    "丹尼尔"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "masquerade_playlist",
+        "source": {
+            "bvid": "BV1fZP7z3E2K",
+            "title": "循环歌单Masquerade翻盘の小曲",
+            "view": 3314449
+        },
+        "prefix": {
+            "text": "mas",
+            "expected": {
+                "any_of": [
+                    "masquerade"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "Masquarade",
+            "expected": {
+                "any_of": [
+                    "masquerade"
+                ],
+                "top_k": 3
+            },
+            "regression": true
+        },
+        "next_token": {
+            "text": "翻盘",
+            "expected": {
+                "any_of": [
+                    "小曲"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "egg_party_day8",
+        "source": {
+            "bvid": "BV15JPszHEFh",
+            "title": "蛋仔派对：水方块生存第8天",
+            "view": 3270598
+        },
+        "prefix": {
+            "text": "蛋仔",
+            "expected": {
+                "any_of": [
+                    "蛋仔派对"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "蛋仔派隊",
+            "expected": {
+                "any_of": [
+                    "蛋仔派对"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "蛋仔派对",
+            "expected": {
+                "any_of": [
+                    "水方块",
+                    "水方块生存",
+                    "启程测试"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "guard_changsha",
+        "source": {
+            "bvid": "BV1zePzzMECZ",
+            "title": "守护解放西探案季",
+            "view": 3264123
+        },
+        "prefix": {
+            "text": "守护",
+            "expected": {
+                "any_of": [
+                    "守护解放西"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "解放希",
+            "expected": {
+                "any_of": [
+                    "解放西"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "守护解放西",
+            "expected": {
+                "any_of": [
+                    "探案季"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "party_people_playlist",
+        "source": {
+            "bvid": "BV1UfNwzEEvj",
+            "title": "循环歌单Party People秒开仙人の小曲",
+            "view": 3207919
+        },
+        "prefix": {
+            "text": "par",
+            "expected": {
+                "any_of": [
+                    "party people"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "Parti People",
+            "expected": {
+                "any_of": [
+                    "party people"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "熊孩子",
+            "expected": {
+                "any_of": [
+                    "小曲"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "biscuit_union",
+        "source": {
+            "bvid": "BV1J2Pez9EMT",
+            "title": "饼干人联盟启程测试定档3月20日",
+            "view": 3177581
+        },
+        "prefix": {
+            "text": "饼干",
+            "expected": {
+                "any_of": [
+                    "饼干人",
+                    "饼干人联盟"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "饼干人联萌",
+            "expected": {
+                "any_of": [
+                    "饼干人联盟"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "饼干人",
+            "expected": {
+                "any_of": [
+                    "联盟"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "little_penguin",
+        "source": {
+            "bvid": "BV1egPpzUEf7",
+            "title": "不要摸小企鹅的尾巴啦！",
+            "view": 2836671
+        },
+        "prefix": {
+            "text": "企鹅",
+            "expected": {
+                "any_of": [
+                    "企鹅",
+                    "小企鹅"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "企鵝",
+            "expected": {
+                "any_of": [
+                    "企鹅"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "小企鹅",
+            "expected": {
+                "any_of": [
+                    "尾巴"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "firecracker_bag",
+        "source": {
+            "bvid": "BV16JPYzpENN",
+            "title": "把10000粒摔炮装袋子里，这得多响啊？",
+            "view": 2184692
+        },
+        "prefix": {
+            "text": "摔",
+            "expected": {
+                "any_of": [
+                    "摔炮"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "摔抱",
+            "expected": {
+                "any_of": [
+                    "摔炮"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "10000粒",
+            "expected": {
+                "any_of": [
+                    "摔炮"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "geely_ad",
+        "source": {
+            "bvid": "BV1kFPszPEFV",
+            "title": "吉利年度最佳广告",
+            "view": 2142192
+        },
+        "prefix": {
+            "text": "吉",
+            "expected": {
+                "any_of": [
+                    "吉利"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "极利",
+            "expected": {
+                "any_of": [
+                    "吉利"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "最佳",
+            "expected": {
+                "any_of": [
+                    "广告"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "xiongda_kuaipao",
+        "source": {
+            "bvid": "BV1M2PyzeEJr",
+            "title": "顶富才能玩的熊大快跑会氪到破产吗？",
+            "view": 2125579
+        },
+        "prefix": {
+            "text": "熊大快",
+            "expected": {
+                "any_of": [
+                    "熊大快跑"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "熊大快饱",
+            "expected": {
+                "any_of": [
+                    "熊大快跑"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "熊大",
+            "expected": {
+                "any_of": [
+                    "快跑"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "take_me_hand",
+        "source": {
+            "bvid": "BV1UnPrz9ELj",
+            "title": "循环歌单Take Me Hand喜极而泣の小曲",
+            "view": 2635459
+        },
+        "prefix": {
+            "text": "tak",
+            "expected": {
+                "any_of": [
+                    "take me hand"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "Take Me Hnad",
+            "expected": {
+                "any_of": [
+                    "take me hand"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "喜极而泣",
+            "expected": {
+                "any_of": [
+                    "小曲"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "scar_face",
+        "source": {
+            "bvid": "BV1TBPKzxEg8",
+            "title": "循环歌单Scar Face红包の小曲",
+            "view": 3092991
+        },
+        "prefix": {
+            "text": "sca",
+            "expected": {
+                "any_of": [
+                    "scar face"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "Scar Fcae",
+            "expected": {
+                "any_of": [
+                    "scar face"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "红包",
+            "expected": {
+                "any_of": [
+                    "小曲"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "montagem_vois",
+        "source": {
+            "bvid": "BV1bEPnzvEfY",
+            "title": "循环歌单Montagem Vois西格玛男人不用质疑",
+            "view": 3106959
+        },
+        "prefix": {
+            "text": "mon",
+            "expected": {
+                "any_of": [
+                    "montagem",
+                    "montagem vois"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "Montagme",
+            "expected": {
+                "any_of": [
+                    "montagem"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "西格玛",
+            "expected": {
+                "any_of": [
+                    "男人",
+                    "小曲"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "vlog_south_cute",
+        "source": {
+            "bvid": "BV1pXPkzQEta",
+            "title": "当南方小可爱们坐在我肩膀上看超市",
+            "view": 2063366
+        },
+        "prefix": {
+            "text": "vlo",
+            "expected": {
+                "any_of": [
+                    "vlog"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "vlgo",
+            "expected": {
+                "any_of": [
+                    "vlog"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "南方",
+            "expected": {
+                "any_of": [
+                    "小土豆",
+                    "小可爱们"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "ai_bstation",
+        "source": {
+            "bvid": "BV1xuPYzcEdo",
+            "title": "不该让爷爷看b站的",
+            "view": 8090789
+        },
+        "prefix": {
+            "text": "b",
+            "expected": {
+                "any_of": [
+                    "b站"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "Al",
+            "expected": {
+                "any_of": [
+                    "ai"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "爷爷",
+            "expected": {
+                "any_of": [
+                    "看",
+                    "b站"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "party_people_extra_tokens",
+        "source": {
+            "bvid": "BV1LDPpzHEn4",
+            "title": "循环歌单Party People一秒净化の小曲",
+            "view": 3146564
+        },
+        "prefix": {
+            "text": "fun",
+            "expected": {
+                "any_of": [
+                    "funk"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "fnuk",
+            "expected": {
+                "any_of": [
+                    "funk"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "驱魔",
+            "expected": {
+                "any_of": [
+                    "小曲"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "phonk_playlist",
+        "source": {
+            "bvid": "BV1EFPaz7EnS",
+            "title": "循环歌单Montagem Tropica蜘蛛感应の小曲",
+            "view": 2119542
+        },
+        "prefix": {
+            "text": "pho",
+            "expected": {
+                "any_of": [
+                    "phonk"
+                ],
+                "top_k": 5
+            }
+        },
+        "correction": {
+            "text": "phomk",
+            "expected": {
+                "any_of": [
+                    "phonk"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "蜘蛛感应",
+            "expected": {
+                "any_of": [
+                    "小曲",
+                    "默契"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "mygo_penguin",
+        "source": {
+            "bvid": "BV1bNPyzaEFn",
+            "title": "谁才是全网最凑最神人的企鹅？",
+            "view": 2153095
+        },
+        "prefix": {
+            "text": "my",
+            "expected": {
+                "any_of": [
+                    "mygo"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "Myg0",
+            "expected": {
+                "any_of": [
+                    "mygo"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "凑企鹅",
+            "expected": {
+                "any_of": [
+                    "高松灯",
+                    "企鹅"
+                ],
+                "top_k": 10
+            }
+        }
+    },
+    {
+        "id": "silent_hill_mother",
+        "source": {
+            "bvid": "BV1r6P1z4E6g",
+            "title": "这是寂静岭最严厉的母亲，别叫妈妈！",
+            "view": 3172988
+        },
+        "prefix": {
+            "text": "寂静",
+            "expected": {
+                "any_of": [
+                    "寂静岭"
+                ],
+                "top_k": 5
+            },
+            "regression": true
+        },
+        "correction": {
+            "text": "stema",
+            "expected": {
+                "any_of": [
+                    "steam"
+                ],
+                "top_k": 3
+            }
+        },
+        "next_token": {
+            "text": "寂静岭",
+            "expected": {
+                "any_of": [
+                    "母亲"
+                ],
+                "top_k": 10
+            }
+        }
+    }
+]

@@ -141,6 +141,59 @@ public class SuggestionEngineTest {
     }
 
     @Test
+    public void testPrefixPrefersExpansionOverExactSingleCharacter() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "母",
+                    "母",
+                    "母",
+                    "母亲",
+                    "母亲",
+                    "母亲",
+                    "母亲",
+                    "母婴",
+                    "母婴",
+                    "母婴");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestPrefixCompletions(
+                        List.of("content"),
+                        "母",
+                        new LuceneIndexSuggester.CompletionConfig(3, 32, 1, 1, true));
+
+                assertFalse(completions.isEmpty());
+                assertEquals("母亲", completions.get(0).text());
+                assertTrue(completions.stream().anyMatch(candidate -> candidate.text().equals("母")));
+            }
+        }
+    }
+
+    @Test
+    public void testPrefixNormalizesChineseWhitespaceVariants() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "三 丽",
+                    "三丽 鸥",
+                    "三丽鸥");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestPrefixCompletions(
+                        List.of("content"),
+                        "三",
+                        new LuceneIndexSuggester.CompletionConfig(3, 32, 1, 1, true));
+
+                assertTrue(completions.stream().anyMatch(candidate -> candidate.text().equals("三丽")));
+                assertTrue(completions.stream().anyMatch(candidate -> candidate.text().equals("三丽鸥")));
+                assertFalse(completions.stream().anyMatch(candidate -> candidate.text().contains(" ")));
+            }
+        }
+    }
+
+    @Test
     public void testNextTokenCompletionUsesEsTokBigrams() throws Exception {
         try (Directory directory = new ByteBuffersDirectory();
                 Analyzer analyzer = new EsTokAnalyzer(
@@ -283,6 +336,58 @@ public class SuggestionEngineTest {
 
                 assertTrue(completions.stream().anyMatch(candidate -> candidate.text().equals("时光")));
                 assertFalse(completions.stream().anyMatch(candidate -> candidate.text().equals("所有不开心")));
+            }
+        }
+    }
+
+    @Test
+    public void testNextTokenPenalizesFunctionWordHeavyTail() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "治愈 了我",
+                    "治愈 了我",
+                    "治愈 了我",
+                    "治愈 了我",
+                    "治愈 心灵",
+                    "治愈 心灵",
+                    "治愈 心灵",
+                    "了我",
+                    "了我",
+                    "心灵");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestNextTokenCompletions(
+                        List.of("content"),
+                        "治愈",
+                        new LuceneIndexSuggester.CompletionConfig(3, 32, 1, 1, true));
+
+                assertFalse(completions.isEmpty());
+                assertEquals("心灵", completions.get(0).text());
+                assertTrue(completions.stream().anyMatch(candidate -> candidate.text().equals("了我")));
+            }
+        }
+    }
+
+    @Test
+    public void testCorrectionSupportsConfiguredShortChineseTerm() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new KeywordAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    "网红零食",
+                    "网红零食",
+                    "网红小吃");
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.SuggestionOption> corrections = suggester.suggestCorrections(
+                        List.of("content"),
+                        "网红零实",
+                        new LuceneIndexSuggester.CorrectionConfig(0, 2, 2, 1, 3, 1, 0.5f));
+
+                assertFalse(corrections.isEmpty());
+                assertEquals("网红零食", corrections.get(0).text());
             }
         }
     }
