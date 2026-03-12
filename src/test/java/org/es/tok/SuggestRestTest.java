@@ -74,6 +74,43 @@ public class SuggestRestTest {
                   },
                   "mappings": {
                     "properties": {
+                      "owner": {
+                        "properties": {
+                          "mid": {
+                            "type": "long"
+                          },
+                          "name": {
+                            "type": "text",
+                            "index": false,
+                            "analyzer": "standard",
+                            "fields": {
+                              "keyword": {
+                                "type": "keyword",
+                                "doc_values": false
+                              },
+                              "suggest": {
+                                "type": "text",
+                                "analyzer": "es_tok_analyzer",
+                                "index_options": "docs",
+                                "norms": false
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "stat": {
+                        "properties": {
+                          "view": {
+                            "type": "long"
+                          }
+                        }
+                      },
+                      "stat_score": {
+                        "type": "half_float"
+                      },
+                      "insert_at": {
+                        "type": "long"
+                      },
                       "content": {
                         "type": "text",
                         "analyzer": "es_tok_analyzer"
@@ -97,6 +134,10 @@ public class SuggestRestTest {
         indexDocument("8", "影视飓风");
         indexDocument("9", "红警");
         indexDocument("10", "战鹰");
+        indexOwnerDocument("11", 1L, "影视飓风", 88.0f, 5_000_000L, 1_710_000_000L);
+        indexOwnerDocument("12", 1L, "影视飓风", 72.0f, 3_000_000L, 1_710_000_100L);
+        indexOwnerDocument("13", 2L, "影视剧风", 12.0f, 200_000L, 1_710_000_000L);
+        indexOwnerDocument("14", 3L, "寻梦影视科技", 45.0f, 8_000_000L, 1_710_000_000L);
 
         client.performRequest(new Request("POST", "/" + TEST_INDEX + "/_refresh"));
         Thread.sleep(500);
@@ -246,9 +287,79 @@ public class SuggestRestTest {
           || result.contains("\"type\":\"correction\""));
     }
 
+    @Test
+    public void testOwnerAutoSuggestUsesOwnerTypeAndRanking() throws Exception {
+        String query = """
+                {
+                  "text": "ysjf",
+                  "mode": "auto",
+                  "fields": ["owner.name.words"],
+                  "size": 5,
+                  "scan_limit": 32,
+                  "use_pinyin": true
+                }
+                """;
+
+        String result = performSuggest(query);
+        assertTrue(result.contains("\"text\":\"影视飓风\""));
+        assertTrue(result.contains("\"type\":\"auto\""));
+        assertFalse(result.contains("\"type\":\"correction\""));
+    }
+
+    @Test
+    public void testOwnerChineseAutoSuggestPrefersKeywordPrefixMatches() throws Exception {
+        String query = """
+                {
+                  "text": "影视飓",
+                  "mode": "auto",
+                  "fields": ["owner.name.words"],
+                  "size": 5,
+                  "scan_limit": 32,
+                  "use_pinyin": true
+                }
+                """;
+
+        String result = performSuggest(query);
+        assertTrue(result.contains("\"text\":\"影视飓风\""));
+        assertFalse(result.contains("\"text\":\"寻梦影视科技\""));
+    }
+
+      @Test
+      public void testOwnerAssociateUsesOwnerService() throws Exception {
+        String query = """
+            {
+              "text": "ysjf",
+              "mode": "associate",
+              "fields": ["owner.name.words"],
+              "size": 5,
+              "scan_limit": 32,
+              "use_pinyin": true
+            }
+            """;
+
+        String result = performSuggest(query);
+        assertTrue(result.contains("\"text\":\"影视飓风\""));
+        assertTrue(result.contains("\"type\":\"associate\""));
+        assertFalse(result.contains("\"type\":\"correction\""));
+      }
+
     private void indexDocument(String id, String content) throws Exception {
         Request request = new Request("PUT", "/" + TEST_INDEX + "/_doc/" + id);
         request.setJsonEntity("{\"content\":\"" + content + "\"}");
+        client.performRequest(request);
+    }
+
+    private void indexOwnerDocument(String id, long mid, String ownerName, float statScore, long viewCount, long insertAt) throws Exception {
+        Request request = new Request("PUT", "/" + TEST_INDEX + "/_doc/" + id);
+        request.setJsonEntity(String.format(
+                java.util.Locale.ROOT,
+                "{\"content\":\"%s\",\"owner\":{\"mid\":%d,\"name\":\"%s\"},\"stat_score\":%.1f,\"stat\":{\"view\":%d},\"insert_at\":%d}",
+                ownerName,
+                mid,
+                ownerName,
+                statScore,
+                viewCount,
+                insertAt));
         client.performRequest(request);
     }
 

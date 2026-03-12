@@ -33,7 +33,10 @@ public final class PinyinWarmupIndexListener implements IndexEventListener, Clos
 
     private static final Logger LOGGER = LogManager.getLogger(PinyinWarmupIndexListener.class);
     private static final List<String> PREFERRED_WARMUP_FIELDS = List.of(
+            "owner.name.suggest",
+            "title.assoc",
             "title.suggest",
+            "tags.assoc",
             "tags.suggest",
             "title.words",
             "tags.words");
@@ -180,17 +183,19 @@ public final class PinyinWarmupIndexListener implements IndexEventListener, Clos
             throws IOException {
         try (Engine.Searcher searcher = indexShard.acquireSearcher("es_tok_pinyin_warmup")) {
             IndexReader reader = searcher.getIndexReader();
-            LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+            List<String> completionFields = completionWarmupFields(warmupFields);
+            List<String> pinyinFields = pinyinWarmupFields(warmupFields);
+            CachedShardSuggestService suggestService = new CachedShardSuggestService();
             long startedAt = System.nanoTime();
-            suggester.prewarmCompletionIndices(warmupFields);
+            suggestService.prewarmFields(reader, completionFields, pinyinFields);
             long completionFinishedAt = System.nanoTime();
-            suggester.prewarmPinyinIndices(warmupFields);
             long finishedAt = System.nanoTime();
             LOGGER.info(
-                    "es_tok warmup shard={} trigger={} fields={} completion_ms={} pinyin_ms={} total_ms={}",
+                "es_tok warmup shard={} trigger={} completion_fields={} pinyin_fields={} completion_ms={} pinyin_ms={} total_ms={}",
                     indexShard.shardId(),
                     trigger,
-                    warmupFields,
+                completionFields,
+                pinyinFields,
                     nanosToMillis(completionFinishedAt - startedAt),
                     nanosToMillis(finishedAt - completionFinishedAt),
                     nanosToMillis(finishedAt - startedAt));
@@ -209,6 +214,9 @@ public final class PinyinWarmupIndexListener implements IndexEventListener, Clos
     }
 
     private static boolean shouldPrewarmField(String field, Set<String> mappedFields) {
+        if (field.endsWith(".assoc")) {
+            return true;
+        }
         if (field.endsWith(".suggest")) {
             return true;
         }
@@ -217,6 +225,19 @@ public final class PinyinWarmupIndexListener implements IndexEventListener, Clos
         }
         String suggestField = field.substring(0, field.length() - ".words".length()) + ".suggest";
         return mappedFields.contains(suggestField) == false;
+    }
+
+    private static List<String> completionWarmupFields(List<String> warmupFields) {
+        return warmupFields == null ? List.of() : warmupFields;
+    }
+
+    private static List<String> pinyinWarmupFields(List<String> warmupFields) {
+        if (warmupFields == null || warmupFields.isEmpty()) {
+            return List.of();
+        }
+        return warmupFields.stream()
+                .filter(field -> field.endsWith(".assoc") == false)
+                .toList();
     }
 
     private static String indexName(IndexSettings indexSettings) {

@@ -26,8 +26,8 @@ import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportService;
 import org.es.tok.suggest.CachedShardSuggestService;
 import org.es.tok.suggest.LuceneIndexSuggester;
+import org.es.tok.suggest.OwnerBackedSuggestService;
 import org.es.tok.suggest.PinyinSupport;
-import org.es.tok.suggest.SourceBackedAssociateSuggester;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -48,7 +48,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
     private final IndicesService indicesService;
     private final ProjectResolver projectResolver;
     private final CachedShardSuggestService suggestService;
-    private final SourceBackedAssociateSuggester associateSuggester;
+    private final OwnerBackedSuggestService ownerSuggestService;
 
     @Inject
     public TransportEsTokSuggestAction(
@@ -66,7 +66,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
                 indexNameExpressionResolver,
                 indicesService,
                 new CachedShardSuggestService(),
-                new SourceBackedAssociateSuggester());
+                new OwnerBackedSuggestService());
     }
 
     TransportEsTokSuggestAction(
@@ -77,7 +77,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             IndexNameExpressionResolver indexNameExpressionResolver,
             IndicesService indicesService,
             CachedShardSuggestService suggestService,
-            SourceBackedAssociateSuggester associateSuggester) {
+            OwnerBackedSuggestService ownerSuggestService) {
         super(
                 EsTokSuggestAction.NAME,
                 clusterService,
@@ -90,7 +90,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         this.indicesService = indicesService;
         this.projectResolver = projectResolver;
         this.suggestService = suggestService;
-        this.associateSuggester = associateSuggester;
+        this.ownerSuggestService = ownerSuggestService;
     }
 
     @Override
@@ -168,10 +168,14 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         IndexService indexService = indicesService.indexServiceSafe(request.shardId().getIndex());
         IndexShard indexShard = indexService.getShard(request.shardId().id());
         List<String> suggestFields = resolveSuggestFields(indexService, request.fields(), request.usePinyin());
+        List<String> associateFields = resolveAssociateFields(indexService, request.fields());
         try (Engine.Searcher searcher = indexShard.acquireSearcher("es_tok_suggest")) {
             IndexReader reader = searcher.getIndexReader();
             if (request.prewarmPinyin()) {
-                suggestService.prewarmPinyin(reader, suggestFields);
+                suggestService.prewarmFields(
+                    reader,
+                    mergeWarmupFields(suggestFields, associateFields),
+                    pinyinWarmupFields(suggestFields));
                 if (request.text() == null || request.text().isBlank()) {
                     return new ShardEsTokSuggestResponse(request.shardId(), List.of(), false);
                 }
@@ -199,6 +203,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
                 reader,
                 request,
                 suggestFields,
+                associateFields,
                 completionConfig,
                 correctionConfig);
 
@@ -215,13 +220,53 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             IndexReader reader,
             ShardEsTokSuggestRequest request,
                 List<String> suggestFields,
+            List<String> associateFields,
             LuceneIndexSuggester.CompletionConfig completionConfig,
             LuceneIndexSuggester.CorrectionConfig correctionConfig) throws IOException {
         String mode = normalizeMode(request.mode());
-        if ("associate".equals(mode)) {
+        if (ownerSuggestService.supports(request.fields())
+            && shouldUseOwnerSuggest(mode)) {
+            if (request.usePinyin() && isAsciiAlphaNumericQuery(request.text())) {
+                String genericMode = "auto".equals(mode) ? "auto" : "prefix";
+                CachedShardSuggestService.SuggestResult result = suggestService.suggest(
+                    reader,
+                    genericMode,
+                    suggestFields,
+                    request.text(),
+                    completionConfig,
+                    correctionConfig,
+                    request.useCache());
+                return new ShardSuggestExecution(
+                    ownerSuggestService.rerankOwnerCandidates(
+                        searcher,
+                        indexService,
+                        result.options(),
+                        request.size(),
+                        mode),
+                    result.cacheHit());
+            }
             return new ShardSuggestExecution(
-                associateSuggester.suggestAssociate(searcher, indexService, request.fields(), request.text(), completionConfig),
+                ownerSuggestService.suggestOwners(
+                    searcher,
+                    indexService,
+                    suggestFields,
+                    request.text(),
+                    request.size(),
+                    mode),
                 false);
+        }
+        if ("associate".equals(mode)) {
+            CachedShardSuggestService.SuggestResult result = suggestService.suggest(
+                reader,
+                "next_token",
+                associateFields,
+                request.text(),
+                completionConfig,
+                correctionConfig,
+                request.useCache());
+            return new ShardSuggestExecution(
+                retagSuggestions(result.options(), "associate"),
+                result.cacheHit());
         }
         if ("auto".equals(mode)) {
             CachedShardSuggestService.SuggestResult prefixResult = suggestService.suggest(
@@ -245,12 +290,16 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
                 request.usePinyin(),
                 prefixResult.options(),
                 correctionResult.options())
-                ? associateSuggester.suggestAssociate(
-                    searcher,
-                    indexService,
-                    request.fields(),
-                    request.text(),
-                    completionConfig)
+                ? retagSuggestions(
+                    suggestService.suggest(
+                        reader,
+                        "next_token",
+                        associateFields,
+                        request.text(),
+                        completionConfig,
+                        correctionConfig,
+                        request.useCache()).options(),
+                    "associate")
                 : List.of();
             return new ShardSuggestExecution(
                 mergeAuto(prefixResult.options(), correctionResult.options(), associateOptions, request.size(), request.text(), request.usePinyin()),
@@ -266,6 +315,36 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             correctionConfig,
             request.useCache());
         return new ShardSuggestExecution(result.options(), result.cacheHit());
+        }
+
+        private static List<String> resolveAssociateFields(IndexService indexService, List<String> requestFields) {
+        if (requestFields == null || requestFields.isEmpty()) {
+            return requestFields;
+        }
+
+        MappingLookup mappingLookup = indexService.mapperService().mappingLookup();
+        Set<String> mappedFields = mappingLookup.getFullNameToFieldType().keySet();
+        LinkedHashSet<String> resolved = new LinkedHashSet<>();
+        for (String field : requestFields) {
+            if (field == null || field.isBlank()) {
+                continue;
+            }
+
+            String sourceField = field;
+            if (field.endsWith(".words")) {
+                sourceField = field.substring(0, field.length() - ".words".length());
+            } else if (field.endsWith(".suggest")) {
+                sourceField = field.substring(0, field.length() - ".suggest".length());
+            }
+
+            String associateField = sourceField + ".assoc";
+            if (mappedFields.contains(associateField)) {
+                resolved.add(associateField);
+            } else {
+                resolved.add(field);
+            }
+        }
+        return List.copyOf(resolved);
         }
 
         private static List<String> resolveSuggestFields(IndexService indexService, List<String> requestFields, boolean usePinyin) {
@@ -293,7 +372,49 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         }
 
         private static String normalizeMode(String mode) {
-        return "next_token".equals(mode) ? "associate" : mode;
+        return mode;
+        }
+
+        private static boolean shouldUseOwnerSuggest(String mode) {
+        return "prefix".equals(mode) || "auto".equals(mode) || "associate".equals(mode);
+        }
+
+        private static boolean isAsciiAlphaNumericQuery(String text) {
+        return text != null
+            && text.isBlank() == false
+            && text.chars().allMatch(ch -> ch < 128 && Character.isLetterOrDigit(ch));
+        }
+
+        private static List<LuceneIndexSuggester.SuggestionOption> retagSuggestions(
+            List<LuceneIndexSuggester.SuggestionOption> options,
+            String type) {
+        return options.stream()
+            .map(option -> new LuceneIndexSuggester.SuggestionOption(
+                option.text(),
+                option.docFreq(),
+                option.score(),
+                type))
+            .toList();
+        }
+
+        private static List<String> mergeWarmupFields(List<String> suggestFields, List<String> associateFields) {
+        LinkedHashSet<String> merged = new LinkedHashSet<>();
+        if (suggestFields != null) {
+            merged.addAll(suggestFields);
+        }
+        if (associateFields != null) {
+            merged.addAll(associateFields);
+        }
+        return List.copyOf(merged);
+        }
+
+        private static List<String> pinyinWarmupFields(List<String> suggestFields) {
+        if (suggestFields == null || suggestFields.isEmpty()) {
+            return List.of();
+        }
+        return suggestFields.stream()
+            .filter(field -> field.endsWith(".assoc") == false)
+            .toList();
         }
 
         private static List<LuceneIndexSuggester.SuggestionOption> mergeAuto(
