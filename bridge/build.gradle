@@ -4,7 +4,9 @@ plugins {
 
 def bridgeSpecFile = file("$projectDir/src/main/resources/bridge-api.json")
 def goldenCasesFile = file("$rootProject.projectDir/testing/golden/analysis_cases.json")
-def bridgeDocFile = file("$rootProject.projectDir/docs/api/bridge.md")
+def bridgeDocFile = file("$rootProject.projectDir/docs/01_API.md")
+def bridgeDocStartMarker = "<!-- BEGIN AUTO-GENERATED: BRIDGE_API -->"
+def bridgeDocEndMarker = "<!-- END AUTO-GENERATED: BRIDGE_API -->"
 
 String renderFieldRows(Map properties) {
     properties.collect { String name, Object property ->
@@ -21,9 +23,9 @@ String prettyJson(Object value) {
             }
 }
 
-String renderBridgeDoc(Map spec, Map goldenExamples) {
+String renderBridgeSection(Map spec, Map goldenExamples) {
     def lines = []
-    lines << "# ${spec.title}"
+    lines << "## Bridge CLI"
     lines << ""
     lines << (spec.summary ?: '')
     lines << ""
@@ -83,6 +85,18 @@ String renderBridgeDoc(Map spec, Map goldenExamples) {
     return lines.join('\n').trim() + '\n'
 }
 
+String replaceBridgeSection(String document, String generatedSection, String startMarker, String endMarker, File targetFile) {
+    int start = document.indexOf(startMarker)
+    int end = document.indexOf(endMarker)
+    if (start == -1 || end == -1 || end < start) {
+        throw new GradleException("Missing bridge doc markers in ${targetFile}. Expected ${startMarker} ... ${endMarker}")
+    }
+
+    String before = document.substring(0, start + startMarker.length())
+    String after = document.substring(end)
+    return before + '\n\n' + generatedSection.trim() + '\n\n' + after
+}
+
 def loadGoldenExamples(File goldenCasesFile) {
     def parsed = new groovy.json.JsonSlurper().parse(goldenCasesFile)
     parsed.collectEntries { example ->
@@ -133,10 +147,20 @@ tasks.register('generateBridgeDocs') {
     outputs.file bridgeDocFile
 
     doLast {
+        if (!bridgeDocFile.exists()) {
+            throw new GradleException("Missing API doc: ${bridgeDocFile}")
+        }
         def spec = new groovy.json.JsonSlurper().parse(bridgeSpecFile) as Map<String, Object>
         def goldenExamples = loadGoldenExamples(goldenCasesFile)
+        def generatedSection = renderBridgeSection(spec, goldenExamples)
+        def updated = replaceBridgeSection(
+            bridgeDocFile.getText('UTF-8'),
+            generatedSection,
+            bridgeDocStartMarker,
+            bridgeDocEndMarker,
+            bridgeDocFile)
         bridgeDocFile.parentFile.mkdirs()
-        bridgeDocFile.setText(renderBridgeDoc(spec, goldenExamples), 'UTF-8')
+        bridgeDocFile.setText(updated, 'UTF-8')
     }
 }
 
@@ -149,11 +173,16 @@ tasks.register('verifyBridgeDocs') {
 
     doLast {
         if (!bridgeDocFile.exists()) {
-            throw new GradleException("Missing generated bridge doc: ${bridgeDocFile}. Run ./gradlew :bridge:generateBridgeDocs")
+            throw new GradleException("Missing API doc: ${bridgeDocFile}. Run ./gradlew :bridge:generateBridgeDocs")
         }
         def spec = new groovy.json.JsonSlurper().parse(bridgeSpecFile) as Map<String, Object>
         def goldenExamples = loadGoldenExamples(goldenCasesFile)
-        def expected = renderBridgeDoc(spec, goldenExamples)
+        def expected = replaceBridgeSection(
+                bridgeDocFile.getText('UTF-8'),
+            renderBridgeSection(spec, goldenExamples),
+            bridgeDocStartMarker,
+            bridgeDocEndMarker,
+            bridgeDocFile)
         def actual = bridgeDocFile.getText('UTF-8')
         if (actual != expected) {
             throw new GradleException("Bridge API docs are out of date. Run ./gradlew :bridge:generateBridgeDocs")
