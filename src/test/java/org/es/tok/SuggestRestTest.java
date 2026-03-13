@@ -15,6 +15,7 @@ import org.junit.Test;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.time.Instant;
+import java.util.List;
 import java.util.stream.Collectors;
 
 import static org.junit.Assert.assertFalse;
@@ -157,9 +158,9 @@ public class SuggestRestTest {
         indexOwnerDocument("14", 3L, "寻梦影视科技", 45.0f, 8_000_000L, 1_710_000_000L);
         indexOwnerDocument("15", 4L, "这里是小天啊", 33.0f, 900_000L, 1_710_000_200L);
         long now = Instant.now().getEpochSecond();
-        indexOwnerDocument("16", 10L, "小米高质量", 4.2f, 2_400_000L, now - 3_600L);
-        indexOwnerDocument("17", 10L, "小米高质量", 3.7f, 1_800_000L, now - 86_400L);
-        indexOwnerDocument("18", 11L, "小米老传奇", 5.1f, 3_600_000L, now - (180L * 86_400L));
+        indexOwnerDocument("16", 10L, "小米高质量", "小米手机体验", List.of("小米", "数码"), 4.2f, 2_400_000L, now - 3_600L);
+        indexOwnerDocument("17", 10L, "小米高质量", "小米汽车首测", List.of("小米", "汽车"), 3.7f, 1_800_000L, now - 86_400L);
+        indexOwnerDocument("18", 11L, "小米老传奇", "小米手机回顾", List.of("小米", "回顾"), 5.1f, 3_600_000L, now - (180L * 86_400L));
         for (int index = 0; index < 6; index++) {
             indexOwnerDocument(
               Integer.toString(220 + index),
@@ -178,6 +179,8 @@ public class SuggestRestTest {
               600L + index,
               now - (2L * 86_400L) - index);
         }
+              indexOwnerDocument("19", 14L, "小咪_m", "今天打瓦很开心", List.of("直播", "日常"), 5.6f, 4_800_000L, now - 1_800L);
+              indexOwnerDocument("20", 15L, "小蜜蜂韩服ob", "韩服ob第一视角", List.of("韩服", "ob"), 5.4f, 4_500_000L, now - 1_800L);
         indexOwnerDocument("300", 30L, "红警高质量", 5.2f, 180_000L, now - 1_800L);
         indexOwnerDocument("301", 30L, "红警高质量", 4.6f, 120_000L, now - 86_400L);
         for (int index = 0; index < 10; index++) {
@@ -463,6 +466,31 @@ public class SuggestRestTest {
       }
 
       @Test
+      public void testOwnerKeywordFullPinyinPrefersCleanSurfaceOverDecoratedHomophoneNoise() throws Exception {
+        String query = """
+            {
+              "text": "xiaomi",
+              "mode": "prefix",
+              "fields": ["owner.name.keyword"],
+              "size": 8,
+              "scan_limit": 64,
+              "use_pinyin": true
+            }
+            """;
+
+        String result = performSuggest(query);
+        int cleanSurface = result.indexOf("\"text\":\"小米高质量\"");
+        int noisyMixedSurface = result.indexOf("\"text\":\"小咪_m\"");
+        int noisyDecoratedSurface = result.indexOf("\"text\":\"小蜜蜂韩服ob\"");
+
+        assertTrue(result, cleanSurface >= 0);
+        assertTrue(result, noisyMixedSurface >= 0);
+        assertTrue(result, noisyDecoratedSurface >= 0);
+        assertTrue(result, cleanSurface < noisyMixedSurface);
+        assertTrue(result, cleanSurface < noisyDecoratedSurface);
+      }
+
+      @Test
       public void testOwnerChineseKeywordRankingPrefersInfluenceOverDocCount() throws Exception {
         String query = """
             {
@@ -510,11 +538,28 @@ public class SuggestRestTest {
     }
 
     private void indexOwnerDocument(String id, long mid, String ownerName, float statScore, long viewCount, long insertAt) throws Exception {
+      indexOwnerDocument(id, mid, ownerName, ownerName, List.of(ownerName), statScore, viewCount, insertAt);
+        }
+
+        private void indexOwnerDocument(
+          String id,
+          long mid,
+          String ownerName,
+          String title,
+          List<String> tags,
+          float statScore,
+          long viewCount,
+          long insertAt) throws Exception {
         Request request = new Request("PUT", "/" + TEST_INDEX + "/_doc/" + id);
+      String tagJson = tags.stream()
+        .map(tag -> String.format(java.util.Locale.ROOT, "\"%s\"", tag))
+        .collect(Collectors.joining(","));
         request.setJsonEntity(String.format(
                 java.util.Locale.ROOT,
-                "{\"content\":\"%s\",\"owner\":{\"mid\":%d,\"name\":\"%s\"},\"stat_score\":%.1f,\"stat\":{\"view\":%d},\"insert_at\":%d}",
+        "{\"content\":\"%s\",\"title\":\"%s\",\"tags\":[%s],\"owner\":{\"mid\":%d,\"name\":\"%s\"},\"stat_score\":%.1f,\"stat\":{\"view\":%d},\"insert_at\":%d}",
                 ownerName,
+        title,
+        tagJson,
                 mid,
                 ownerName,
                 statScore,

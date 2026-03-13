@@ -20,11 +20,14 @@ import org.elasticsearch.plugins.SearchPlugin;
 import org.elasticsearch.rest.RestController;
 import org.elasticsearch.rest.RestHandler;
 import org.es.tok.action.EsTokSuggestAction;
+import org.es.tok.action.EsTokRelatedOwnersAction;
+import org.es.tok.action.TransportEsTokRelatedOwnersAction;
 import org.es.tok.action.TransportEsTokSuggestAction;
 import org.es.tok.analysis.EsTokAnalyzerProvider;
 import org.es.tok.query.EsTokConstraintsQueryBuilder;
 import org.es.tok.query.EsTokQueryStringQueryBuilder;
 import org.es.tok.rest.RestInfoAction;
+import org.es.tok.rest.RestRelatedOwnersAction;
 import org.es.tok.rest.RestSuggestAction;
 import org.es.tok.suggest.PinyinWarmupIndexListener;
 import org.es.tok.tokenize.EsTokTokenizerFactory;
@@ -70,7 +73,8 @@ public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin,
         return List.of(
                 new RestInfoAction(pinyinWarmupIndexListener::businessWarmupSummary),
                 new RestAnalyzeAction(),
-                new RestSuggestAction());
+            new RestSuggestAction(),
+            new RestRelatedOwnersAction());
     }
 
     @Override
@@ -82,7 +86,8 @@ public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin,
     @Override
     public List<ActionHandler> getActions() {
         return List.of(
-                new ActionHandler(EsTokSuggestAction.INSTANCE, TransportEsTokSuggestAction.class));
+            new ActionHandler(EsTokSuggestAction.INSTANCE, TransportEsTokSuggestAction.class),
+            new ActionHandler(EsTokRelatedOwnersAction.INSTANCE, TransportEsTokRelatedOwnersAction.class));
     }
 
     @Override

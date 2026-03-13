@@ -346,6 +346,32 @@ public class SuggestionEngineTest {
     }
 
     @Test
+    public void testStrictFullPinyinPrefixRejectsCrossSyllableNoise() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new WhitespaceAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    String.join(" ", PinyinSupport.precomputedSuggestionTerms("小米")),
+                    String.join(" ", PinyinSupport.precomputedSuggestionTerms("小米汽车")),
+                    String.join(" ", PinyinSupport.precomputedSuggestionTerms("小喵")),
+                    String.join(" ", PinyinSupport.precomputedSuggestionTerms("小明")));
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestPrefixCompletions(
+                        List.of("content"),
+                        "xiaomi",
+                        new LuceneIndexSuggester.CompletionConfig(10, 32, 1, 1, true, true));
+
+                assertFalse(completions.isEmpty());
+                assertTrue(completions.stream().anyMatch(candidate -> candidate.text().equals("小米")));
+                assertTrue(completions.stream().anyMatch(candidate -> candidate.text().equals("小米汽车")));
+                assertFalse(completions.stream().anyMatch(candidate -> candidate.text().equals("小喵")));
+                assertFalse(completions.stream().anyMatch(candidate -> candidate.text().equals("小明")));
+            }
+        }
+    }
+
+    @Test
     public void testAsciiExactPrefixBeatsPinyinInitialsAlias() throws Exception {
         try (Directory directory = new ByteBuffersDirectory();
                 Analyzer analyzer = new WhitespaceAnalyzer()) {

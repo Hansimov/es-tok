@@ -38,6 +38,8 @@ public class OwnerBackedSuggestService {
     private static final String OWNER_NAME_KEYWORD_FIELD = "owner.name.keyword";
     private static final String OWNER_NAME_SOURCE_PATH = "owner.name";
     private static final String OWNER_MID_SOURCE_PATH = "owner.mid";
+    private static final String TITLE_SOURCE_PATH = "title";
+    private static final String TAGS_SOURCE_PATH = "tags";
     private static final String STAT_SCORE_SOURCE_PATH = "stat_score";
     private static final String STAT_VIEW_SOURCE_PATH = "stat.view";
     private static final String INSERT_AT_SOURCE_PATH = "insert_at";
@@ -188,10 +190,15 @@ public class OwnerBackedSuggestService {
         double statScore = asDouble(source.extractValue(STAT_SCORE_SOURCE_PATH, null));
         long viewCount = asLong(source.extractValue(STAT_VIEW_SOURCE_PATH, null), 0L);
         long insertAt = asLong(source.extractValue(INSERT_AT_SOURCE_PATH, null), 0L);
+        double topicalAffinity = ownerTopicAffinitySignal(
+                queryText,
+                asString(source.extractValue(TITLE_SOURCE_PATH, null)),
+                source.extractValue(TAGS_SOURCE_PATH, null));
         OwnerDocSignals docSignals = ownerDocSignals(
             queryText,
             ownerName,
             matchScore,
+            topicalAffinity,
             nowEpochSeconds,
             statScore,
             viewCount,
@@ -376,19 +383,21 @@ public class OwnerBackedSuggestService {
             String queryText,
             String ownerName,
             float matchScore,
+            double topicalAffinity,
             long nowEpochSeconds,
             double statScore,
             long viewCount,
             long insertAt,
             float hitScore,
             int rank) {
-        return ownerDocSignals(queryText, ownerName, matchScore, nowEpochSeconds, statScore, viewCount, insertAt, hitScore, rank, true);
+        return ownerDocSignals(queryText, ownerName, matchScore, topicalAffinity, nowEpochSeconds, statScore, viewCount, insertAt, hitScore, rank, true);
     }
 
     static OwnerDocSignals ownerDocSignals(
             String queryText,
             String ownerName,
             float matchScore,
+            double topicalAffinity,
             long nowEpochSeconds,
             double statScore,
             long viewCount,
@@ -403,13 +412,173 @@ public class OwnerBackedSuggestService {
         double recencyFactor = 1.0d / (1.0d + (ageDays / 14.0d));
         double freshness = recencyFactor * 3.0d;
         double matchSignal = Math.max(0.04d, matchScore);
+        double disambiguationSignal = strictFullPinyinOwnerDisambiguation(queryText, ownerName);
+        double topicSignal = Math.max(0.0d, topicalAffinity);
+        double offTopicPenalty = strictFullPinyinOffTopicPenalty(queryText, ownerName, topicSignal);
         double querySignal = useQueryRankSignal
                 ? ((Math.log1p(Math.max(1.0f, hitScore)) + 1.0d) * 0.9d) / (1.0d + (rank * 0.06d))
                 : 0.0d;
-        double rankingWeight = quality + influence + freshness + querySignal + (matchSignal * 7.0d);
+        double rankingWeight = quality + influence + freshness + querySignal + (matchSignal * 7.0d) + (disambiguationSignal * 5.5d) + (topicSignal * 8.0d) - (offTopicPenalty * 28.0d);
         double activityWeight = (quality * 0.55d + influence * 0.65d + 1.0d) * recencyFactor;
-        double representativeSignal = (quality * 1.2d) + (influence * 1.55d) + freshness;
+        double representativeSignal = (quality * 1.2d) + (influence * 1.55d) + freshness + (disambiguationSignal * 2.2d) + (topicSignal * 3.4d) - (offTopicPenalty * 16.0d);
         return new OwnerDocSignals(rankingWeight, activityWeight, quality, influence, representativeSignal);
+    }
+
+    private static double strictFullPinyinOffTopicPenalty(String queryText, String ownerName, double topicalAffinity) {
+        if (!PinyinSupport.isStrictFullPinyinQuery(queryText) || topicalAffinity >= 0.12d) {
+            return 0.0d;
+        }
+
+        String normalizedQuery = PinyinSupport.normalizeInput(queryText);
+        if (normalizedQuery.isBlank() || containsAsciiLiteralPrefix(ownerName, normalizedQuery)) {
+            return 0.0d;
+        }
+
+        int chineseCount = chineseCodePointCount(ownerName);
+        int asciiAlphaNumericCount = asciiAlphaNumericCount(ownerName);
+        int separatorCount = separatorCount(ownerName);
+
+        double penalty = 1.15d;
+        if (chineseCount > 0 && asciiAlphaNumericCount == 0 && separatorCount == 0) {
+            penalty += 0.35d;
+        }
+        if (chineseCount > 0 && (asciiAlphaNumericCount > 0 || separatorCount > 0)) {
+            penalty += 0.75d;
+        }
+        return penalty;
+    }
+
+    private static double ownerTopicAffinitySignal(String queryText, String title, Object tagsValue) {
+        if (!PinyinSupport.isPinyinLikeQuery(queryText) && !PinyinSupport.containsChinese(queryText)) {
+            return 0.0d;
+        }
+
+        double best = 0.0d;
+        for (String candidate : topicalTexts(title, tagsValue)) {
+            if (candidate == null || candidate.isBlank()) {
+                continue;
+            }
+            float score = PinyinSupport.prefixMatchScore(queryText, candidate);
+            if (score > 0.0f) {
+                best = Math.max(best, score);
+                if (PinyinSupport.isStrictFullPinyinQuery(queryText) && PinyinSupport.fullPinyinPrefixMatch(queryText, candidate)) {
+                    best = Math.max(best, score + 0.55d);
+                }
+            }
+        }
+        return best;
+    }
+
+    private static List<String> topicalTexts(String title, Object tagsValue) {
+        List<String> texts = new ArrayList<>();
+        if (title != null && !title.isBlank()) {
+            texts.add(title);
+        }
+        if (tagsValue instanceof Collection<?> collection) {
+            for (Object value : collection) {
+                if (value != null) {
+                    texts.add(value.toString());
+                }
+            }
+        } else if (tagsValue instanceof String text && !text.isBlank()) {
+            texts.add(text);
+        }
+        return texts;
+    }
+
+    private static double strictFullPinyinOwnerDisambiguation(String queryText, String ownerName) {
+        if (!PinyinSupport.isStrictFullPinyinQuery(queryText) || ownerName == null || ownerName.isBlank()) {
+            return 0.0d;
+        }
+
+        String normalizedQuery = PinyinSupport.normalizeInput(queryText);
+        if (normalizedQuery.isBlank()) {
+            return 0.0d;
+        }
+
+        double signal = 0.0d;
+        if (containsAsciiLiteralPrefix(ownerName, normalizedQuery)) {
+            signal += 1.9d;
+        }
+
+        int chineseCount = chineseCodePointCount(ownerName);
+        int asciiAlphaNumericCount = asciiAlphaNumericCount(ownerName);
+        int separatorCount = separatorCount(ownerName);
+        boolean pureChineseSurface = chineseCount > 0 && asciiAlphaNumericCount == 0 && separatorCount == 0;
+        boolean decoratedMixedSurface = chineseCount > 0 && (asciiAlphaNumericCount > 0 || separatorCount > 0);
+
+        if (pureChineseSurface) {
+            signal += 0.38d;
+        }
+        if (decoratedMixedSurface && !containsAsciiLiteralPrefix(ownerName, normalizedQuery)) {
+            signal -= 0.72d;
+            signal -= Math.min(0.28d, asciiAlphaNumericCount * 0.025d);
+            signal -= Math.min(0.18d, separatorCount * 0.08d);
+        }
+
+        return signal;
+    }
+
+    private static boolean containsAsciiLiteralPrefix(String ownerName, String normalizedQuery) {
+        if (normalizedQuery == null || normalizedQuery.isBlank() || ownerName == null || ownerName.isBlank()) {
+            return false;
+        }
+
+        String lower = ownerName.toLowerCase(Locale.ROOT);
+        StringBuilder segment = new StringBuilder();
+        for (int index = 0; index < lower.length(); ) {
+            int codePoint = lower.codePointAt(index);
+            index += Character.charCount(codePoint);
+            if (codePoint < 128 && Character.isLetterOrDigit(codePoint)) {
+                segment.appendCodePoint(codePoint);
+                continue;
+            }
+            if (segment.length() > 0) {
+                if (segment.toString().startsWith(normalizedQuery)) {
+                    return true;
+                }
+                segment.setLength(0);
+            }
+        }
+        return segment.length() > 0 && segment.toString().startsWith(normalizedQuery);
+    }
+
+    private static int chineseCodePointCount(String text) {
+        int count = 0;
+        for (int index = 0; index < text.length(); ) {
+            int codePoint = text.codePointAt(index);
+            index += Character.charCount(codePoint);
+            if (Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int asciiAlphaNumericCount(String text) {
+        int count = 0;
+        for (int index = 0; index < text.length(); ) {
+            int codePoint = text.codePointAt(index);
+            index += Character.charCount(codePoint);
+            if (codePoint < 128 && Character.isLetterOrDigit(codePoint)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int separatorCount(String text) {
+        int count = 0;
+        for (int index = 0; index < text.length(); ) {
+            int codePoint = text.codePointAt(index);
+            index += Character.charCount(codePoint);
+            if (!Character.isWhitespace(codePoint)
+                    && Character.UnicodeScript.of(codePoint) != Character.UnicodeScript.HAN
+                    && !(codePoint < 128 && Character.isLetterOrDigit(codePoint))) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static double ageDays(long nowEpochSeconds, long insertAt) {
