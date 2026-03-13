@@ -53,8 +53,12 @@ public final class PinyinWarmupIndexListener implements IndexEventListener, Clos
 
     @Override
     public void afterIndexCreated(IndexService indexService) {
-        List<String> warmupFields = discoverWarmupFields(indexService);
         String indexName = indexName(indexService.getIndexSettings());
+        if (shouldWarmIndex(indexName) == false) {
+            warmupFieldsByIndex.remove(indexName);
+            return;
+        }
+        List<String> warmupFields = discoverWarmupFields(indexService);
         if (warmupFields.isEmpty()) {
             warmupFieldsByIndex.remove(indexName);
             return;
@@ -75,9 +79,13 @@ public final class PinyinWarmupIndexListener implements IndexEventListener, Clos
         if (closed.get()) {
             return;
         }
+        String indexName = indexShard.shardId().getIndexName();
+        if (shouldWarmIndex(indexName) == false) {
+            return;
+        }
         List<String> warmupFields = warmupFieldsByIndex.computeIfAbsent(
-                indexShard.shardId().getIndexName(),
-                ignored -> discoverWarmupFields(indexShard.mapperService()));
+                indexName,
+                ignored -> discoverWarmupFields(indexName, indexShard.mapperService()));
         if (warmupFields == null || warmupFields.isEmpty()) {
             return;
         }
@@ -109,15 +117,28 @@ public final class PinyinWarmupIndexListener implements IndexEventListener, Clos
     }
 
     static List<String> discoverWarmupFields(IndexService indexService) {
-        return discoverWarmupFields(indexService.mapperService());
+        return discoverWarmupFields(indexName(indexService.getIndexSettings()), indexService.mapperService());
     }
 
     static List<String> discoverWarmupFields(MapperService mapperService) {
+        return discoverWarmupFields(null, mapperService);
+    }
+
+    static List<String> discoverWarmupFields(String indexName, MapperService mapperService) {
         if (mapperService == null) {
             return List.of();
         }
+        if (shouldWarmIndex(indexName) == false) {
+            return List.of();
+        }
         MappingLookup mappingLookup = mapperService.mappingLookup();
-        Set<String> mappedFields = mappingLookup.getFullNameToFieldType().keySet();
+        return discoverWarmupFields(indexName, mappingLookup.getFullNameToFieldType().keySet());
+    }
+
+    static List<String> discoverWarmupFields(String indexName, Set<String> mappedFields) {
+        if (mappedFields == null || mappedFields.isEmpty() || shouldWarmIndex(indexName) == false) {
+            return List.of();
+        }
         List<String> preferred = PREFERRED_WARMUP_FIELDS.stream()
                 .filter(field -> shouldPrewarmField(field, mappedFields))
                 .toList();
@@ -214,6 +235,9 @@ public final class PinyinWarmupIndexListener implements IndexEventListener, Clos
     }
 
     private static boolean shouldPrewarmField(String field, Set<String> mappedFields) {
+        if (mappedFields.contains(field) == false) {
+            return false;
+        }
         if (field.endsWith(".assoc")) {
             return true;
         }
@@ -250,6 +274,10 @@ public final class PinyinWarmupIndexListener implements IndexEventListener, Clos
 
     private static boolean isSystemShard(String shardKey) {
         return shardKey.startsWith("[.");
+    }
+
+    static boolean shouldWarmIndex(String indexName) {
+        return indexName != null && indexName.startsWith(".") == false;
     }
 
     public record WarmupSummary(int totalShards, int readyShards, int runningShards, int queuedShards) {
