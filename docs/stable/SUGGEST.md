@@ -77,12 +77,15 @@
 - correction：对 rare / missing token 做 Lucene spell 候选生成，并支持可选拼音匹配
 - associate：在 shard 内做 bounded doc search，重用字段 analyzer 重新切词，聚合同一 doc 中高频共现 token
 - use_pinyin：可选拼音匹配，支持全拼、首字母和混合输入，例如 `ysjf`、`yingshjf`、`战ying`
+- related owners：对 topic 命中文档按 `owner.mid` 聚合，返回“相关且有影响力”的 owner 排序
 
 这套实现的特点是：
 
 - prefix / correction 主要访问 term dictionary，延迟稳定
 - associate 只对 top-N 命中文档做 source 读取和 analyzer 重放，不做全量扫描
 - 拼音匹配只在 `use_pinyin=true` 时启用，并且只缓存高频中文 term 的拼音索引
+- 严格全拼现在按音节边界做前缀匹配，不再把 `xiaomi -> 小明 / 小喵` 这类跨音节噪声当成正常候选
+- owner 建议在严格全拼下不再只看名字同音，还会看该 owner 文档的 `title` / `tags` 是否真的在讲这个 topic
 - 拼音候选检索现在走 reader 级前缀桶，而不是每次请求扫描整份 retained term 列表
 - 可通过 `prewarm_pinyin=true` 显式预热拼音 reader 缓存，把冷启动成本挪到重建索引或节点重启之后
 
@@ -133,9 +136,15 @@
 - `es_tok_query_string` 查询侧输入纠错
 - 可单测的索引级 prefix / correction 引擎，以及 shard 内 `associate` 聚合
 - 正式 REST suggest 接口：`/_es_tok/suggest` 与 `/{index}/_es_tok/suggest`
+- 正式 REST related owners 接口：`/_es_tok/related_owners` 与 `/{index}/_es_tok/related_owners`
 - 统一 suggest 协议下的 `prefix` / `correction` / `associate` / `auto` 模式
 - shard-local LRU 缓存和 `max_fields` / `scan_limit` 等限流参数
 - 可选 `use_pinyin` 参数
+
+related owners 与 suggest 的分工现在已经明确：
+
+- `suggest` 解决“用户现在输入这个前缀，下一步最可能想补成什么文本”。
+- `related_owners` 解决“对于这个主题，哪些作者最相关且有影响力”。
 
 当前还没有直接暴露一个稳定的 cluster 级 REST suggest 端点，原因是：
 

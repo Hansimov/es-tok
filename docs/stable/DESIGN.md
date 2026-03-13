@@ -38,6 +38,11 @@
 - 将宿主侧的 `Settings`、REST 请求或 Lucene 调用转换为 core 可消费的形式
 - 将 core 输出映射回 TokenStream、REST JSON 和 cat API 表格
 
+当前插件层除了 analyze 和 query 扩展，还维护两条独立的建议链路：
+
+- `/_es_tok/suggest`：面向文本补全、纠错和共现建议
+- `/_es_tok/related_owners`：面向 topic 到 owner 的聚合排序
+
 ## 3. 统一执行流
 
 无论入口来自哪里，当前执行流都遵循同一模式：
@@ -132,6 +137,41 @@ bridge CLI 与 `RestAnalyzeAction` 都通过这层实现，避免两处手写解
 - `es_tok_constraints`：独立约束过滤查询，主要用于 KNN 预过滤
 
 这部分逻辑仍位于插件层，因为它依赖 Lucene/Elasticsearch 查询对象，而不是纯分析流水线。
+
+## 8.1 Suggest 与 Related Owners 设计分工
+
+当前建议相关能力分成两层：
+
+### `suggest`
+
+目标是“补全文本”。主要模式包括：
+
+- `prefix`
+- `correction`
+- `associate`
+- `auto`
+
+其中拼音前缀匹配已经收紧到音节边界级别，避免完整全拼输入误命中过宽的同音或跨音节噪声。
+
+owner 建议虽然也走 `suggest` 协议，但内部已经是专门的 `OwnerBackedSuggestService`：
+
+- 先按 owner 名字召回候选
+- 再结合代表作质量、影响力、活跃度重排
+- 对严格全拼查询，再追加文档主题支持判断，避免“名字同音但内容无关”的 owner 冲到头部
+
+### `related_owners`
+
+目标是“找主题下的重要作者”，不是补全文本。
+
+它的执行模型是：
+
+1. 在 topic 字段上做 bounded doc search
+2. 从 source 中读取 `owner.mid` / `owner.name` / `stat_score` / `stat.view` / `insert_at`
+3. 以 `owner.mid` 为 key 聚合
+4. 合并主题相关性、代表作信号、影响力和覆盖度
+5. 在协调节点按 owner 维度做跨 shard 合并
+
+这条链路与 `suggest` 分离后，topic-to-owner 的建模不再受“文本补全协议”约束，后续可以独立迭代。
 
 ## 9. 文档与测试同步策略
 

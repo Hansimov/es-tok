@@ -128,6 +128,7 @@ public class OwnerBackedSuggestService {
     public List<SuggestionOption> rerankOwnerCandidates(
             Engine.Searcher searcher,
             IndexService indexService,
+            String queryText,
             List<SuggestionOption> candidates,
             int size,
             String type) throws IOException {
@@ -143,7 +144,7 @@ public class OwnerBackedSuggestService {
         long nowEpochSeconds = Instant.now().getEpochSecond();
 
         for (SuggestionOption candidate : candidates) {
-            collectCandidateOwnerMatches(searcher, sourceProvider, nowEpochSeconds, candidate.text(), candidate, owners, type);
+            collectCandidateOwnerMatches(searcher, sourceProvider, nowEpochSeconds, queryText, candidate, owners, type);
         }
 
         if (owners.isEmpty()) {
@@ -190,10 +191,14 @@ public class OwnerBackedSuggestService {
         double statScore = asDouble(source.extractValue(STAT_SCORE_SOURCE_PATH, null));
         long viewCount = asLong(source.extractValue(STAT_VIEW_SOURCE_PATH, null), 0L);
         long insertAt = asLong(source.extractValue(INSERT_AT_SOURCE_PATH, null), 0L);
+        boolean asciiLiteralPrefix = containsAsciiLiteralPrefix(ownerName, PinyinSupport.normalizeInput(queryText));
         double topicalAffinity = ownerTopicAffinitySignal(
                 queryText,
                 asString(source.extractValue(TITLE_SOURCE_PATH, null)),
                 source.extractValue(TAGS_SOURCE_PATH, null));
+        if (shouldRejectStrictFullPinyinOwner(queryText, asciiLiteralPrefix, topicalAffinity)) {
+            return;
+        }
         OwnerDocSignals docSignals = ownerDocSignals(
             queryText,
             ownerName,
@@ -209,6 +214,19 @@ public class OwnerBackedSuggestService {
 
         owners.computeIfAbsent(mid, OwnerAccumulator::new)
         .add(docId, ownerName, docSignals, branchWeight, type);
+    }
+
+    private static boolean shouldRejectStrictFullPinyinOwner(
+            String queryText,
+            boolean asciiLiteralPrefix,
+            double topicalAffinity) {
+        if (!PinyinSupport.isStrictFullPinyinQuery(queryText)) {
+            return false;
+        }
+        if (asciiLiteralPrefix) {
+            return false;
+        }
+        return topicalAffinity < 0.12d;
     }
 
     private void collectCandidateOwnerMatches(

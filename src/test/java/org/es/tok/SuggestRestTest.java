@@ -18,6 +18,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -484,10 +485,8 @@ public class SuggestRestTest {
         int noisyDecoratedSurface = result.indexOf("\"text\":\"小蜜蜂韩服ob\"");
 
         assertTrue(result, cleanSurface >= 0);
-        assertTrue(result, noisyMixedSurface >= 0);
-        assertTrue(result, noisyDecoratedSurface >= 0);
-        assertTrue(result, cleanSurface < noisyMixedSurface);
-        assertTrue(result, cleanSurface < noisyDecoratedSurface);
+        assertEquals(result, -1, noisyMixedSurface);
+        assertEquals(result, -1, noisyDecoratedSurface);
       }
 
       @Test

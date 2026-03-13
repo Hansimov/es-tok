@@ -241,6 +241,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
                     ownerSuggestService.rerankOwnerCandidates(
                         searcher,
                         indexService,
+                        request.text(),
                         result.options(),
                         request.size(),
                         mode),

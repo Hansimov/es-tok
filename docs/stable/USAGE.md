@@ -172,6 +172,14 @@ POST /my_index/_es_tok/suggest
 
 `use_pinyin` 适用于中文词语的全拼、首字母和混合输入，例如 `ysjf -> 影视飓风`、`yingshjf -> 影视飓风`、`战ying -> 战鹰`。
 
+从当前版本开始，严格全拼输入会更强调“音节边界 + 主题支持”：
+
+- `xiaomi` 这类足够像完整全拼的输入，不再回退到首字母宽匹配。
+- 对 owner 建议，名字拼音能对上只算召回条件；如果 owner 最近文档的 `title` / `tags` 对这个主题没有支撑，就会被直接挡在严格全拼结果之外。
+- 这意味着 `xiaomi` 更容易得到真正讲“小米”的 owner，而不是 `小咪 / 小蜜` 这类纯同音账号。
+
+如果你的 owner 建议希望受益于这层 topic 支持，源文档里应同时保留 `title` 和 `tags` 之类能表达主题的字段。
+
 如果你刚重建索引或刚重启节点，希望把拼音 reader 级缓存提前烤热，可以先发一次只做预热的请求：
 
 ```json
@@ -231,6 +239,69 @@ POST /my_index/_es_tok/suggest
   ]
 }
 ```
+
+## 2.2 REST Related Owners 接口
+
+这个接口不是补全文本，而是回答“给定一个 topic / keyword，哪些 owner 既相关又有影响力”。输入是关键词，输出是 owner mids 和排序分数。
+
+### 端点
+
+```text
+GET /_es_tok/related_owners
+POST /_es_tok/related_owners
+GET /{index}/_es_tok/related_owners
+POST /{index}/_es_tok/related_owners
+```
+
+### 请求示例
+
+```json
+POST /bili_videos_dev6/_es_tok/related_owners
+{
+  "text": "红警",
+  "fields": ["title.words", "tags.words"],
+  "size": 10,
+  "scan_limit": 256,
+  "use_pinyin": true
+}
+```
+
+### 返回语义
+
+- `owners[].mid`：owner 的 mid
+- `owners[].name`：该 owner 当前最能代表结果的展示名
+- `owners[].doc_freq`：当前 topic 命中的去重文档数
+- `owners[].score`：综合主题相关性、代表作质量、影响力和覆盖度后的排序分数
+- `owners[].shard_count`：该 owner 在多少个 shard 上贡献了结果
+
+### 响应示例
+
+```json
+{
+  "_shards": {
+    "total": 8,
+    "successful": 8,
+    "failed": 0
+  },
+  "text": "红警",
+  "fields": ["title.words", "tags.words"],
+  "owners": [
+    {
+      "mid": 1629347259,
+      "name": "红警HBK08",
+      "doc_freq": 2,
+      "score": 39623.75,
+      "shard_count": 2
+    }
+  ]
+}
+```
+
+### 使用建议
+
+- `fields` 应优先填能表达主题的文本字段，例如 `title.words`、`tags.words`，而不是 owner 名字字段。
+- 这个接口的目标是找“主题下的重要作者”，不是找“名字像输入的作者”。
+- 当前排序会同时看单条强命中和多条持续覆盖，因此比简单的 `terms(owner.mid)` 更接近“相关且有影响力”。
 
 ## 3. 创建索引与分析器配置
 
