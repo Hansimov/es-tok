@@ -62,12 +62,28 @@ public class SuggestRestTest {
                             "use_bigram": true,
                             "drop_cogram": true
                           }
+                        },
+                        "es_tok_owner_suggest_tokenizer": {
+                          "type": "es_tok",
+                          "use_extra": true,
+                          "use_categ": true,
+                          "use_vocab": false,
+                          "use_ngram": false,
+                          "extra_config": {
+                            "ignore_case": true,
+                            "drop_duplicates": true,
+                            "emit_pinyin_terms": true
+                          }
                         }
                       },
                       "analyzer": {
                         "es_tok_analyzer": {
                           "type": "custom",
                           "tokenizer": "es_tok_tokenizer"
+                        },
+                        "owner_suggest_analyzer": {
+                          "type": "custom",
+                          "tokenizer": "es_tok_owner_suggest_tokenizer"
                         }
                       }
                     }
@@ -90,7 +106,7 @@ public class SuggestRestTest {
                               },
                               "suggest": {
                                 "type": "text",
-                                "analyzer": "es_tok_analyzer",
+                                "analyzer": "owner_suggest_analyzer",
                                 "index_options": "docs",
                                 "norms": false
                               }
@@ -138,6 +154,7 @@ public class SuggestRestTest {
         indexOwnerDocument("12", 1L, "影视飓风", 72.0f, 3_000_000L, 1_710_000_100L);
         indexOwnerDocument("13", 2L, "影视剧风", 12.0f, 200_000L, 1_710_000_000L);
         indexOwnerDocument("14", 3L, "寻梦影视科技", 45.0f, 8_000_000L, 1_710_000_000L);
+        indexOwnerDocument("15", 4L, "这里是小天啊", 33.0f, 900_000L, 1_710_000_200L);
 
         client.performRequest(new Request("POST", "/" + TEST_INDEX + "/_refresh"));
         Thread.sleep(500);
@@ -322,6 +339,24 @@ public class SuggestRestTest {
         String result = performSuggest(query);
         assertTrue(result.contains("\"text\":\"影视飓风\""));
         assertFalse(result.contains("\"text\":\"寻梦影视科技\""));
+    }
+
+    @Test
+    public void testOwnerPinyinPrefixSupportsFullSyllableBoundaryInput() throws Exception {
+        String query = """
+                {
+                  "text": "zheli",
+                  "mode": "prefix",
+                  "fields": ["owner.name.words"],
+                  "size": 5,
+                  "scan_limit": 32,
+                  "use_pinyin": true
+                }
+                """;
+
+        String result = performSuggest(query);
+        assertTrue(result.contains("\"text\":\"这里是小天啊\""));
+        assertTrue(result.contains("\"type\":\"prefix\""));
     }
 
       @Test

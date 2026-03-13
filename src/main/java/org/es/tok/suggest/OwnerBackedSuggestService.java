@@ -11,7 +11,6 @@ import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.elasticsearch.common.lucene.Lucene;
 import org.elasticsearch.index.IndexService;
@@ -182,7 +181,7 @@ public class OwnerBackedSuggestService {
             SuggestionOption candidate,
             Map<Long, OwnerAccumulator> owners,
             String type) throws IOException {
-        Query query = ownerKeywordQuery(candidate.text());
+        Query query = ownerKeywordPrefixQuery(candidate.text());
         TopDocs topDocs = searcher.search(query, 256);
         if (topDocs.scoreDocs.length == 0) {
             return;
@@ -232,15 +231,15 @@ public class OwnerBackedSuggestService {
         return matched;
     }
 
-    private static Query ownerKeywordQuery(String candidateText) {
+    private static Query ownerKeywordPrefixQuery(String candidateText) {
         List<String> variants = ownerNameVariants(candidateText);
         if (variants.size() == 1) {
-            return new TermQuery(new Term(OWNER_NAME_KEYWORD_FIELD, variants.get(0)));
+            return new PrefixQuery(new Term(OWNER_NAME_KEYWORD_FIELD, variants.get(0)));
         }
 
         BooleanQuery.Builder builder = new BooleanQuery.Builder();
         for (String variant : variants) {
-            builder.add(new TermQuery(new Term(OWNER_NAME_KEYWORD_FIELD, variant)), BooleanClause.Occur.SHOULD);
+            builder.add(new PrefixQuery(new Term(OWNER_NAME_KEYWORD_FIELD, variant)), BooleanClause.Occur.SHOULD);
         }
         return builder.build();
     }

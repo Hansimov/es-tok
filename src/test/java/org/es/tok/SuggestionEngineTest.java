@@ -264,9 +264,18 @@ public class SuggestionEngineTest {
             stream.end();
 
             assertTrue(terms.contains("影视飓风"));
-            assertTrue(terms.contains("__pyf__yins|影视飓风"));
+            assertTrue(terms.contains("__pyf__ying|影视飓风"));
             assertTrue(terms.contains("__pyi__ysjf|影视飓风"));
         }
+    }
+
+    @Test
+    public void testPrecomputedSuggestionTermsUseCompactMarkers() {
+        List<String> terms = PinyinSupport.precomputedSuggestionTerms("这里是小天啊");
+
+        assertEquals(2, terms.size());
+        assertTrue(terms.contains("__pyf__zhel|这里是小天啊"));
+        assertTrue(terms.contains("__pyi__zlsx|这里是小天啊"));
     }
 
     @Test
@@ -287,6 +296,27 @@ public class SuggestionEngineTest {
 
                 assertFalse(completions.isEmpty());
                 assertEquals("影视飓风", completions.get(0).text());
+            }
+        }
+    }
+
+    @Test
+    public void testPrecomputedPinyinPrefixMatchesFullSyllableBoundaryInput() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new WhitespaceAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    String.join(" ", PinyinSupport.precomputedSuggestionTerms("这里是小天啊")),
+                    String.join(" ", PinyinSupport.precomputedSuggestionTerms("这里没问题")));
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestPrefixCompletions(
+                        List.of("content"),
+                        "zheli",
+                        new LuceneIndexSuggester.CompletionConfig(5, 32, 1, 1, true, true));
+
+                assertFalse(completions.isEmpty());
+                assertEquals("这里是小天啊", completions.get(0).text());
             }
         }
     }

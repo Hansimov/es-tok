@@ -265,8 +265,8 @@ public final class PinyinSupport {
         }
 
         Set<String> encoded = new LinkedHashSet<>();
-        addPrecomputedTerms(encoded, PRECOMPUTED_FULL_PREFIX, bucketKeys(key, true), normalized);
-        addPrecomputedTerms(encoded, PRECOMPUTED_INITIALS_PREFIX, bucketKeys(key, false), normalized);
+        addPrecomputedTerm(encoded, PRECOMPUTED_FULL_PREFIX, precomputedMarkerKey(key, true), normalized);
+        addPrecomputedTerm(encoded, PRECOMPUTED_INITIALS_PREFIX, precomputedMarkerKey(key, false), normalized);
         return List.copyOf(encoded);
     }
 
@@ -302,13 +302,23 @@ public final class PinyinSupport {
         return text.chars().anyMatch(ch -> ch < 128 && Character.isLetterOrDigit(ch));
     }
 
-    private static void addPrecomputedTerms(Set<String> encoded, String prefix, List<String> keys, String surface) {
-        for (String key : keys) {
-            if (key == null || key.isBlank()) {
-                continue;
-            }
-            encoded.add(prefix + key + PRECOMPUTED_SEPARATOR + surface);
+    private static String precomputedMarkerKey(PinyinKey key, boolean fullPinyin) {
+        if (key == null || key.isEmpty()) {
+            return "";
         }
+        String rawKey = fullPinyin ? key.full() : key.initials();
+        if (rawKey == null || rawKey.isBlank()) {
+            return "";
+        }
+        int anchorLength = Math.min(4, rawKey.length());
+        return rawKey.substring(0, anchorLength);
+    }
+
+    private static void addPrecomputedTerm(Set<String> encoded, String prefix, String key, String surface) {
+        if (key == null || key.isBlank()) {
+            return;
+        }
+        encoded.add(prefix + key + PRECOMPUTED_SEPARATOR + surface);
     }
 
     private static float asciiNonLiteralPinyinPenalty(int queryLength, boolean hasDigits, boolean initialsOnly) {
