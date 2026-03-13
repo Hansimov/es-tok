@@ -95,6 +95,30 @@ public final class PinyinSupport {
         return chineseAnchorScore(input, candidate) >= MIN_CHINESE_ANCHOR_SCORE;
     }
 
+    public static float prefixMatchScore(String input, String candidate) {
+        return prefixMatchScore(input, candidate, pinyinKey(candidate));
+    }
+
+    public static boolean isInitialsOnlyPinyinQuery(String text) {
+        PinyinKey key = pinyinKey(text);
+        if (key.isEmpty()) {
+            return false;
+        }
+        return allowsInitialsOnlyMatch(key.full(), key.initials());
+    }
+
+    public static boolean fullPinyinPrefixMatch(String input, String candidate) {
+        PinyinKey inputKey = pinyinKey(input);
+        PinyinKey candidateKey = pinyinKey(candidate);
+        if (inputKey.isEmpty() || candidateKey.isEmpty()) {
+            return false;
+        }
+        if (isPureChineseQuery(input)) {
+            return literalPrefixMatch(input, candidate);
+        }
+        return candidateKey.full().startsWith(inputKey.full());
+    }
+
     static float prefixMatchScore(String input, String candidate, PinyinKey candidateKey) {
         PinyinKey inputKey = pinyinKey(input);
         if (inputKey.isEmpty() || candidateKey.isEmpty()) {
@@ -109,6 +133,7 @@ public final class PinyinSupport {
         boolean literalChinesePrefix = pureChineseInput && literalPrefixMatch(input, candidate);
         boolean asciiLiteralQuery = isAsciiAlphaNumericQuery(input);
         boolean literalPrefix = literalPrefixMatch(input, candidate);
+        boolean initialsOnlyQuery = allowsInitialsOnlyMatch(inputFull, inputInitials);
         boolean hasDigits = normalizeInput(input).chars().anyMatch(Character::isDigit);
         if (pureChineseInput && !literalChinesePrefix) {
             return 0.0f;
@@ -121,7 +146,7 @@ public final class PinyinSupport {
             baseScore = applyLiteralChinesePrefixBias(baseScore, pureChineseInput, literalChinesePrefix);
             return applyChineseAnchor(baseScore, chineseAnchoredInput, chineseAnchorScore);
         }
-        if (!chineseAnchoredInput && !inputInitials.isEmpty() && candidateKey.initials().startsWith(inputInitials)) {
+        if (!chineseAnchoredInput && initialsOnlyQuery && !inputInitials.isEmpty() && candidateKey.initials().startsWith(inputInitials)) {
             int extraInitials = Math.max(0, candidateKey.initials().length() - inputInitials.length());
             float baseScore;
             if (extraInitials == 0) {
@@ -177,6 +202,7 @@ public final class PinyinSupport {
         float chineseAnchorScore = chineseAnchorScore(input, candidate);
         boolean asciiLiteralQuery = isAsciiAlphaNumericQuery(input);
         boolean literalPrefix = literalPrefixMatch(input, candidate);
+        boolean initialsOnlyQuery = allowsInitialsOnlyMatch(inputKey.full(), inputKey.initials());
         boolean hasDigits = normalizeInput(input).chars().anyMatch(Character::isDigit);
         if (inputKey.full().equals(candidateKey.full())) {
             float score = 2.4f;
@@ -185,14 +211,14 @@ public final class PinyinSupport {
             }
             return applyChineseAnchor(score, chineseAnchoredInput, chineseAnchorScore);
         }
-        if (!chineseAnchoredInput && !inputKey.initials().isEmpty() && inputKey.initials().equals(candidateKey.initials())) {
+        if (!chineseAnchoredInput && initialsOnlyQuery && !inputKey.initials().isEmpty() && inputKey.initials().equals(candidateKey.initials())) {
             float score = 1.45f;
             if (asciiLiteralQuery && !literalPrefix) {
                 score *= asciiNonLiteralPinyinPenalty(inputKey.initials().length(), hasDigits, true);
             }
             return score;
         }
-        if (!chineseAnchoredInput && candidateKey.initials().startsWith(inputKey.full())) {
+        if (!chineseAnchoredInput && initialsOnlyQuery && candidateKey.initials().startsWith(inputKey.full())) {
             int extraInitials = Math.max(0, candidateKey.initials().length() - inputKey.full().length());
             float score;
             if (extraInitials == 0) {
@@ -220,6 +246,16 @@ public final class PinyinSupport {
             return applyChineseAnchor(score, chineseAnchoredInput, chineseAnchorScore);
         }
         return 0.0f;
+    }
+
+    private static boolean allowsInitialsOnlyMatch(String inputFull, String inputInitials) {
+        if (inputInitials == null || inputInitials.isEmpty()) {
+            return false;
+        }
+        if (inputFull == null || inputFull.isEmpty()) {
+            return true;
+        }
+        return inputFull.length() <= Math.max(2, inputInitials.length() + 1);
     }
 
     static String normalizeInput(String text) {

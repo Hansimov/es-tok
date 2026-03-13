@@ -14,6 +14,7 @@ import org.junit.Test;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.time.Instant;
 import java.util.stream.Collectors;
 
 import static org.junit.Assert.assertFalse;
@@ -155,6 +156,28 @@ public class SuggestRestTest {
         indexOwnerDocument("13", 2L, "影视剧风", 12.0f, 200_000L, 1_710_000_000L);
         indexOwnerDocument("14", 3L, "寻梦影视科技", 45.0f, 8_000_000L, 1_710_000_000L);
         indexOwnerDocument("15", 4L, "这里是小天啊", 33.0f, 900_000L, 1_710_000_200L);
+        long now = Instant.now().getEpochSecond();
+        indexOwnerDocument("16", 10L, "小米高质量", 4.2f, 2_400_000L, now - 3_600L);
+        indexOwnerDocument("17", 10L, "小米高质量", 3.7f, 1_800_000L, now - 86_400L);
+        indexOwnerDocument("18", 11L, "小米老传奇", 5.1f, 3_600_000L, now - (180L * 86_400L));
+        for (int index = 0; index < 6; index++) {
+            indexOwnerDocument(
+              Integer.toString(220 + index),
+              13L,
+              "小明批量号",
+              0.45f,
+              90_000L + index,
+              now - 7_200L - index);
+        }
+        for (int index = 0; index < 18; index++) {
+            indexOwnerDocument(
+              Integer.toString(200 + index),
+              12L,
+              "小米批量号",
+              0.18f,
+              600L + index,
+              now - (2L * 86_400L) - index);
+        }
 
         client.performRequest(new Request("POST", "/" + TEST_INDEX + "/_refresh"));
         Thread.sleep(500);
@@ -323,6 +346,25 @@ public class SuggestRestTest {
         assertFalse(result.contains("\"type\":\"correction\""));
     }
 
+      @Test
+      public void testOwnerAutoSuggestSupportsKeywordFieldWithoutCorrectionFallback() throws Exception {
+        String query = """
+            {
+              "text": "ysjf",
+              "mode": "auto",
+              "fields": ["owner.name.keyword"],
+              "size": 5,
+              "scan_limit": 32,
+              "use_pinyin": true
+            }
+            """;
+
+        String result = performSuggest(query);
+        assertTrue(result.contains("\"text\":\"影视飓风\""));
+        assertTrue(result.contains("\"type\":\"auto\""));
+        assertFalse(result.contains("\"type\":\"correction\""));
+      }
+
     @Test
     public void testOwnerChineseAutoSuggestPrefersKeywordPrefixMatches() throws Exception {
         String query = """
@@ -358,6 +400,56 @@ public class SuggestRestTest {
         assertTrue(result.contains("\"text\":\"这里是小天啊\""));
         assertTrue(result.contains("\"type\":\"prefix\""));
     }
+
+      @Test
+      public void testOwnerRankingPrefersImpactAndActivityOverRawDocCount() throws Exception {
+        String query = """
+            {
+              "text": "xiaomi",
+              "mode": "prefix",
+              "fields": ["owner.name.words"],
+              "size": 5,
+              "scan_limit": 64,
+              "use_pinyin": true
+            }
+            """;
+
+        String result = performSuggest(query);
+        int highQuality = result.indexOf("\"text\":\"小米高质量\"");
+        int prolific = result.indexOf("\"text\":\"小米批量号\"");
+        int staleLegend = result.indexOf("\"text\":\"小米老传奇\"");
+        int initialsNoise = result.indexOf("\"text\":\"小明批量号\"");
+
+        assertTrue(result, highQuality >= 0);
+        assertTrue(result, prolific >= 0);
+        assertTrue(result, staleLegend >= 0);
+        assertTrue(result, initialsNoise >= 0);
+        assertTrue(result, highQuality < prolific);
+        assertTrue(result, highQuality < staleLegend);
+        assertTrue(result, highQuality < initialsNoise);
+      }
+
+      @Test
+      public void testOwnerKeywordRankingPrefersImpactAndActivityOverRawDocCount() throws Exception {
+        String query = """
+            {
+              "text": "xiaomi",
+              "mode": "prefix",
+              "fields": ["owner.name.keyword"],
+              "size": 5,
+              "scan_limit": 64,
+              "use_pinyin": true
+            }
+            """;
+
+        String result = performSuggest(query);
+        int highQuality = result.indexOf("\"text\":\"小米高质量\"");
+        int prolific = result.indexOf("\"text\":\"小米批量号\"");
+
+        assertTrue(result, highQuality >= 0);
+        assertTrue(result, prolific >= 0);
+        assertTrue(result, highQuality < prolific);
+      }
 
       @Test
       public void testOwnerAssociateUsesOwnerService() throws Exception {

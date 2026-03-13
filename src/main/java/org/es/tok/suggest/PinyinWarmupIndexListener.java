@@ -55,15 +55,16 @@ public final class PinyinWarmupIndexListener implements IndexEventListener, Clos
     public void afterIndexCreated(IndexService indexService) {
         String indexName = indexName(indexService.getIndexSettings());
         if (shouldWarmIndex(indexName) == false) {
-            warmupFieldsByIndex.remove(indexName);
+            clearIndexTracking(indexName);
             return;
         }
         List<String> warmupFields = discoverWarmupFields(indexService);
         if (warmupFields.isEmpty()) {
-            warmupFieldsByIndex.remove(indexName);
+            clearIndexTracking(indexName);
             return;
         }
         warmupFieldsByIndex.put(indexName, warmupFields);
+        registerExpectedShards(indexService.getIndexSettings());
     }
 
     @Override
@@ -266,6 +267,23 @@ public final class PinyinWarmupIndexListener implements IndexEventListener, Clos
 
     private static String indexName(IndexSettings indexSettings) {
         return indexSettings.getIndex().getName();
+    }
+
+    private void registerExpectedShards(IndexSettings indexSettings) {
+        String indexName = indexName(indexSettings);
+        for (int shardId = 0; shardId < indexSettings.getNumberOfShards(); shardId++) {
+            warmupStates.computeIfAbsent(shardKey(indexName, shardId), ignored -> new WarmupState());
+        }
+    }
+
+    private void clearIndexTracking(String indexName) {
+        warmupFieldsByIndex.remove(indexName);
+        queuedWarmups.removeIf(shardKey -> shardKey.startsWith("[" + indexName + "]"));
+        warmupStates.keySet().removeIf(shardKey -> shardKey.startsWith("[" + indexName + "]"));
+    }
+
+    private static String shardKey(String indexName, int shardId) {
+        return "[" + indexName + "][" + shardId + "]";
     }
 
     private static long nanosToMillis(long nanos) {

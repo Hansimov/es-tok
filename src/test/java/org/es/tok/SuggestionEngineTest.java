@@ -322,6 +322,30 @@ public class SuggestionEngineTest {
     }
 
     @Test
+    public void testFullPinyinPrefixBeatsInitialsOnlyNoise() throws Exception {
+        try (Directory directory = new ByteBuffersDirectory();
+                Analyzer analyzer = new WhitespaceAnalyzer()) {
+            buildIndex(directory, analyzer,
+                    String.join(" ", PinyinSupport.precomputedSuggestionTerms("小米")),
+                    String.join(" ", PinyinSupport.precomputedSuggestionTerms("小米")),
+                    String.join(" ", PinyinSupport.precomputedSuggestionTerms("小明")),
+                    String.join(" ", PinyinSupport.precomputedSuggestionTerms("小明")),
+                    String.join(" ", PinyinSupport.precomputedSuggestionTerms("小明")));
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                LuceneIndexSuggester suggester = new LuceneIndexSuggester(reader);
+                List<LuceneIndexSuggester.CompletionCandidate> completions = suggester.suggestPrefixCompletions(
+                        List.of("content"),
+                        "xiaomi",
+                        new LuceneIndexSuggester.CompletionConfig(5, 32, 1, 1, true, true));
+
+                assertFalse(completions.isEmpty());
+                assertEquals("小米", completions.get(0).text());
+            }
+        }
+    }
+
+    @Test
     public void testAsciiExactPrefixBeatsPinyinInitialsAlias() throws Exception {
         try (Directory directory = new ByteBuffersDirectory();
                 Analyzer analyzer = new WhitespaceAnalyzer()) {

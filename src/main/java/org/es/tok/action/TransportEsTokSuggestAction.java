@@ -227,10 +227,9 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         if (ownerSuggestService.supports(request.fields())
             && shouldUseOwnerSuggest(mode)) {
             if (request.usePinyin() && isAsciiAlphaNumericQuery(request.text())) {
-                String genericMode = "auto".equals(mode) ? "auto" : "prefix";
                 CachedShardSuggestService.SuggestResult result = suggestService.suggest(
                     reader,
-                    genericMode,
+                    "prefix",
                     suggestFields,
                     request.text(),
                     completionConfig,
@@ -358,6 +357,13 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         for (String field : requestFields) {
             if (field == null || field.isBlank()) {
                 continue;
+            }
+            if (field.endsWith(".keyword")) {
+                String suggestField = field.substring(0, field.length() - ".keyword".length()) + ".suggest";
+                if (mappedFields.contains(suggestField)) {
+                    resolved.add(suggestField);
+                    continue;
+                }
             }
             if (field.endsWith(".words")) {
                 String suggestField = field.substring(0, field.length() - ".words".length()) + ".suggest";

@@ -22,6 +22,7 @@ import org.elasticsearch.search.lookup.SourceProvider;
 import org.es.tok.suggest.LuceneIndexSuggester.SuggestionOption;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -85,10 +86,13 @@ public class OwnerBackedSuggestService {
                 null,
                 SourceFieldMetrics.NOOP);
         Map<Long, OwnerAccumulator> owners = new LinkedHashMap<>();
+        long nowEpochSeconds = Instant.now().getEpochSecond();
 
         boolean exactPrefixMatched = collectExactPrefixOwnerMatches(
                 searcher,
                 sourceProvider,
+                nowEpochSeconds,
+                text,
                 text,
                 Math.max(256, size * 64),
                 owners,
@@ -104,7 +108,7 @@ public class OwnerBackedSuggestService {
                 LeafReaderContext leaf = leaves.get(leafIndex);
                 int leafDocId = scoreDoc.doc - leaf.docBase;
                 Source source = sourceProvider.getSource(leaf, leafDocId);
-                collectOwnerHit(owners, source, scoreDoc.score, rank, type, fallbackWeight);
+                collectOwnerHit(owners, source, text, nowEpochSeconds, scoreDoc.score, rank, type, fallbackWeight);
             }
         }
 
@@ -134,9 +138,10 @@ public class OwnerBackedSuggestService {
                 null,
                 SourceFieldMetrics.NOOP);
         Map<Long, OwnerAccumulator> owners = new LinkedHashMap<>();
+        long nowEpochSeconds = Instant.now().getEpochSecond();
 
         for (SuggestionOption candidate : candidates) {
-            collectCandidateOwnerMatches(searcher, sourceProvider, candidate, owners, type);
+            collectCandidateOwnerMatches(searcher, sourceProvider, nowEpochSeconds, candidate.text(), candidate, owners, type);
         }
 
         if (owners.isEmpty()) {
@@ -153,6 +158,8 @@ public class OwnerBackedSuggestService {
     private void collectOwnerHit(
             Map<Long, OwnerAccumulator> owners,
             Source source,
+            String queryText,
+            long nowEpochSeconds,
             float hitScore,
             int rank,
             String type,
@@ -166,18 +173,30 @@ public class OwnerBackedSuggestService {
             return;
         }
 
+        float matchScore = PinyinSupport.prefixMatchScore(queryText, ownerName);
+        boolean strictFullPinyinQuery = PinyinSupport.isPinyinLikeQuery(queryText)
+                && PinyinSupport.isInitialsOnlyPinyinQuery(queryText) == false;
+        if (strictFullPinyinQuery && PinyinSupport.fullPinyinPrefixMatch(queryText, ownerName) == false) {
+            return;
+        }
+        if (("prefix".equals(type) || "auto".equals(type)) && matchScore <= 0.0f) {
+            return;
+        }
+
         double statScore = asDouble(source.extractValue(STAT_SCORE_SOURCE_PATH, null));
         long viewCount = asLong(source.extractValue(STAT_VIEW_SOURCE_PATH, null), 0L);
         long insertAt = asLong(source.extractValue(INSERT_AT_SOURCE_PATH, null), 0L);
-        double ownerWeight = branchWeight * ownerDocWeight(statScore, viewCount, insertAt, hitScore, rank);
+        OwnerDocSignals docSignals = ownerDocSignals(queryText, ownerName, matchScore, nowEpochSeconds, statScore, viewCount, insertAt, hitScore, rank);
 
         owners.computeIfAbsent(mid, OwnerAccumulator::new)
-                .add(ownerName, ownerWeight, type);
+                .add(ownerName, docSignals, branchWeight, type);
     }
 
     private void collectCandidateOwnerMatches(
             Engine.Searcher searcher,
             SourceProvider sourceProvider,
+            long nowEpochSeconds,
+            String queryText,
             SuggestionOption candidate,
             Map<Long, OwnerAccumulator> owners,
             String type) throws IOException {
@@ -194,13 +213,15 @@ public class OwnerBackedSuggestService {
             LeafReaderContext leaf = leaves.get(leafIndex);
             int leafDocId = scoreDoc.doc - leaf.docBase;
             Source source = sourceProvider.getSource(leaf, leafDocId);
-            collectOwnerHit(owners, source, scoreDoc.score, rank, type, 1.0d);
+            collectOwnerHit(owners, source, queryText, nowEpochSeconds, scoreDoc.score, rank, type, 1.0d);
         }
     }
 
     private boolean collectExactPrefixOwnerMatches(
             Engine.Searcher searcher,
             SourceProvider sourceProvider,
+            long nowEpochSeconds,
+            String queryText,
             String text,
             int hitLimit,
             Map<Long, OwnerAccumulator> owners,
@@ -225,7 +246,7 @@ public class OwnerBackedSuggestService {
                 LeafReaderContext leaf = leaves.get(leafIndex);
                 int leafDocId = scoreDoc.doc - leaf.docBase;
                 Source source = sourceProvider.getSource(leaf, leafDocId);
-                collectOwnerHit(owners, source, scoreDoc.score + 1.0f, rank, type, branchWeight);
+                collectOwnerHit(owners, source, queryText, nowEpochSeconds, scoreDoc.score + 1.0f, rank, type, branchWeight);
             }
         }
         return matched;
@@ -339,17 +360,42 @@ public class OwnerBackedSuggestService {
         return tokens;
     }
 
-    private static double ownerDocWeight(double statScore, long viewCount, long insertAt, float hitScore, int rank) {
-        double base = Math.max(1.0d, statScore);
-        double popularity = Math.log1p(Math.max(0L, viewCount)) * 0.35d;
-        double freshness = insertAt > 0 ? Math.log1p(Math.max(1L, insertAt / 86400L)) * 0.02d : 0.0d;
-        double querySignal = (Math.log1p(Math.max(1.0f, hitScore)) + 1.0d) / (1.0d + (rank * 0.05d));
-        return base + popularity + freshness + querySignal;
+    static OwnerDocSignals ownerDocSignals(
+            String queryText,
+            String ownerName,
+            float matchScore,
+            long nowEpochSeconds,
+            double statScore,
+            long viewCount,
+            long insertAt,
+            float hitScore,
+            int rank) {
+        double normalizedStatScore = Math.max(0.0d, statScore);
+        double quality = Math.log1p(normalizedStatScore * 900.0d) * 2.2d;
+        double influence = Math.log1p(Math.max(0L, viewCount)) * 1.1d;
+        double ageDays = ageDays(nowEpochSeconds, insertAt);
+        double recencyFactor = 1.0d / (1.0d + (ageDays / 14.0d));
+        double freshness = recencyFactor * 6.0d;
+        double matchSignal = Math.max(0.04d, matchScore);
+        double querySignal = ((Math.log1p(Math.max(1.0f, hitScore)) + 1.0d) * 2.4d) / (1.0d + (rank * 0.06d));
+        double rankingWeight = quality + influence + freshness + querySignal + (matchSignal * 12.0d);
+        double activityWeight = (quality * 0.45d + influence * 0.35d + 1.0d) * recencyFactor;
+        return new OwnerDocSignals(rankingWeight, activityWeight);
+    }
+
+    private static double ageDays(long nowEpochSeconds, long insertAt) {
+        if (insertAt <= 0L || nowEpochSeconds <= 0L) {
+            return 3650.0d;
+        }
+        return Math.max(0.0d, (nowEpochSeconds - insertAt) / 86400.0d);
     }
 
     private static String sourcePath(String field) {
         if (field == null || field.isBlank()) {
             return "";
+        }
+        if (field.endsWith(".keyword")) {
+            return field.substring(0, field.length() - ".keyword".length());
         }
         if (field.endsWith(".words")) {
             return field.substring(0, field.length() - ".words".length());
@@ -486,8 +532,9 @@ public class OwnerBackedSuggestService {
 
         private final long mid;
         private final Map<String, Double> aliasScores = new HashMap<>();
-        private double totalWeight;
         private double maxWeight;
+        private double activityWeight;
+        private final List<Double> topWeights = new ArrayList<>();
         private int docCount;
         private String type = "prefix";
 
@@ -495,19 +542,39 @@ public class OwnerBackedSuggestService {
             this.mid = mid;
         }
 
-        private void add(String ownerName, double ownerWeight, String type) {
+        private void add(String ownerName, OwnerDocSignals docSignals, double branchWeight, String type) {
+            double ownerWeight = branchWeight * docSignals.rankingWeight();
             aliasScores.merge(ownerName, ownerWeight, Double::sum);
-            totalWeight += ownerWeight;
             maxWeight = Math.max(maxWeight, ownerWeight);
+            activityWeight += branchWeight * docSignals.activityWeight();
+            insertTopWeight(ownerWeight);
             docCount++;
             this.type = type;
         }
 
         private double score() {
-            double averageWeight = docCount > 0 ? totalWeight / docCount : 0.0d;
-            return (maxWeight * 3.0d)
-                    + (averageWeight * 1.25d)
-                    + (Math.log1p(docCount) * 2.5d);
+            double averageTopWeight = topWeights.stream().mapToDouble(Double::doubleValue).average().orElse(0.0d);
+            return (maxWeight * 3.8d)
+                    + (averageTopWeight * 2.6d)
+                    + (Math.log1p(activityWeight) * 5.5d)
+                    + (Math.log1p(docCount) * 0.45d);
+        }
+
+        private void insertTopWeight(double ownerWeight) {
+            int insertAt = 0;
+            while (insertAt < topWeights.size() && topWeights.get(insertAt) >= ownerWeight) {
+                insertAt++;
+            }
+            if (insertAt >= 4) {
+                if (topWeights.size() < 4) {
+                    topWeights.add(ownerWeight);
+                }
+                return;
+            }
+            topWeights.add(insertAt, ownerWeight);
+            if (topWeights.size() > 4) {
+                topWeights.remove(topWeights.size() - 1);
+            }
         }
 
         private int docCount() {
@@ -525,5 +592,8 @@ public class OwnerBackedSuggestService {
         private SuggestionOption toSuggestion() {
             return new SuggestionOption(displayName(), docCount, (float) score(), type);
         }
+    }
+
+    record OwnerDocSignals(double rankingWeight, double activityWeight) {
     }
 }
