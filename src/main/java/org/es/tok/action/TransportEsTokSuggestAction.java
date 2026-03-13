@@ -102,6 +102,8 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         int failedShards = 0;
         int cacheHitCount = 0;
         List<DefaultShardOperationFailedException> shardFailures = null;
+        boolean ownerRequest = ownerSuggestService.supports(request.limitedFields())
+            && shouldUseOwnerSuggest(normalizeMode(request.mode()));
         Map<String, AggregatedOption> aggregatedOptions = new HashMap<>();
 
         for (int i = 0; i < shardsResponses.length(); i++) {
@@ -126,7 +128,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             for (EsTokSuggestOption option : response.options()) {
                 AggregatedOption aggregated = aggregatedOptions.computeIfAbsent(
                         option.text(),
-                        ignored -> new AggregatedOption(option.text(), option.type()));
+                        ignored -> new AggregatedOption(option.text(), option.type(), ownerRequest));
                 aggregated.add(option.docFreq(), option.score(), option.shardCount(), option.type());
             }
         }
@@ -610,20 +612,32 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
     private static final class AggregatedOption {
         private final String text;
         private final Map<String, Float> typeScores = new HashMap<>();
+        private final boolean ownerRequest;
         private int docFreq;
         private float score;
+        private float maxScore;
         private int shardCount;
 
-        private AggregatedOption(String text, String type) {
+        private AggregatedOption(String text, String type, boolean ownerRequest) {
             this.text = text;
+            this.ownerRequest = ownerRequest;
             this.typeScores.put(type, 0.0f);
         }
 
         private void add(int docFreq, float score, int shardCount, String type) {
             this.docFreq += docFreq;
             this.score += score;
+            this.maxScore = Math.max(this.maxScore, score);
             this.shardCount += shardCount;
             this.typeScores.merge(type, score, Float::sum);
+        }
+
+        private float mergedScore() {
+            if (!ownerRequest) {
+                return score;
+            }
+            float residual = Math.max(0.0f, score - maxScore);
+            return maxScore + (residual * 0.08f);
         }
 
         private String dominantType() {
@@ -635,7 +649,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         }
 
         private EsTokSuggestOption toOption() {
-            return new EsTokSuggestOption(text, docFreq, score, dominantType(), shardCount);
+            return new EsTokSuggestOption(text, docFreq, mergedScore(), dominantType(), shardCount);
         }
     }
 }

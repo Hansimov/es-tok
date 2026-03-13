@@ -178,6 +178,17 @@ public class SuggestRestTest {
               600L + index,
               now - (2L * 86_400L) - index);
         }
+        indexOwnerDocument("300", 30L, "红警高质量", 5.2f, 180_000L, now - 1_800L);
+        indexOwnerDocument("301", 30L, "红警高质量", 4.6f, 120_000L, now - 86_400L);
+        for (int index = 0; index < 10; index++) {
+            indexOwnerDocument(
+              Integer.toString(320 + index),
+              31L,
+              "红警批量号",
+              0.08f,
+              120L + index,
+              now - 7_200L - index);
+        }
 
         client.performRequest(new Request("POST", "/" + TEST_INDEX + "/_refresh"));
         Thread.sleep(500);
@@ -445,6 +456,28 @@ public class SuggestRestTest {
         String result = performSuggest(query);
         int highQuality = result.indexOf("\"text\":\"小米高质量\"");
         int prolific = result.indexOf("\"text\":\"小米批量号\"");
+
+        assertTrue(result, highQuality >= 0);
+        assertTrue(result, prolific >= 0);
+        assertTrue(result, highQuality < prolific);
+      }
+
+      @Test
+      public void testOwnerChineseKeywordRankingPrefersInfluenceOverDocCount() throws Exception {
+        String query = """
+            {
+              "text": "红警",
+              "mode": "prefix",
+              "fields": ["owner.name.keyword"],
+              "size": 10,
+              "scan_limit": 64,
+              "use_pinyin": true
+            }
+            """;
+
+        String result = performSuggest(query);
+        int highQuality = result.indexOf("\"text\":\"红警高质量\"");
+        int prolific = result.indexOf("\"text\":\"红警批量号\"");
 
         assertTrue(result, highQuality >= 0);
         assertTrue(result, prolific >= 0);

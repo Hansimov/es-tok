@@ -108,7 +108,7 @@ public class OwnerBackedSuggestService {
                 LeafReaderContext leaf = leaves.get(leafIndex);
                 int leafDocId = scoreDoc.doc - leaf.docBase;
                 Source source = sourceProvider.getSource(leaf, leafDocId);
-                collectOwnerHit(owners, source, text, nowEpochSeconds, scoreDoc.score, rank, type, fallbackWeight);
+                collectOwnerHit(owners, scoreDoc.doc, source, text, nowEpochSeconds, scoreDoc.score, rank, true, type, fallbackWeight);
             }
         }
 
@@ -157,18 +157,20 @@ public class OwnerBackedSuggestService {
 
     private void collectOwnerHit(
             Map<Long, OwnerAccumulator> owners,
+            int docId,
             Source source,
             String queryText,
             long nowEpochSeconds,
             float hitScore,
             int rank,
+            boolean useQueryRankSignal,
             String type,
             double branchWeight) {
         Long mid = asLong(source.extractValue(OWNER_MID_SOURCE_PATH, null));
         if (mid == null) {
             return;
         }
-        String ownerName = normalize(asString(source.extractValue(OWNER_NAME_SOURCE_PATH, null)));
+        String ownerName = normalizeOwnerName(asString(source.extractValue(OWNER_NAME_SOURCE_PATH, null)));
         if (ownerName.isBlank()) {
             return;
         }
@@ -186,10 +188,20 @@ public class OwnerBackedSuggestService {
         double statScore = asDouble(source.extractValue(STAT_SCORE_SOURCE_PATH, null));
         long viewCount = asLong(source.extractValue(STAT_VIEW_SOURCE_PATH, null), 0L);
         long insertAt = asLong(source.extractValue(INSERT_AT_SOURCE_PATH, null), 0L);
-        OwnerDocSignals docSignals = ownerDocSignals(queryText, ownerName, matchScore, nowEpochSeconds, statScore, viewCount, insertAt, hitScore, rank);
+        OwnerDocSignals docSignals = ownerDocSignals(
+            queryText,
+            ownerName,
+            matchScore,
+            nowEpochSeconds,
+            statScore,
+            viewCount,
+            insertAt,
+            hitScore,
+            rank,
+            useQueryRankSignal);
 
         owners.computeIfAbsent(mid, OwnerAccumulator::new)
-                .add(ownerName, docSignals, branchWeight, type);
+        .add(docId, ownerName, docSignals, branchWeight, type);
     }
 
     private void collectCandidateOwnerMatches(
@@ -213,7 +225,7 @@ public class OwnerBackedSuggestService {
             LeafReaderContext leaf = leaves.get(leafIndex);
             int leafDocId = scoreDoc.doc - leaf.docBase;
             Source source = sourceProvider.getSource(leaf, leafDocId);
-            collectOwnerHit(owners, source, queryText, nowEpochSeconds, scoreDoc.score, rank, type, 1.0d);
+            collectOwnerHit(owners, scoreDoc.doc, source, queryText, nowEpochSeconds, scoreDoc.score, rank, false, type, 1.0d);
         }
     }
 
@@ -246,7 +258,7 @@ public class OwnerBackedSuggestService {
                 LeafReaderContext leaf = leaves.get(leafIndex);
                 int leafDocId = scoreDoc.doc - leaf.docBase;
                 Source source = sourceProvider.getSource(leaf, leafDocId);
-                collectOwnerHit(owners, source, queryText, nowEpochSeconds, scoreDoc.score + 1.0f, rank, type, branchWeight);
+                collectOwnerHit(owners, scoreDoc.doc, source, queryText, nowEpochSeconds, scoreDoc.score + 1.0f, rank, false, type, branchWeight);
             }
         }
         return matched;
@@ -370,17 +382,34 @@ public class OwnerBackedSuggestService {
             long insertAt,
             float hitScore,
             int rank) {
+        return ownerDocSignals(queryText, ownerName, matchScore, nowEpochSeconds, statScore, viewCount, insertAt, hitScore, rank, true);
+    }
+
+    static OwnerDocSignals ownerDocSignals(
+            String queryText,
+            String ownerName,
+            float matchScore,
+            long nowEpochSeconds,
+            double statScore,
+            long viewCount,
+            long insertAt,
+            float hitScore,
+            int rank,
+            boolean useQueryRankSignal) {
         double normalizedStatScore = Math.max(0.0d, statScore);
-        double quality = Math.log1p(normalizedStatScore * 900.0d) * 2.2d;
-        double influence = Math.log1p(Math.max(0L, viewCount)) * 1.1d;
+        double quality = Math.log1p(normalizedStatScore * 2400.0d) * 4.0d;
+        double influence = Math.log1p(Math.max(0L, viewCount)) * 2.8d;
         double ageDays = ageDays(nowEpochSeconds, insertAt);
         double recencyFactor = 1.0d / (1.0d + (ageDays / 14.0d));
-        double freshness = recencyFactor * 6.0d;
+        double freshness = recencyFactor * 3.0d;
         double matchSignal = Math.max(0.04d, matchScore);
-        double querySignal = ((Math.log1p(Math.max(1.0f, hitScore)) + 1.0d) * 2.4d) / (1.0d + (rank * 0.06d));
-        double rankingWeight = quality + influence + freshness + querySignal + (matchSignal * 12.0d);
-        double activityWeight = (quality * 0.45d + influence * 0.35d + 1.0d) * recencyFactor;
-        return new OwnerDocSignals(rankingWeight, activityWeight);
+        double querySignal = useQueryRankSignal
+                ? ((Math.log1p(Math.max(1.0f, hitScore)) + 1.0d) * 0.9d) / (1.0d + (rank * 0.06d))
+                : 0.0d;
+        double rankingWeight = quality + influence + freshness + querySignal + (matchSignal * 7.0d);
+        double activityWeight = (quality * 0.55d + influence * 0.65d + 1.0d) * recencyFactor;
+        double representativeSignal = (quality * 1.2d) + (influence * 1.55d) + freshness;
+        return new OwnerDocSignals(rankingWeight, activityWeight, quality, influence, representativeSignal);
     }
 
     private static double ageDays(long nowEpochSeconds, long insertAt) {
@@ -459,6 +488,14 @@ public class OwnerBackedSuggestService {
         return value.trim().toLowerCase(Locale.ROOT);
     }
 
+    private static String normalizeOwnerName(String value) {
+        String normalized = normalize(value);
+        if (normalized.isBlank()) {
+            return normalized;
+        }
+        return tightenCjkAdjacentWhitespace(collapseWhitespace(normalized));
+    }
+
     private static String collapseWhitespace(String text) {
         return String.join(" ", text.trim().split("\\s+"));
     }
@@ -531,57 +568,67 @@ public class OwnerBackedSuggestService {
                 .thenComparing(OwnerAccumulator::displayName);
 
         private final long mid;
-        private final Map<String, Double> aliasScores = new HashMap<>();
-        private double maxWeight;
-        private double activityWeight;
-        private final List<Double> topWeights = new ArrayList<>();
-        private int docCount;
+        private final Map<Integer, OwnerDocContribution> contributionsByDoc = new HashMap<>();
         private String type = "prefix";
 
         private OwnerAccumulator(long mid) {
             this.mid = mid;
         }
 
-        private void add(String ownerName, OwnerDocSignals docSignals, double branchWeight, String type) {
-            double ownerWeight = branchWeight * docSignals.rankingWeight();
-            aliasScores.merge(ownerName, ownerWeight, Double::sum);
-            maxWeight = Math.max(maxWeight, ownerWeight);
-            activityWeight += branchWeight * docSignals.activityWeight();
-            insertTopWeight(ownerWeight);
-            docCount++;
+        private void add(int docId, String ownerName, OwnerDocSignals docSignals, double branchWeight, String type) {
+            OwnerDocContribution contribution = new OwnerDocContribution(
+                    ownerName,
+                    branchWeight * docSignals.rankingWeight(),
+                    branchWeight * docSignals.activityWeight(),
+                    docSignals.qualitySignal(),
+                    docSignals.influenceSignal(),
+                    docSignals.representativeSignal());
+            contributionsByDoc.merge(docId, contribution, OwnerDocContribution::preferBetter);
             this.type = type;
         }
 
         private double score() {
-            double averageTopWeight = topWeights.stream().mapToDouble(Double::doubleValue).average().orElse(0.0d);
-            return (maxWeight * 3.8d)
-                    + (averageTopWeight * 2.6d)
-                    + (Math.log1p(activityWeight) * 5.5d)
-                    + (Math.log1p(docCount) * 0.45d);
-        }
+            if (contributionsByDoc.isEmpty()) {
+                return 0.0d;
+            }
 
-        private void insertTopWeight(double ownerWeight) {
-            int insertAt = 0;
-            while (insertAt < topWeights.size() && topWeights.get(insertAt) >= ownerWeight) {
-                insertAt++;
-            }
-            if (insertAt >= 4) {
-                if (topWeights.size() < 4) {
-                    topWeights.add(ownerWeight);
-                }
-                return;
-            }
-            topWeights.add(insertAt, ownerWeight);
-            if (topWeights.size() > 4) {
-                topWeights.remove(topWeights.size() - 1);
-            }
+            List<OwnerDocContribution> contributions = contributionsByDoc.values().stream()
+                    .sorted(Comparator
+                            .comparingDouble(OwnerDocContribution::representativeSignal).reversed()
+                            .thenComparing(Comparator.comparingDouble(OwnerDocContribution::rankingWeight).reversed()))
+                    .toList();
+
+            double bestRepresentativeSignal = contributions.get(0).representativeSignal();
+            double secondRepresentativeSignal = contributions.size() > 1 ? contributions.get(1).representativeSignal() : 0.0d;
+            double averageTopWeight = contributions.stream()
+                    .limit(4)
+                    .mapToDouble(OwnerDocContribution::rankingWeight)
+                    .average()
+                    .orElse(0.0d);
+            double maxWeight = contributions.stream().mapToDouble(OwnerDocContribution::rankingWeight).max().orElse(0.0d);
+            double maxQualitySignal = contributions.stream().mapToDouble(OwnerDocContribution::qualitySignal).max().orElse(0.0d);
+            double maxInfluenceSignal = contributions.stream().mapToDouble(OwnerDocContribution::influenceSignal).max().orElse(0.0d);
+            double activityWeight = contributions.stream().mapToDouble(OwnerDocContribution::activityWeight).sum();
+            int docCount = contributions.size();
+                return (bestRepresentativeSignal * 155.0d)
+                    + (secondRepresentativeSignal * 20.0d)
+                    + (maxWeight * 0.25d)
+                    + (averageTopWeight * 0.05d)
+                    + (maxQualitySignal * 12.0d)
+                    + (maxInfluenceSignal * 18.0d)
+                    + (Math.log1p(activityWeight) * 0.45d)
+                    + (Math.log1p(docCount) * 0.003d);
         }
 
         private int docCount() {
-            return docCount;
+            return contributionsByDoc.size();
         }
 
         private String displayName() {
+            Map<String, Double> aliasScores = new HashMap<>();
+            for (OwnerDocContribution contribution : contributionsByDoc.values()) {
+                aliasScores.merge(contribution.ownerName(), contribution.rankingWeight(), Double::sum);
+            }
             return aliasScores.entrySet().stream()
                     .max(Map.Entry.<String, Double>comparingByValue()
                             .thenComparing(Map.Entry::getKey))
@@ -590,10 +637,43 @@ public class OwnerBackedSuggestService {
         }
 
         private SuggestionOption toSuggestion() {
-            return new SuggestionOption(displayName(), docCount, (float) score(), type);
+            return new SuggestionOption(displayName(), docCount(), (float) score(), type);
         }
     }
 
-    record OwnerDocSignals(double rankingWeight, double activityWeight) {
+    record OwnerDocSignals(
+            double rankingWeight,
+            double activityWeight,
+            double qualitySignal,
+            double influenceSignal,
+            double representativeSignal) {
+    }
+
+    record OwnerDocContribution(
+            String ownerName,
+            double rankingWeight,
+            double activityWeight,
+            double qualitySignal,
+            double influenceSignal,
+            double representativeSignal) {
+
+        private OwnerDocContribution preferBetter(OwnerDocContribution other) {
+            if (other == null) {
+                return this;
+            }
+            if (other.rankingWeight() > rankingWeight()) {
+                return other;
+            }
+            if (other.rankingWeight() < rankingWeight()) {
+                return this;
+            }
+            if (other.representativeSignal() > representativeSignal()) {
+                return other;
+            }
+            if (other.representativeSignal() < representativeSignal()) {
+                return this;
+            }
+            return other.ownerName().compareTo(ownerName()) >= 0 ? other : this;
+        }
     }
 }
