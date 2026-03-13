@@ -1,4 +1,4 @@
-package org.es.tok;
+package org.es.tok.integration;
 
 import org.apache.http.HttpHost;
 import org.apache.http.auth.AuthScope;
@@ -7,6 +7,7 @@ import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.elasticsearch.client.Request;
 import org.elasticsearch.client.Response;
 import org.elasticsearch.client.RestClient;
+import org.es.tok.support.TestUtils;
 import org.junit.After;
 import org.junit.Assume;
 import org.junit.Before;

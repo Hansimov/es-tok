@@ -1,7 +1,8 @@
-package org.es.tok;
+package org.es.tok.core.analysis;
 
 import org.es.tok.analysis.EsTokAnalyzer;
 import org.es.tok.config.EsTokConfig;
+import org.es.tok.support.ConfigBuilder;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;

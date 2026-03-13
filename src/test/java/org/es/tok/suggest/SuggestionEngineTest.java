@@ -1,4 +1,4 @@
-package org.es.tok;
+package org.es.tok.suggest;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
@@ -14,8 +14,7 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.store.ByteBuffersDirectory;
 import org.apache.lucene.store.Directory;
 import org.es.tok.analysis.EsTokAnalyzer;
-import org.es.tok.suggest.LuceneIndexSuggester;
-import org.es.tok.suggest.PinyinSupport;
+import org.es.tok.support.ConfigBuilder;
 import org.junit.Test;
 
 import java.io.StringReader;

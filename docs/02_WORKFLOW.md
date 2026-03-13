@@ -192,8 +192,8 @@ python -m workers.elastic_videos.commander -ei bili_videos_dev6 -ev elastic_dev 
 每次影响行为的改动，至少检查以下项目是否需要同步：
 
 - 单元测试和集成测试
-- `testing/golden/analysis_cases.json`
-- `testing/golden/suggest_real_cases.json`
+- `testing/golden/analysis/analysis_cases.json`
+- `testing/golden/suggest/real_cases.json`
 - `debugs/evaluate_suggest_cases.py`
 - `docs/01_USAGE.md` 与 `docs/01_API.md`
 

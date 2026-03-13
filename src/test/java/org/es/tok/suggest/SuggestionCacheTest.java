@@ -1,4 +1,4 @@
-package org.es.tok;
+package org.es.tok.suggest;
 
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
@@ -8,8 +8,6 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.store.ByteBuffersDirectory;
 import org.apache.lucene.store.Directory;
-import org.es.tok.suggest.CachedShardSuggestService;
-import org.es.tok.suggest.LuceneIndexSuggester;
 import org.junit.Test;
 
 import java.util.List;

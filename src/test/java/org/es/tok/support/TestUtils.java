@@ -1,4 +1,4 @@
-package org.es.tok;
+package org.es.tok.support;
 
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
@@ -27,6 +27,9 @@ import org.elasticsearch.client.RestClient;
  * Utility class for testing ES-TOK analyzer
  */
 public class TestUtils {
+
+    public record TokenInfo(String token, int startOffset, int endOffset, String type, String group) {
+    }
 
     /**
      * Create insecure SSL context for testing (accepts all certificates)
@@ -131,5 +134,29 @@ public class TestUtils {
 
             tokenStream.end();
         }
+    }
+
+    public static java.util.List<TokenInfo> analyze(String text, EsTokConfig config) throws IOException {
+        java.util.List<TokenInfo> tokens = new java.util.ArrayList<>();
+        try (EsTokAnalyzer analyzer = new EsTokAnalyzer(config)) {
+            TokenStream tokenStream = analyzer.tokenStream("field", text);
+
+            CharTermAttribute termAtt = tokenStream.addAttribute(CharTermAttribute.class);
+            OffsetAttribute offsetAtt = tokenStream.addAttribute(OffsetAttribute.class);
+            TypeAttribute typeAtt = tokenStream.addAttribute(TypeAttribute.class);
+            GroupAttribute groupAtt = tokenStream.addAttribute(GroupAttribute.class);
+
+            tokenStream.reset();
+            while (tokenStream.incrementToken()) {
+                tokens.add(new TokenInfo(
+                        termAtt.toString(),
+                        offsetAtt.startOffset(),
+                        offsetAtt.endOffset(),
+                        typeAtt.type(),
+                        groupAtt.group()));
+            }
+            tokenStream.end();
+        }
+        return tokens;
     }
 }

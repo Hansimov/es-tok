@@ -1,8 +1,5 @@
-package org.es.tok;
+package org.es.tok.query;
 
-import org.es.tok.query.EsTokConstraintsQueryBuilder;
-import org.es.tok.query.MatchCondition;
-import org.es.tok.query.SearchConstraint;
 import org.junit.Test;
 
 import java.util.Arrays;

@@ -1,8 +1,9 @@
-package org.es.tok;
+package org.es.tok.core.rules;
 
 import org.es.tok.rules.AnalyzeRules;
 import org.es.tok.rules.RulesConfig;
 import org.es.tok.rules.RulesLoader;
+import org.es.tok.support.ConfigBuilder;
 import org.elasticsearch.common.settings.Settings;
 import org.junit.Test;
 

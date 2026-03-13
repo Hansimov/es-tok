@@ -66,7 +66,7 @@ public class EsTokBridgeServiceTest {
 
     private static List<GoldenCase> loadGoldenCases() throws Exception {
         try (InputStream stream = EsTokBridgeServiceTest.class.getClassLoader()
-                .getResourceAsStream("golden/analysis_cases.json")) {
+                .getResourceAsStream("golden/analysis/analysis_cases.json")) {
             assertNotNull(stream);
             return MAPPER.readValue(stream, new TypeReference<List<GoldenCase>>() {
             });

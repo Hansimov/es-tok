@@ -1,4 +1,4 @@
-package org.es.tok;
+package org.es.tok.integration;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -9,6 +9,7 @@ import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.elasticsearch.client.Request;
 import org.elasticsearch.client.Response;
 import org.elasticsearch.client.RestClient;
+import org.es.tok.support.TestUtils;
 import org.junit.After;
 import org.junit.Assume;
 import org.junit.Before;
@@ -31,7 +32,7 @@ import static org.junit.Assert.assertTrue;
 
 public class SuggestRealCasesTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final Path CASE_FILE = Path.of("testing/golden/suggest_real_cases.json");
+    private static final Path CASE_FILE = Path.of("testing/golden/suggest/real_cases.json");
     private static final Map<String, String> FIELD_ALIASES = Map.of(
             "owner.name.words", "owner.name.suggest",
             "pages.parts.words", "pages.parts.suggest");

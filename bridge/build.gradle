@@ -3,7 +3,7 @@ plugins {
 }
 
 def bridgeSpecFile = file("$projectDir/src/main/resources/bridge-api.json")
-def goldenCasesFile = file("$rootProject.projectDir/testing/golden/analysis_cases.json")
+def goldenCasesFile = file("$rootProject.projectDir/testing/golden/analysis/analysis_cases.json")
 def bridgeDocFile = file("$rootProject.projectDir/docs/01_API.md")
 def bridgeDocStartMarker = "<!-- BEGIN AUTO-GENERATED: BRIDGE_API -->"
 def bridgeDocEndMarker = "<!-- END AUTO-GENERATED: BRIDGE_API -->"

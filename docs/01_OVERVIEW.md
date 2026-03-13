@@ -120,7 +120,7 @@ bridge CLI 只要求请求里至少包含 `text`，其余字段沿用 REST analy
 - bridge golden 测试验证 CLI 服务输出。
 - suggest 真实案例测试和 `debugs/evaluate_suggest_cases.py` 用于质量评估与迭代。
 
-共享样例位于 `testing/golden/analysis_cases.json`。如果修改了分析行为、默认资源或 bridge 文档规范，必须同步更新这份语料和对应文档。
+共享样例位于 `testing/golden/analysis/analysis_cases.json`。如果修改了分析行为、默认资源或 bridge 文档规范，必须同步更新这份语料和对应文档。
 
 ## 运行约束
 

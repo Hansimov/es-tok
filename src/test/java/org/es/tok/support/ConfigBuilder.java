@@ -1,4 +1,4 @@
-package org.es.tok;
+package org.es.tok.support;
 
 import org.es.tok.config.EsTokConfig;
 import org.es.tok.extra.ExtraConfig;

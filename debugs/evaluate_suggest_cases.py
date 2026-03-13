@@ -240,7 +240,7 @@ def summarize(results):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cases", default="testing/golden/suggest_real_cases.json")
+    parser.add_argument("--cases", default="testing/golden/suggest/real_cases.json")
     parser.add_argument(
         "--output", default="build/reports/suggest_real_case_report.json"
     )

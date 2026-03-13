@@ -178,7 +178,7 @@ curl --cacert $HOME/elasticsearch-docker-9.2.4-pro/certs/ca/ca.crt \
 bridge 接口文档由两部分共同驱动：
 
 - `bridge/src/main/resources/bridge-api.json`：字段、说明、示例标题
-- `testing/golden/analysis_cases.json`：共享请求/响应快照
+- `testing/golden/analysis/analysis_cases.json`：共享请求/响应快照
 
 更新完规范或 golden corpus 后，执行：
 
@@ -228,7 +228,7 @@ Developer: Reload Window
 
 ## 回归约定
 
-- Java core、REST analyze、bridge、Python bridge 都应对齐同一份 `testing/golden/analysis_cases.json`
+- Java core、REST analyze、bridge、Python bridge 都应对齐同一份 `testing/golden/analysis/analysis_cases.json`
 - 版本诊断统一使用 `analysis_hash`、`vocab_hash`、`rules_hash`
 - 如果修改了默认资源或分析行为，必须同步更新 golden corpus 和相关文档
 
