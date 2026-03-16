@@ -295,6 +295,23 @@ public class RelatedOwnersRestTest {
     assertTrue(result, result.contains("\"mid\":3002"));
   }
 
+  @Test
+  public void testRelatedOwnersSanitizesBoilerplateAndUrlsInOwnerTextQuery() throws Exception {
+    String result = performRelatedOwners("""
+      {
+        "text": "最新视频 快来围观 https://example.com 摄影技巧和摄像布光都在这里",
+        "fields": ["title.words", "tags.words", "desc.words"],
+        "size": 6,
+        "scan_limit": 64,
+        "use_pinyin": true
+      }
+      """);
+
+    assertTrue(result, result.contains("\"mid\":3001"));
+    assertTrue(result, result.contains("\"mid\":3002"));
+    assertFalse(result, result.contains("\"mid\":2001"));
+  }
+
     private void indexTopicDocument(
             String id,
             String title,

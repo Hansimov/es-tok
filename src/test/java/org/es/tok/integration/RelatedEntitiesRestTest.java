@@ -125,6 +125,20 @@ public class RelatedEntitiesRestTest {
         assertFalse(result, result.contains("\"bvid\":\"AV3\""));
     }
 
+      @Test
+      public void testRelatedVideosByOwnersKeepsSeedOwnerVideosNearTop() throws Exception {
+        String result = performRelation("related_videos_by_owners", """
+          {
+            "mids": [3001],
+            "size": 2,
+            "scan_limit": 64
+          }
+          """);
+
+        assertTrue(result, result.contains("\"ownerMid\":3001"));
+        assertFalse(result, result.contains("\"bvid\":\"AV3\""));
+      }
+
     @Test
     public void testRelatedOwnersByOwners() throws Exception {
         String result = performRelation("related_owners_by_owners", """

@@ -55,7 +55,7 @@ final class RelationTuning {
             new SupportProfile(3, 0.36d, 1.20d, 0.38d),
             new ScoreWeights(12.0d, 78.0d, 14.0d, 2.5d, 6.0d, 2.4d, 12.0d, 8.0d, 3.2d),
             new CoveragePenaltyProfile(0.22d, 0.14d, 0.48d, 0.70d),
-            new OwnerCandidateProfile(true, 0.12d),
+            new OwnerCandidateProfile(true, 0.0d),
             new VideoRankingProfile(0.68d, 0.16d, 2.2d),
             new OwnerRankingProfile(0.68d, 4.0d, 320.0d, 240.0d));
 

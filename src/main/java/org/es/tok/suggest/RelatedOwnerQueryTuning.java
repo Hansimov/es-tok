@@ -1,8 +1,9 @@
 package org.es.tok.suggest;
 
+import org.es.tok.text.TopicQualityHeuristics;
+
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Locale;
 import java.util.List;
 
 final class RelatedOwnerQueryTuning {
@@ -17,63 +18,16 @@ final class RelatedOwnerQueryTuning {
     private static final double INFLUENCE_MULTIPLIER = 3.1d;
     private static final double RECENCY_HALFLIFE_DAYS = 21.0d;
     private static final double FRESHNESS_MULTIPLIER = 1.4d;
-    private static final List<String> NOISY_ASCII_TERMS = List.of(
-            "http",
-            "https",
-            "www",
-            "com",
-            "html",
-            "htm",
-            "bilibi",
-            "bilibili");
-
     static String sanitizeQueryText(String text) {
-        if (text == null || text.isBlank()) {
-            return "";
-        }
-        String sanitized = text
-                .replaceAll("https?://\\S+", " ")
-                .replaceAll("www\\.\\S+", " ")
-                .replaceAll("[\\r\\n\\t]+", " ")
-                .replaceAll("\\s+", " ")
-                .trim();
-        return sanitized;
+        return TopicQualityHeuristics.sanitizeQueryText(text);
     }
 
     static boolean isUsefulSeedTerm(String term) {
-        if (term == null || term.isBlank()) {
-            return false;
-        }
-        String normalized = term.trim().toLowerCase(Locale.ROOT);
-        if (normalized.isBlank()) {
-            return false;
-        }
-        if (normalized.contains("://") || normalized.startsWith("www.")) {
-            return false;
-        }
-        if (NOISY_ASCII_TERMS.contains(normalized)) {
-            return false;
-        }
-        int codePointLength = normalized.codePointCount(0, normalized.length());
-        if (codePointLength < 2) {
-            return false;
-        }
-        if (normalized.chars().allMatch(Character::isDigit)) {
-            return false;
-        }
-        boolean containsHan = normalized.codePoints().anyMatch(RelatedOwnerQueryTuning::isHanCodePoint);
-        if (containsHan) {
-            return codePointLength >= 2;
-        }
-        boolean asciiAlphaNumeric = normalized.chars().allMatch(ch -> ch < 128 && Character.isLetterOrDigit(ch));
-        if (!asciiAlphaNumeric) {
-            return false;
-        }
-        boolean hasLetter = normalized.chars().anyMatch(Character::isLetter);
-        if (!hasLetter) {
-            return false;
-        }
-        return codePointLength >= 3 && codePointLength <= 24;
+        return TopicQualityHeuristics.isUsefulOwnerQuerySeedTerm(term);
+    }
+
+    static int seedTermPriority(String term) {
+        return TopicQualityHeuristics.ownerQuerySeedPriority(term);
     }
 
     static int maxQueryTerms(String text, int availableTermCount) {
@@ -129,13 +83,20 @@ final class RelatedOwnerQueryTuning {
         return (float) (lengthBoost * rankDecay);
     }
 
+    static boolean isStrongSeedTerm(String term) {
+        return TopicQualityHeuristics.isStrongOwnerQuerySeedTerm(term);
+    }
+
     static SourceBackedRelatedOwnersService.RelatedOwnerDocSignals docSignals(
             long nowEpochSeconds,
             float hitScore,
             int rank,
             double statScore,
             long viewCount,
-            long insertAt) {
+            long insertAt,
+            double termCoverage,
+            int matchedTermCount,
+            int matchedStrongTermCount) {
         double topicWeight = ((Math.log1p(Math.max(1.0f, hitScore)) + 1.0d) * TOPIC_WEIGHT_MULTIPLIER)
                 / (1.0d + (rank * 0.05d));
         double normalizedStatScore = Math.max(0.0d, statScore);
@@ -145,13 +106,22 @@ final class RelatedOwnerQueryTuning {
         double recencyFactor = 1.0d / (1.0d + (ageDays / RECENCY_HALFLIFE_DAYS));
         double freshness = recencyFactor * FRESHNESS_MULTIPLIER;
         double representativeSignal = topicWeight * ((quality * 1.05d) + (influence * 1.35d) + freshness + 1.0d);
-        double rankingWeight = representativeSignal + (topicWeight * 3.0d) + (quality * 0.25d) + (influence * 0.2d);
+        double rankingWeight = representativeSignal
+                + (topicWeight * 3.0d)
+                + (termCoverage * 2.0d)
+                + (matchedTermCount * 0.4d)
+                + (matchedStrongTermCount * 0.6d)
+                + (quality * 0.25d)
+                + (influence * 0.2d);
         return new SourceBackedRelatedOwnersService.RelatedOwnerDocSignals(
                 topicWeight,
                 rankingWeight,
                 representativeSignal,
                 quality,
-                influence);
+                influence,
+                termCoverage,
+                matchedTermCount,
+                matchedStrongTermCount);
     }
 
     static long nowEpochSeconds() {
@@ -183,11 +153,6 @@ final class RelatedOwnerQueryTuning {
         }
         return Math.max(0.0d, (nowEpochSeconds - insertAt) / 86400.0d);
     }
-
-    private static boolean isHanCodePoint(int codePoint) {
-        return Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN;
-    }
-
     record QueryPlan(int minimumSeedMatches) {
     }
 

@@ -22,6 +22,9 @@ import org.elasticsearch.index.mapper.SourceFieldMetrics;
 import org.elasticsearch.search.lookup.Source;
 import org.elasticsearch.search.lookup.SourceProvider;
 import org.es.tok.action.EsTokEntityRelationRequest;
+import org.es.tok.text.SourceValueUtils;
+import org.es.tok.text.TextNormalization;
+import org.es.tok.text.TopicQualityHeuristics;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -33,7 +36,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -76,6 +78,16 @@ public class SourceBackedEntityRelationsService {
         if (topDocs.scoreDocs.length == 0) {
             return RelationResult.empty();
         }
+        List<ScoreDoc> candidateScoreDocs = mergeCandidateScoreDocs(
+                searcher,
+                relation,
+                seedContext,
+                topicFields,
+                topDocs,
+                candidateDocLimit(size, scanLimit));
+        if (candidateScoreDocs.isEmpty()) {
+            return RelationResult.empty();
+        }
 
         SourceProvider sourceProvider = SourceProvider.fromLookup(
                 indexService.mapperService().mappingLookup(),
@@ -89,7 +101,7 @@ public class SourceBackedEntityRelationsService {
                 relationProfile,
                 seedContext,
                 topicFields,
-                topDocs,
+                candidateScoreDocs,
                 false,
                 size,
                 sourceProvider,
@@ -105,7 +117,7 @@ public class SourceBackedEntityRelationsService {
             relationProfile,
                 seedContext,
                 topicFields,
-                topDocs,
+                candidateScoreDocs,
                 true,
                 size,
                 sourceProvider,
@@ -119,7 +131,7 @@ public class SourceBackedEntityRelationsService {
             RelationTuning.RelationProfile relationProfile,
             SeedContext seedContext,
             List<FieldContext> topicFields,
-            TopDocs topDocs,
+            List<ScoreDoc> scoreDocs,
             boolean relaxedMode,
             int size,
             SourceProvider sourceProvider,
@@ -128,8 +140,8 @@ public class SourceBackedEntityRelationsService {
             AnalysisCache analysisCache) throws IOException {
         Map<String, VideoAccumulator> videos = new LinkedHashMap<>();
         Map<Long, OwnerAccumulator> owners = new LinkedHashMap<>();
-        for (int rank = 0; rank < topDocs.scoreDocs.length; rank++) {
-            ScoreDoc scoreDoc = topDocs.scoreDocs[rank];
+        for (int rank = 0; rank < scoreDocs.size(); rank++) {
+            ScoreDoc scoreDoc = scoreDocs.get(rank);
             int leafIndex = ReaderUtil.subIndex(scoreDoc.doc, leaves);
             LeafReaderContext leaf = leaves.get(leafIndex);
             int leafDocId = scoreDoc.doc - leaf.docBase;
@@ -166,9 +178,41 @@ public class SourceBackedEntityRelationsService {
             }
         }
 
-        List<RelatedVideoResult> videoResults = selectVideoResults(relationProfile, relation, videos, size);
+        List<RelatedVideoResult> videoResults = selectVideoResults(relationProfile, relation, videos, seedContext, size);
         List<RelatedOwnerResult> ownerResults = selectOwnerResults(relationProfile, relation, owners, seedContext, size, relaxedMode);
         return new RelationResult(videoResults, ownerResults);
+    }
+
+    private List<ScoreDoc> mergeCandidateScoreDocs(
+            Engine.Searcher searcher,
+            String relation,
+            SeedContext seedContext,
+            List<FieldContext> topicFields,
+            TopDocs primaryTopDocs,
+            int primaryLimit) throws IOException {
+        List<ScoreDoc> merged = new ArrayList<>();
+        LinkedHashSet<Integer> seenDocIds = new LinkedHashSet<>();
+        if (EsTokEntityRelationRequest.RELATED_VIDEOS_BY_OWNERS.equals(relation)) {
+            Query sameOwnerCandidateQuery = buildSameOwnerCandidateQuery(seedContext, topicFields);
+            if (sameOwnerCandidateQuery != null) {
+                TopDocs sameOwnerTopDocs = searcher.search(sameOwnerCandidateQuery, Math.max(32, Math.min(64, primaryLimit)));
+                for (ScoreDoc scoreDoc : sameOwnerTopDocs.scoreDocs) {
+                    if (seenDocIds.add(scoreDoc.doc)) {
+                        merged.add(scoreDoc);
+                    }
+                }
+            }
+        }
+        for (ScoreDoc scoreDoc : primaryTopDocs.scoreDocs) {
+            if (seenDocIds.add(scoreDoc.doc)) {
+                merged.add(scoreDoc);
+            }
+        }
+        int mergedLimit = Math.min(merged.size(), primaryLimit + Math.min(32, Math.max(0, merged.size() - primaryLimit)));
+        if (mergedLimit < merged.size()) {
+            return List.copyOf(merged.subList(0, mergedLimit));
+        }
+        return List.copyOf(merged);
     }
 
     private SeedContext loadSeedContext(
@@ -262,6 +306,37 @@ public class SourceBackedEntityRelationsService {
             }
         }
 
+        BooleanQuery query = builder.build();
+        return query.clauses().isEmpty() ? null : query;
+    }
+
+    private Query buildSameOwnerCandidateQuery(SeedContext seedContext, List<FieldContext> topicFields) {
+        if (seedContext.seedOwnerMids().isEmpty()) {
+            return null;
+        }
+        BooleanQuery.Builder ownerBuilder = new BooleanQuery.Builder();
+        for (Long mid : seedContext.seedOwnerMids()) {
+            if (mid != null && mid > 0L) {
+                ownerBuilder.add(LongPoint.newExactQuery("owner.mid", mid), BooleanClause.Occur.SHOULD);
+            }
+        }
+        BooleanQuery ownerQuery = ownerBuilder.build();
+        if (ownerQuery.clauses().isEmpty()) {
+            return null;
+        }
+
+        BooleanQuery.Builder builder = new BooleanQuery.Builder();
+        builder.add(ownerQuery, BooleanClause.Occur.MUST);
+        for (FieldContext fieldContext : topicFields) {
+            for (TokenWeight tokenWeight : seedContext.queryTerms()) {
+                float exactBoost = (float) (fieldContext.queryBoost() * tokenWeight.exactBoost());
+                builder.add(new BoostQuery(new TermQuery(new Term(fieldContext.indexField(), tokenWeight.token())), exactBoost), BooleanClause.Occur.SHOULD);
+                if (tokenWeight.allowPrefix()) {
+                    float prefixBoost = (float) (fieldContext.prefixBoost() * tokenWeight.prefixBoost());
+                    builder.add(new BoostQuery(new PrefixQuery(new Term(fieldContext.indexField(), tokenWeight.token())), prefixBoost), BooleanClause.Occur.SHOULD);
+                }
+            }
+        }
         BooleanQuery query = builder.build();
         return query.clauses().isEmpty() ? null : query;
     }
@@ -388,7 +463,7 @@ public class SourceBackedEntityRelationsService {
         LinkedHashMap<String, Double> tokens = new LinkedHashMap<>();
         for (FieldContext fieldContext : fieldContexts) {
             Object rawValue = source.extractValue(fieldContext.sourcePath(), null);
-            for (String value : flattenSourceValues(rawValue)) {
+            for (String value : SourceValueUtils.flattenStringValues(rawValue)) {
                 for (String token : analysisCache.analyze(fieldContext, value)) {
                     if (!token.isBlank()) {
                         tokens.merge(token, fieldContext.seedWeight(), Double::sum);
@@ -411,7 +486,7 @@ public class SourceBackedEntityRelationsService {
                 continue;
             }
             Object rawValue = source.extractValue(sourcePath, null);
-            for (String value : flattenSourceValues(rawValue)) {
+            for (String value : SourceValueUtils.flattenStringValues(rawValue)) {
                 for (String token : analysisCache.analyze(fieldContext, value)) {
                     if (!token.isBlank()) {
                         tokens.add(token);
@@ -431,7 +506,7 @@ public class SourceBackedEntityRelationsService {
             CharTermAttribute termAttribute = tokenStream.addAttribute(CharTermAttribute.class);
             tokenStream.reset();
             while (tokenStream.incrementToken()) {
-                String token = normalizeString(termAttribute.toString());
+                String token = TextNormalization.normalizeLower(termAttribute.toString());
                 if (!token.isBlank()) {
                     tokens.add(token);
                 }
@@ -450,6 +525,7 @@ public class SourceBackedEntityRelationsService {
             RelationTuning.RelationProfile relationProfile,
             String relation,
             Map<String, VideoAccumulator> videos,
+            SeedContext seedContext,
             int size) {
         List<VideoAccumulator> ordered = videos.values().stream()
                 .sorted(VideoAccumulator.ORDER)
@@ -462,10 +538,38 @@ public class SourceBackedEntityRelationsService {
         List<RelatedVideoResult> selected = new ArrayList<>();
         Map<Long, Integer> ownerCounts = new HashMap<>();
         List<VideoAccumulator> remaining = new ArrayList<>(ordered);
-        while (!remaining.isEmpty() && selected.size() < size) {
+        if (EsTokEntityRelationRequest.RELATED_VIDEOS_BY_OWNERS.equals(relation)) {
+            int reservedSameOwnerSlots = Math.min(
+                    size,
+                    Math.min(
+                            (int) remaining.stream().filter(candidate -> seedContext.containsOwnerMid(candidate.ownerMid())).count(),
+                            Math.max(1, Math.min(seedContext.seedOwnerMids().size() * 2, Math.max(1, size / 2)))));
+            selectBestVideos(
+                    relationProfile,
+                    remaining,
+                    selected,
+                    ownerCounts,
+                    reservedSameOwnerSlots,
+                    candidate -> seedContext.containsOwnerMid(candidate.ownerMid()));
+        }
+        selectBestVideos(relationProfile, remaining, selected, ownerCounts, size - selected.size(), candidate -> true);
+        return selected;
+    }
+
+    private static void selectBestVideos(
+            RelationTuning.RelationProfile relationProfile,
+            List<VideoAccumulator> remaining,
+            List<RelatedVideoResult> selected,
+            Map<Long, Integer> ownerCounts,
+            int slots,
+            java.util.function.Predicate<VideoAccumulator> predicate) {
+        for (int index = 0; index < slots && !remaining.isEmpty(); index++) {
             VideoAccumulator best = null;
             double bestScore = Double.NEGATIVE_INFINITY;
             for (VideoAccumulator candidate : remaining) {
+                if (!predicate.test(candidate)) {
+                    continue;
+                }
                 int ownerCount = ownerCounts.getOrDefault(candidate.ownerMid(), 0);
                 double adjustedScore = relationProfile.adjustedVideoScore(candidate.score(), ownerCount);
                 if (adjustedScore > bestScore) {
@@ -480,7 +584,6 @@ public class SourceBackedEntityRelationsService {
             selected.add(best.toResult());
             ownerCounts.merge(best.ownerMid(), 1, Integer::sum);
         }
-        return selected;
     }
 
     private static List<RelatedOwnerResult> selectOwnerResults(
@@ -515,45 +618,6 @@ public class SourceBackedEntityRelationsService {
         return results;
     }
 
-    private static boolean isCandidateQueryToken(String token) {
-        if (token == null || token.isBlank()) {
-            return false;
-        }
-        if (token.length() < 2) {
-            return false;
-        }
-        boolean hasLetterOrIdeograph = false;
-        boolean allDigits = true;
-        for (int index = 0; index < token.length(); index++) {
-            char current = token.charAt(index);
-            if (Character.isLetter(current) || Character.UnicodeScript.of(current) == Character.UnicodeScript.HAN) {
-                hasLetterOrIdeograph = true;
-            }
-            if (!Character.isDigit(current)) {
-                allDigits = false;
-            }
-        }
-        return hasLetterOrIdeograph && !allDigits;
-    }
-
-    private static boolean isStrongSignalToken(String token) {
-        if (!isCandidateQueryToken(token)) {
-            return false;
-        }
-        int hanCount = 0;
-        int asciiLetterCount = 0;
-        for (int index = 0; index < token.length(); index++) {
-            char current = token.charAt(index);
-            if (Character.UnicodeScript.of(current) == Character.UnicodeScript.HAN) {
-                hanCount++;
-            }
-            if (current < 128 && Character.isLetter(current)) {
-                asciiLetterCount++;
-            }
-        }
-        return hanCount >= 2 || asciiLetterCount >= 4 || token.length() >= 4;
-    }
-
     private static double tokenLengthBoost(String token) {
         int hanCount = 0;
         int otherCount = 0;
@@ -579,7 +643,7 @@ public class SourceBackedEntityRelationsService {
         List<TokenWeight> weighted = new ArrayList<>();
         for (Map.Entry<String, Double> entry : seedTerms.entrySet()) {
             String token = entry.getKey();
-            if (!isCandidateQueryToken(token)) {
+            if (!TopicQualityHeuristics.isCandidateRelationToken(token)) {
                 continue;
             }
             int supportCount = Math.max(1, tokenDocSupport.getOrDefault(token, 1));
@@ -593,7 +657,7 @@ public class SourceBackedEntityRelationsService {
             double rarityBoost = 1.0d + (Math.log1p((double) docCount / (1.0d + docFrequency)) / 4.0d);
             double supportBoost = relationProfile.supportSignalBoost(supportCount);
             double signalWeight = Math.sqrt(entry.getValue()) * tokenLengthBoost(token) * rarityBoost * supportBoost;
-            boolean strongSignal = isStrongSignalToken(token);
+            boolean strongSignal = TopicQualityHeuristics.isStrongRelationToken(token);
             weighted.add(new TokenWeight(
                     token,
                     Math.min(5.2d, signalWeight * 0.55d),
@@ -627,23 +691,6 @@ public class SourceBackedEntityRelationsService {
         return selected;
     }
 
-    private static List<String> flattenSourceValues(Object value) {
-        if (value == null) {
-            return List.of();
-        }
-        if (value instanceof String stringValue) {
-            return List.of(stringValue);
-        }
-        if (value instanceof Collection<?> collection) {
-            List<String> values = new ArrayList<>();
-            for (Object item : collection) {
-                values.addAll(flattenSourceValues(item));
-            }
-            return values;
-        }
-        return List.of(value.toString());
-    }
-
     private static String sourcePath(String field) {
         if (field.endsWith(".words")) {
             return field.substring(0, field.length() - ".words".length());
@@ -652,24 +699,15 @@ public class SourceBackedEntityRelationsService {
     }
 
     private static String normalizeString(Object value) {
-        if (value == null) {
-            return "";
-        }
-        return value.toString().trim().toLowerCase(Locale.ROOT);
+        return TextNormalization.normalizeLower(value);
     }
 
     private static String normalizeDisplay(Object value) {
-        if (value == null) {
-            return "";
-        }
-        return value.toString().trim();
+        return TextNormalization.trimToEmpty(value);
     }
 
     private static String normalizeIdentifier(Object value) {
-        if (value == null) {
-            return "";
-        }
-        return value.toString().trim();
+        return TextNormalization.trimToEmpty(value);
     }
 
     private static long asLong(Object value, long defaultValue) {

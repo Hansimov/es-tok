@@ -18,6 +18,9 @@ import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.index.mapper.SourceFieldMetrics;
 import org.elasticsearch.search.lookup.Source;
 import org.elasticsearch.search.lookup.SourceProvider;
+import org.es.tok.text.SourceValueUtils;
+import org.es.tok.text.TextNormalization;
+import org.es.tok.text.TopicQualityHeuristics;
 import org.es.tok.suggest.LuceneIndexSuggester.CompletionConfig;
 import org.es.tok.suggest.LuceneIndexSuggester.SuggestionOption;
 
@@ -29,7 +32,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -52,7 +54,7 @@ public class SourceBackedAssociateSuggester {
 
         LinkedHashSet<String> seedTerms = analyzeSeedTerms(fieldContexts, text);
         if (seedTerms.isEmpty()) {
-            seedTerms.add(normalizeToken(text));
+            seedTerms.add(TextNormalization.normalizeAnalyzedToken(text));
         }
         AssociateQueryProfile queryProfile = AssociateQueryProfile.from(seedTerms);
 
@@ -100,7 +102,7 @@ public class SourceBackedAssociateSuggester {
         LinkedHashSet<String> seedTerms = new LinkedHashSet<>();
         for (FieldContext fieldContext : fieldContexts) {
             for (String seedTerm : analyze(fieldContext.analyzer(), fieldContext.indexField(), text)) {
-                if (isUsefulSeedTerm(seedTerm)) {
+                if (TopicQualityHeuristics.isUsefulAssociateSeedTerm(seedTerm)) {
                     seedTerms.add(seedTerm);
                 }
             }
@@ -164,7 +166,7 @@ public class SourceBackedAssociateSuggester {
         Set<String> seenInDoc = new LinkedHashSet<>();
         for (FieldContext fieldContext : fieldContexts) {
             Object rawValue = source.extractValue(fieldContext.sourcePath(), null);
-            for (String value : flattenSourceValues(rawValue)) {
+            for (String value : SourceValueUtils.flattenStringValues(rawValue)) {
                 for (String token : analyze(fieldContext.analyzer(), fieldContext.indexField(), value)) {
                     if (!isAcceptableAssociateCandidate(token, seedTerms, queryProfile)) {
                         continue;
@@ -209,23 +211,6 @@ public class SourceBackedAssociateSuggester {
         return field;
     }
 
-    private static List<String> flattenSourceValues(Object value) {
-        if (value == null) {
-            return List.of();
-        }
-        if (value instanceof String stringValue) {
-            return List.of(stringValue);
-        }
-        if (value instanceof Collection<?> collection) {
-            List<String> values = new ArrayList<>();
-            for (Object item : collection) {
-                values.addAll(flattenSourceValues(item));
-            }
-            return values;
-        }
-        return List.of(value.toString());
-    }
-
     private static List<String> extractAsciiQueryParts(String text) {
         if (text == null || text.isBlank()) {
             return List.of();
@@ -233,7 +218,7 @@ public class SourceBackedAssociateSuggester {
 
         List<String> parts = new ArrayList<>();
         for (String rawPart : text.trim().split("\\s+")) {
-            String normalized = normalizeToken(rawPart);
+            String normalized = TextNormalization.normalizeAnalyzedToken(rawPart);
             if (!normalized.isBlank() && normalized.chars().allMatch(ch -> ch < 128 && Character.isLetterOrDigit(ch))) {
                 parts.add(normalized);
             }
@@ -250,7 +235,7 @@ public class SourceBackedAssociateSuggester {
             CharTermAttribute termAttribute = tokenStream.addAttribute(CharTermAttribute.class);
             tokenStream.reset();
             while (tokenStream.incrementToken()) {
-                String normalized = normalizeToken(termAttribute.toString());
+                String normalized = TextNormalization.normalizeAnalyzedToken(termAttribute.toString());
                 if (!normalized.isEmpty()) {
                     tokens.add(normalized);
                 }
@@ -268,7 +253,7 @@ public class SourceBackedAssociateSuggester {
             return false;
         }
         int codePointLength = token.codePointCount(0, token.length());
-        if (codePointLength == 1 && isFunctionWord(token.codePointAt(0))) {
+        if (codePointLength == 1 && TopicQualityHeuristics.isFunctionWord(token.codePointAt(0))) {
             return false;
         }
         if (codePointLength > 24) {
@@ -282,22 +267,6 @@ public class SourceBackedAssociateSuggester {
             return false;
         }
         return isUsefulAssociateCandidate(token, queryProfile);
-    }
-
-    private static boolean isUsefulSeedTerm(String token) {
-        if (token == null || token.isBlank()) {
-            return false;
-        }
-        if (PinyinSupport.containsChinese(token)) {
-            return true;
-        }
-
-        int codePointLength = token.codePointCount(0, token.length());
-        boolean asciiAlphaNum = token.chars().allMatch(ch -> ch < 128 && Character.isLetterOrDigit(ch));
-        if (asciiAlphaNum) {
-            return codePointLength >= 3;
-        }
-        return codePointLength >= 2;
     }
 
     private static boolean isUsefulAssociateCandidate(String token, AssociateQueryProfile queryProfile) {
@@ -324,43 +293,6 @@ public class SourceBackedAssociateSuggester {
 
         return codePointLength >= 2;
     }
-
-    private static String normalizeToken(String token) {
-        if (token == null || token.isBlank()) {
-            return "";
-        }
-        String collapsed = String.join(" ", token.trim().split("\\s+"));
-        if (collapsed.indexOf(' ') >= 0) {
-            int ascii = 0;
-            int cjk = 0;
-            for (int index = 0; index < collapsed.length(); ) {
-                int codePoint = collapsed.codePointAt(index);
-                index += Character.charCount(codePoint);
-                if (Character.isWhitespace(codePoint)) {
-                    continue;
-                }
-                if (codePoint < 128 && Character.isLetterOrDigit(codePoint)) {
-                    ascii++;
-                } else if (Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN) {
-                    cjk++;
-                }
-            }
-            if (cjk > 0 && cjk >= ascii) {
-                return collapsed.replace(" ", "");
-            }
-        }
-        return collapsed.toLowerCase(Locale.ROOT);
-    }
-
-    private static boolean isFunctionWord(int codePoint) {
-        return switch (codePoint) {
-            case '的', '了', '着', '呢', '吧', '吗', '呀', '啊', '嘛', '向', '所', '把', '被', '给', '和', '与',
-                    '及', '又', '还', '都', '就', '再', '太', '很', '也', '让', '在', '是', '于', '我', '你', '他',
-                    '她', '它', '们' -> true;
-            default -> false;
-        };
-    }
-
     private record FieldContext(String indexField, String sourcePath, Analyzer analyzer) {
     }
 

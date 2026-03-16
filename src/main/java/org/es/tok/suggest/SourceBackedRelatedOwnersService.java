@@ -20,6 +20,8 @@ import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.index.mapper.SourceFieldMetrics;
 import org.elasticsearch.search.lookup.Source;
 import org.elasticsearch.search.lookup.SourceProvider;
+import org.es.tok.text.SourceValueUtils;
+import org.es.tok.text.TextNormalization;
 import org.es.tok.suggest.LuceneIndexSuggester.CompletionConfig;
 
 import java.io.IOException;
@@ -30,7 +32,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 public class SourceBackedRelatedOwnersService {
@@ -70,7 +71,7 @@ public class SourceBackedRelatedOwnersService {
 
         LinkedHashSet<String> seedTerms = analyzeSeedTerms(fieldContexts, sanitizedText);
         if (seedTerms.isEmpty()) {
-            String normalized = normalize(sanitizedText);
+            String normalized = TextNormalization.normalizeLower(sanitizedText);
             if (RelatedOwnerQueryTuning.isUsefulSeedTerm(normalized)) {
                 seedTerms.add(normalized);
             }
@@ -79,6 +80,7 @@ public class SourceBackedRelatedOwnersService {
         if (selectedTerms.isEmpty()) {
             return List.of();
         }
+        List<SeedTermProfile> seedTermProfiles = buildSeedTermProfiles(selectedTerms);
         List<String> expansionTerms = RelatedOwnerQueryTuning.shouldExpandTopicTerms(sanitizedText, selectedTerms.size())
             ? expandTopicTerms(searcher, indexService, fields, sanitizedText, seedTerms, scanLimit)
             : List.of();
@@ -114,7 +116,7 @@ public class SourceBackedRelatedOwnersService {
             LeafReaderContext leaf = leaves.get(leafIndex);
             int leafDocId = scoreDoc.doc - leaf.docBase;
             Source source = sourceProvider.getSource(leaf, leafDocId);
-            collectOwnerHit(owners, scoreDoc.doc, source, nowEpochSeconds, scoreDoc.score, rank);
+            collectOwnerHit(owners, scoreDoc.doc, source, fieldContexts, seedTermProfiles, nowEpochSeconds, scoreDoc.score, rank);
         }
 
         return owners.values().stream()
@@ -128,9 +130,11 @@ public class SourceBackedRelatedOwnersService {
             Map<Long, RelatedOwnerAccumulator> owners,
             int docId,
             Source source,
+            List<FieldContext> fieldContexts,
+            List<SeedTermProfile> seedTermProfiles,
             long nowEpochSeconds,
             float hitScore,
-            int rank) {
+            int rank) throws IOException {
         Long mid = asLong(source.extractValue(OWNER_MID_SOURCE_PATH, null));
         if (mid == null) {
             return;
@@ -144,9 +148,19 @@ public class SourceBackedRelatedOwnersService {
         double statScore = asDouble(source.extractValue(STAT_SCORE_SOURCE_PATH, null));
         long viewCount = asLong(source.extractValue(STAT_VIEW_SOURCE_PATH, null), 0L);
         long insertAt = asLong(source.extractValue(INSERT_AT_SOURCE_PATH, null), 0L);
-        RelatedOwnerDocSignals docSignals = RelatedOwnerQueryTuning.docSignals(nowEpochSeconds, hitScore, rank, statScore, viewCount, insertAt);
+        SeedTermMatch seedTermMatch = matchSeedTerms(fieldContexts, source, seedTermProfiles);
+        RelatedOwnerDocSignals docSignals = RelatedOwnerQueryTuning.docSignals(
+            nowEpochSeconds,
+            hitScore,
+            rank,
+            statScore,
+            viewCount,
+            insertAt,
+            seedTermMatch.coverage(),
+            seedTermMatch.matchedTermCount(),
+            seedTermMatch.matchedStrongTermCount());
         owners.computeIfAbsent(mid, RelatedOwnerAccumulator::new)
-                .add(docId, ownerName, docSignals);
+            .add(docId, ownerName, docSignals, seedTermMatch);
     }
 
     private List<FieldContext> resolveFieldContexts(IndexService indexService, Collection<String> fields) {
@@ -229,7 +243,7 @@ public class SourceBackedRelatedOwnersService {
                 false));
         List<String> expansions = new ArrayList<>();
         for (LuceneIndexSuggester.SuggestionOption suggestion : suggestions) {
-            String candidate = normalize(suggestion.text());
+            String candidate = TextNormalization.normalizeLower(suggestion.text());
             if (!isUsefulExpansionTerm(candidate, seedTerms)) {
                 continue;
             }
@@ -262,7 +276,7 @@ public class SourceBackedRelatedOwnersService {
             CharTermAttribute termAttribute = tokenStream.addAttribute(CharTermAttribute.class);
             tokenStream.reset();
             while (tokenStream.incrementToken()) {
-                String normalized = normalize(termAttribute.toString());
+                String normalized = TextNormalization.normalizeLower(termAttribute.toString());
                 if (RelatedOwnerQueryTuning.isUsefulSeedTerm(normalized)) {
                     tokens.add(normalized);
                 }
@@ -274,7 +288,10 @@ public class SourceBackedRelatedOwnersService {
 
     private static List<String> selectQueryTerms(LinkedHashSet<String> seedTerms, String text) {
         List<String> orderedTerms = new ArrayList<>(seedTerms);
-        orderedTerms.sort(Comparator.comparingInt(String::length).reversed().thenComparing(String::compareTo));
+        orderedTerms.sort(Comparator
+                .comparingInt(RelatedOwnerQueryTuning::seedTermPriority).reversed()
+                .thenComparing(Comparator.comparingInt(String::length).reversed())
+                .thenComparing(String::compareTo));
         List<String> selected = new ArrayList<>();
         int maxQueryTerms = RelatedOwnerQueryTuning.maxQueryTerms(text, orderedTerms.size());
         for (String term : orderedTerms) {
@@ -296,6 +313,71 @@ public class SourceBackedRelatedOwnersService {
             }
         }
         return selected;
+    }
+
+    private static List<SeedTermProfile> buildSeedTermProfiles(List<String> selectedTerms) {
+        if (selectedTerms.isEmpty()) {
+            return List.of();
+        }
+        List<SeedTermProfile> weighted = new ArrayList<>(selectedTerms.size());
+        for (int index = 0; index < selectedTerms.size(); index++) {
+            String term = selectedTerms.get(index);
+            double weight = RelatedOwnerQueryTuning.seedTermBoost(term, index);
+            weighted.add(new SeedTermProfile(term, weight, RelatedOwnerQueryTuning.isStrongSeedTerm(term)));
+        }
+        List<SeedTermProfile> discriminative = weighted.stream()
+                .filter(profile -> profile.strongSignal() || profile.term().codePointCount(0, profile.term().length()) >= 5)
+                .toList();
+        List<SeedTermProfile> chosen = discriminative.isEmpty()
+                ? weighted.stream().limit(Math.min(2, weighted.size())).toList()
+                : discriminative;
+        double totalWeight = chosen.stream().mapToDouble(SeedTermProfile::weight).sum();
+        if (totalWeight <= 0.0d) {
+            return List.of();
+        }
+        List<SeedTermProfile> normalized = new ArrayList<>(chosen.size());
+        for (SeedTermProfile profile : chosen) {
+            normalized.add(new SeedTermProfile(profile.term(), profile.weight() / totalWeight, profile.strongSignal()));
+        }
+        return List.copyOf(normalized);
+    }
+
+    private SeedTermMatch matchSeedTerms(
+            List<FieldContext> fieldContexts,
+            Source source,
+            List<SeedTermProfile> seedTermProfiles) throws IOException {
+        if (seedTermProfiles.isEmpty()) {
+            return SeedTermMatch.empty();
+        }
+        LinkedHashSet<String> analyzedTokens = new LinkedHashSet<>();
+        for (FieldContext fieldContext : fieldContexts) {
+            Object rawValue = source.extractValue(fieldContext.sourcePath(), null);
+            for (String value : SourceValueUtils.flattenStringValues(rawValue)) {
+                analyzedTokens.addAll(analyze(fieldContext.analyzer(), fieldContext.indexField(), value));
+            }
+        }
+
+        LinkedHashSet<String> matchedTerms = new LinkedHashSet<>();
+        double coverage = 0.0d;
+        int matchedStrongTermCount = 0;
+        for (SeedTermProfile profile : seedTermProfiles) {
+            boolean matched = false;
+            for (String token : analyzedTokens) {
+                if (token.equals(profile.term())) {
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched) {
+                continue;
+            }
+            matchedTerms.add(profile.term());
+            coverage += profile.weight();
+            if (profile.strongSignal()) {
+                matchedStrongTermCount++;
+            }
+        }
+        return new SeedTermMatch(matchedTerms, Math.min(1.0d, coverage), matchedTerms.size(), matchedStrongTermCount);
     }
 
     private static boolean isUsefulExpansionTerm(String candidate, LinkedHashSet<String> seedTerms) {
@@ -332,36 +414,8 @@ public class SourceBackedRelatedOwnersService {
         return field;
     }
 
-    private static String normalize(String value) {
-        if (value == null || value.isBlank()) {
-            return "";
-        }
-        return value.trim().toLowerCase(Locale.ROOT);
-    }
-
     private static String normalizeOwnerName(String value) {
-        if (value == null || value.isBlank()) {
-            return "";
-        }
-        String collapsed = String.join(" ", value.trim().split("\\s+"));
-        int ascii = 0;
-        int cjk = 0;
-        for (int index = 0; index < collapsed.length(); ) {
-            int codePoint = collapsed.codePointAt(index);
-            index += Character.charCount(codePoint);
-            if (Character.isWhitespace(codePoint)) {
-                continue;
-            }
-            if (codePoint < 128 && Character.isLetterOrDigit(codePoint)) {
-                ascii++;
-            } else if (Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN) {
-                cjk++;
-            }
-        }
-        if (cjk > 0 && cjk >= ascii) {
-            return collapsed.replace(" ", "");
-        }
-        return collapsed;
+        return TextNormalization.normalizeOwnerDisplayName(value);
     }
 
     private static String asString(Object value) {
@@ -408,7 +462,10 @@ public class SourceBackedRelatedOwnersService {
             double rankingWeight,
             double representativeSignal,
             double qualitySignal,
-            double influenceSignal) {
+            double influenceSignal,
+            double termCoverage,
+            int matchedTermCount,
+            int matchedStrongTermCount) {
     }
 
     private record RelatedOwnerDocContribution(
@@ -417,7 +474,11 @@ public class SourceBackedRelatedOwnersService {
             double rankingWeight,
             double representativeSignal,
             double qualitySignal,
-            double influenceSignal) {
+            double influenceSignal,
+            double termCoverage,
+            int matchedTermCount,
+            int matchedStrongTermCount,
+            java.util.Set<String> matchedTerms) {
 
         private RelatedOwnerDocContribution preferBetter(RelatedOwnerDocContribution other) {
             if (other == null) {
@@ -452,14 +513,18 @@ public class SourceBackedRelatedOwnersService {
             this.mid = mid;
         }
 
-        private void add(int docId, String ownerName, RelatedOwnerDocSignals docSignals) {
+        private void add(int docId, String ownerName, RelatedOwnerDocSignals docSignals, SeedTermMatch seedTermMatch) {
             RelatedOwnerDocContribution contribution = new RelatedOwnerDocContribution(
                     ownerName,
                     docSignals.topicWeight(),
                     docSignals.rankingWeight(),
                     docSignals.representativeSignal(),
                     docSignals.qualitySignal(),
-                    docSignals.influenceSignal());
+                docSignals.influenceSignal(),
+                docSignals.termCoverage(),
+                docSignals.matchedTermCount(),
+                docSignals.matchedStrongTermCount(),
+                seedTermMatch.matchedTerms());
             contributionsByDoc.merge(docId, contribution, RelatedOwnerDocContribution::preferBetter);
         }
 
@@ -474,31 +539,55 @@ public class SourceBackedRelatedOwnersService {
                     .toList();
             double bestRepresentative = contributions.get(0).representativeSignal();
             double secondRepresentative = contributions.size() > 1 ? contributions.get(1).representativeSignal() : 0.0d;
-                        double thirdRepresentative = contributions.size() > 2 ? contributions.get(2).representativeSignal() : 0.0d;
+                double thirdRepresentative = contributions.size() > 2 ? contributions.get(2).representativeSignal() : 0.0d;
             double maxTopicWeight = contributions.stream().mapToDouble(RelatedOwnerDocContribution::topicWeight).max().orElse(0.0d);
             double totalTopicWeight = contributions.stream().mapToDouble(RelatedOwnerDocContribution::topicWeight).sum();
-                        double topCoverageWeight = contributions.stream()
-                            .limit(3)
-                            .mapToDouble(RelatedOwnerDocContribution::topicWeight)
-                            .sum();
-                        double averageCoverageRepresentative = contributions.stream()
-                            .limit(3)
-                            .mapToDouble(RelatedOwnerDocContribution::representativeSignal)
-                            .average()
-                            .orElse(0.0d);
+            double topCoverageWeight = contributions.stream()
+                    .limit(3)
+                    .mapToDouble(RelatedOwnerDocContribution::topicWeight)
+                    .sum();
+            double averageCoverageRepresentative = contributions.stream()
+                    .limit(3)
+                    .mapToDouble(RelatedOwnerDocContribution::representativeSignal)
+                    .average()
+                    .orElse(0.0d);
+            double maxTermCoverage = contributions.stream().mapToDouble(RelatedOwnerDocContribution::termCoverage).max().orElse(0.0d);
+            double totalTermCoverage = contributions.stream().mapToDouble(RelatedOwnerDocContribution::termCoverage).sum();
+            double averageMatchedTermCount = contributions.stream()
+                    .limit(4)
+                    .mapToDouble(RelatedOwnerDocContribution::matchedTermCount)
+                    .average()
+                    .orElse(0.0d);
+            LinkedHashSet<String> matchedSeedTerms = new LinkedHashSet<>();
+            for (RelatedOwnerDocContribution contribution : contributions) {
+                matchedSeedTerms.addAll(contribution.matchedTerms());
+            }
+            long multiTermDocs = contributions.stream()
+                    .filter(contribution -> contribution.matchedTermCount() >= 2)
+                    .count();
+            int matchedStrongTerms = contributions.stream()
+                    .mapToInt(RelatedOwnerDocContribution::matchedStrongTermCount)
+                    .max()
+                    .orElse(0);
             double maxQuality = contributions.stream().mapToDouble(RelatedOwnerDocContribution::qualitySignal).max().orElse(0.0d);
             double maxInfluence = contributions.stream().mapToDouble(RelatedOwnerDocContribution::influenceSignal).max().orElse(0.0d);
-                        double coverageDepth = Math.log1p(docFreq());
-                        return (bestRepresentative * 112.0d)
-                            + (secondRepresentative * 52.0d)
-                            + (thirdRepresentative * 24.0d)
-                            + (maxTopicWeight * 34.0d)
-                            + (topCoverageWeight * 28.0d)
-                            + (averageCoverageRepresentative * 16.0d)
-                            + (Math.log1p(totalTopicWeight) * 16.0d)
+            double coverageDepth = Math.log1p(docFreq());
+                return (bestRepresentative * 112.0d)
+                    + (secondRepresentative * 52.0d)
+                    + (thirdRepresentative * 24.0d)
+                    + (maxTopicWeight * 34.0d)
+                    + (topCoverageWeight * 28.0d)
+                    + (averageCoverageRepresentative * 16.0d)
+                    + (Math.log1p(totalTopicWeight) * 16.0d)
+                    + (maxTermCoverage * 8.0d)
+                    + (Math.log1p(totalTermCoverage) * 3.0d)
+                    + (matchedSeedTerms.size() * 4.0d)
+                    + (matchedStrongTerms * 6.0d)
+                    + (multiTermDocs * 4.0d)
+                    + (averageMatchedTermCount * 2.0d)
                     + (maxQuality * 12.0d)
                     + (maxInfluence * 16.0d)
-                            + (coverageDepth * 28.0d);
+                    + (coverageDepth * 28.0d);
         }
 
         private int docFreq() {
@@ -523,5 +612,14 @@ public class SourceBackedRelatedOwnersService {
     }
 
     public record RelatedOwnerResult(long mid, String name, int docFreq, float score) {
+    }
+
+    private record SeedTermProfile(String term, double weight, boolean strongSignal) {
+    }
+
+    private record SeedTermMatch(java.util.Set<String> matchedTerms, double coverage, int matchedTermCount, int matchedStrongTermCount) {
+        private static SeedTermMatch empty() {
+            return new SeedTermMatch(java.util.Set.of(), 0.0d, 0, 0);
+        }
     }
 }

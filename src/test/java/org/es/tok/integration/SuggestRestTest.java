@@ -154,6 +154,8 @@ public class SuggestRestTest {
         indexDocument("8", "影视飓风");
         indexDocument("9", "红警");
         indexDocument("10", "战鹰");
+        indexDocument("21", "红警 的 吧 吗 教学");
+        indexDocument("22", "红警 教学 实战");
         indexOwnerDocument("11", 1L, "影视飓风", 88.0f, 5_000_000L, 1_710_000_000L);
         indexOwnerDocument("12", 1L, "影视飓风", 72.0f, 3_000_000L, 1_710_000_100L);
         indexOwnerDocument("13", 2L, "影视剧风", 12.0f, 200_000L, 1_710_000_000L);
@@ -245,6 +247,26 @@ public class SuggestRestTest {
         assertTrue(result.contains("actions"));
         assertTrue(result.contains("\"type\":\"associate\""));
     }
+
+      @Test
+      public void testAssociateSuggestFiltersFunctionWordCandidates() throws Exception {
+        String query = """
+            {
+              "text": "红警",
+              "mode": "associate",
+              "fields": ["content"],
+              "size": 5,
+              "scan_limit": 32,
+              "cache": true
+            }
+            """;
+
+        String result = performSuggest(query);
+        assertTrue(result, result.contains("教学"));
+        assertFalse(result, result.contains("\"text\":\"的\""));
+        assertFalse(result, result.contains("\"text\":\"吧\""));
+        assertFalse(result, result.contains("\"text\":\"吗\""));
+      }
 
     @Test
     public void testPinyinPrefixSuggestEndpoint() throws Exception {

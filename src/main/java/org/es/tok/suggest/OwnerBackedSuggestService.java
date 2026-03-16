@@ -19,6 +19,7 @@ import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.index.mapper.SourceFieldMetrics;
 import org.elasticsearch.search.lookup.Source;
 import org.elasticsearch.search.lookup.SourceProvider;
+import org.es.tok.text.TextNormalization;
 import org.es.tok.suggest.LuceneIndexSuggester.SuggestionOption;
 
 import java.io.IOException;
@@ -30,7 +31,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 public class OwnerBackedSuggestService {
@@ -307,12 +307,12 @@ public class OwnerBackedSuggestService {
             return List.of();
         }
 
-        String collapsed = collapseWhitespace(text).trim();
+        String collapsed = TextNormalization.collapseWhitespace(text).trim();
         if (collapsed.isBlank()) {
             return List.of();
         }
 
-        String tightened = tightenCjkAdjacentWhitespace(collapsed);
+        String tightened = TextNormalization.tightenCjkAdjacentWhitespace(collapsed);
         if (tightened.equals(collapsed)) {
             return List.of(collapsed);
         }
@@ -350,7 +350,7 @@ public class OwnerBackedSuggestService {
     private Query buildAnalyzedOwnerQuery(List<FieldContext> fieldContexts, String text) throws IOException {
         LinkedHashSet<String> seedTerms = analyzeSeedTerms(fieldContexts, text);
         if (seedTerms.isEmpty()) {
-            seedTerms.add(normalize(text));
+            seedTerms.add(TextNormalization.normalizeLower(text));
         }
 
         List<String> selectedTerms = selectQueryTerms(seedTerms, text);
@@ -387,7 +387,7 @@ public class OwnerBackedSuggestService {
             CharTermAttribute termAttribute = tokenStream.addAttribute(CharTermAttribute.class);
             tokenStream.reset();
             while (tokenStream.incrementToken()) {
-                String normalized = normalize(termAttribute.toString());
+                String normalized = TextNormalization.normalizeLower(termAttribute.toString());
                 if (!normalized.isBlank()) {
                     tokens.add(normalized);
                 }
@@ -542,7 +542,7 @@ public class OwnerBackedSuggestService {
             return false;
         }
 
-        String lower = ownerName.toLowerCase(Locale.ROOT);
+        String lower = TextNormalization.normalizeLower(ownerName);
         StringBuilder segment = new StringBuilder();
         for (int index = 0; index < lower.length(); ) {
             int codePoint = lower.codePointAt(index);
@@ -663,53 +663,13 @@ public class OwnerBackedSuggestService {
             }
         }
         if (selected.isEmpty()) {
-            return List.of(normalize(text));
+            return List.of(TextNormalization.normalizeLower(text));
         }
         return selected;
     }
 
-    private static String normalize(String value) {
-        if (value == null || value.isBlank()) {
-            return "";
-        }
-        return value.trim().toLowerCase(Locale.ROOT);
-    }
-
     private static String normalizeOwnerName(String value) {
-        String normalized = normalize(value);
-        if (normalized.isBlank()) {
-            return normalized;
-        }
-        return tightenCjkAdjacentWhitespace(collapseWhitespace(normalized));
-    }
-
-    private static String collapseWhitespace(String text) {
-        return String.join(" ", text.trim().split("\\s+"));
-    }
-
-    private static String tightenCjkAdjacentWhitespace(String text) {
-        if (text == null || text.isBlank() || text.indexOf(' ') < 0) {
-            return text == null ? "" : text;
-        }
-
-        int ascii = 0;
-        int cjk = 0;
-        for (int index = 0; index < text.length(); ) {
-            int codePoint = text.codePointAt(index);
-            index += Character.charCount(codePoint);
-            if (Character.isWhitespace(codePoint)) {
-                continue;
-            }
-            if (codePoint < 128 && Character.isLetterOrDigit(codePoint)) {
-                ascii++;
-            } else if (Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN) {
-                cjk++;
-            }
-        }
-        if (cjk > 0 && cjk >= ascii) {
-            return text.replace(" ", "");
-        }
-        return text;
+        return TextNormalization.normalizeOwnerLookupName(value);
     }
 
     private static String asString(Object value) {
