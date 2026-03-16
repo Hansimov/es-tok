@@ -4,7 +4,7 @@
 
 本指南覆盖三类使用方式：
 
-1. 作为 Elasticsearch 插件使用 tokenizer、analyzer、query DSL、REST suggest。
+1. 作为 Elasticsearch 插件使用 tokenizer、analyzer、query DSL、REST token/owner/video 关系接口。
 2. 作为调试接口调用 `/_es_tok/analyze`。
 3. 作为 bridge CLI 在 Python 或其他非 JVM 进程中复用分析能力。
 
@@ -181,11 +181,11 @@ POST /test/_search
 }
 ```
 
-## 5. 使用 suggest 接口
+## 5. 使用 `related_tokens_by_tokens` 接口
 
 ### 请求约束
 
-`/_es_tok/suggest` 至少需要：
+`/_es_tok/related_tokens_by_tokens` 至少需要：
 
 - `text`
 - `fields`
@@ -201,7 +201,7 @@ POST /test/_search
 ### Prefix suggest
 
 ```json
-POST /bili_videos_dev6/_es_tok/suggest
+POST /bili_videos_dev6/_es_tok/related_tokens_by_tokens
 {
   "text": "黑神",
   "mode": "prefix",
@@ -215,7 +215,7 @@ POST /bili_videos_dev6/_es_tok/suggest
 ### Next-token suggest
 
 ```json
-POST /bili_videos_dev6/_es_tok/suggest
+POST /bili_videos_dev6/_es_tok/related_tokens_by_tokens
 {
   "text": "黑神话",
   "mode": "next_token",
@@ -228,7 +228,7 @@ POST /bili_videos_dev6/_es_tok/suggest
 ### Correction suggest
 
 ```json
-POST /bili_videos_dev6/_es_tok/suggest
+POST /bili_videos_dev6/_es_tok/related_tokens_by_tokens
 {
   "text": "yin yue pai xing",
   "mode": "correction",
@@ -244,7 +244,7 @@ POST /bili_videos_dev6/_es_tok/suggest
 ### Auto 模式
 
 ```json
-POST /bili_videos_dev6/_es_tok/suggest
+POST /bili_videos_dev6/_es_tok/related_tokens_by_tokens
 {
   "text": "影视飓",
   "mode": "auto",
@@ -265,18 +265,22 @@ POST /bili_videos_dev6/_es_tok/suggest
 - `type`：候选类型。
 - `shard_count`：命中候选的 shard 数。
 
-## 6. 使用 related owners 接口
+兼容说明：旧的 `/_es_tok/suggest` 路由仍然可用，但推荐新调用方直接切到 `related_tokens_by_tokens`。
+
+## 6. 使用 `related_owners_by_tokens` 接口
 
 ```json
-POST /bili_videos_dev6/_es_tok/related_owners
+POST /bili_videos_dev6/_es_tok/related_owners_by_tokens
 {
   "text": "黑神话",
-  "fields": ["title.assoc", "tags.assoc"],
+  "fields": ["title.words", "tags.words"],
   "size": 10,
   "scan_limit": 128,
   "use_pinyin": true
 }
 ```
+
+兼容说明：旧的 `/_es_tok/related_owners` 路由仍然可用，但推荐新调用方直接切到 `related_owners_by_tokens`。
 
 返回的 `owners` 数组包含：
 
@@ -286,7 +290,53 @@ POST /bili_videos_dev6/_es_tok/related_owners
 - `score`
 - `shard_count`
 
-## 7. 使用 bridge CLI
+## 7. 使用 graph relations 接口
+
+### Videos -> Videos
+
+```json
+POST /bili_videos_dev6/_es_tok/related_videos_by_videos
+{
+  "bvids": ["BV1xxxxxx"],
+  "size": 10,
+  "scan_limit": 128
+}
+```
+
+### Videos -> Owners
+
+```json
+POST /bili_videos_dev6/_es_tok/related_owners_by_videos
+{
+  "bvids": ["BV1xxxxxx"],
+  "size": 10,
+  "scan_limit": 128
+}
+```
+
+### Owners -> Videos
+
+```json
+POST /bili_videos_dev6/_es_tok/related_videos_by_owners
+{
+  "mids": [123456],
+  "size": 10,
+  "scan_limit": 128
+}
+```
+
+### Owners -> Owners
+
+```json
+POST /bili_videos_dev6/_es_tok/related_owners_by_owners
+{
+  "mids": [123456],
+  "size": 10,
+  "scan_limit": 128
+}
+```
+
+## 8. 使用 bridge CLI
 
 ### 构建 fat jar
 
@@ -309,9 +359,9 @@ echo '{
 
 bridge 与 REST analyze 使用同一套 payload 结构。成功时退出码为 `0`；当 `text` 缺失或为空导致参数校验失败时，返回 `{ "error": ... }` 并以退出码 `2` 结束。
 
-## 8. 常见使用建议
+## 9. 常见使用建议
 
 1. 先用 `/_es_tok/analyze` 把 payload 调通，再落到索引 settings。
-2. suggest 接口不要直接对普通全文字段试验，应该使用专门的 suggest / assoc 字段。
+2. `related_tokens_by_tokens` 与 `related_owners_by_tokens` 不要直接对普通全文字段试验，应该使用专门的 `*.suggest`、`*.assoc` 或 `*.words` 字段。
 3. 线上联调时，先确认 `/_cat/es_tok` 是否 ready，再评估第一次请求耗时。
 4. 如果插件改动牵涉 mapping 或写入字段，不要只重载插件；应同步重建索引并回灌数据。

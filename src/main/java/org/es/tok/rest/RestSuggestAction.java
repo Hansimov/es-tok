@@ -26,8 +26,12 @@ public class RestSuggestAction extends BaseRestHandler {
         return List.of(
                 new Route(GET, "/_es_tok/suggest"),
                 new Route(POST, "/_es_tok/suggest"),
+                new Route(GET, "/_es_tok/related_tokens_by_tokens"),
+                new Route(POST, "/_es_tok/related_tokens_by_tokens"),
                 new Route(GET, "/{index}/_es_tok/suggest"),
-                new Route(POST, "/{index}/_es_tok/suggest"));
+                new Route(POST, "/{index}/_es_tok/suggest"),
+                new Route(GET, "/{index}/_es_tok/related_tokens_by_tokens"),
+                new Route(POST, "/{index}/_es_tok/related_tokens_by_tokens"));
     }
 
     @Override

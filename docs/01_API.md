@@ -5,7 +5,7 @@
 本文档定义 ES-TOK 当前对外暴露的接口与配置语义，覆盖：
 
 - Elasticsearch tokenizer / analyzer 配置
-- REST 诊断、分析、suggest、related owners 接口
+- REST 诊断、分析、token/owner/video 关系接口
 - Query DSL 扩展
 - Java 侧公共入口
 - bridge CLI 契约
@@ -23,8 +23,12 @@
 | REST | `/_cat/es_tok` | 查看 warmup 状态与分析版本 |
 | REST | `/_cat/es_tok/version` | 查看插件版本与版本指纹 |
 | REST | `/_es_tok/analyze` | 直接调试分析 payload |
-| REST | `/_es_tok/suggest` | suggestions 接口，支持索引级路由 |
-| REST | `/_es_tok/related_owners` | 相关 owner 聚合接口，支持索引级路由 |
+| REST | `/_es_tok/related_tokens_by_tokens` | token 关系接口，支持 prefix / correction / associate / next_token / auto；`/_es_tok/suggest` 为兼容别名 |
+| REST | `/_es_tok/related_owners_by_tokens` | 基于输入文本聚合相关 owner；`/_es_tok/related_owners` 为兼容别名 |
+| REST | `/_es_tok/related_videos_by_videos` | 基于视频 seed 找相关视频 |
+| REST | `/_es_tok/related_owners_by_videos` | 基于视频 seed 找相关 owner |
+| REST | `/_es_tok/related_videos_by_owners` | 基于 owner seed 找相关视频 |
+| REST | `/_es_tok/related_owners_by_owners` | 基于 owner seed 找相关 owner |
 
 ## 2. 分析配置模型
 
@@ -171,10 +175,15 @@
 }
 ```
 
-### 3.4 `GET|POST /_es_tok/suggest`
+### 3.4 `GET|POST /_es_tok/related_tokens_by_tokens`
 
 也支持带索引路由：
 
+- `GET|POST /{index}/_es_tok/related_tokens_by_tokens`
+
+兼容说明：
+
+- `GET|POST /_es_tok/suggest`
 - `GET|POST /{index}/_es_tok/suggest`
 
 请求字段：
@@ -183,7 +192,7 @@
 |------|------|--------|------|
 | `text` | string | 无 | 查询文本；除 `prewarm_pinyin=true` 预热请求外必填 |
 | `mode` | string | `prefix` | 支持 `prefix`、`associate`、`next_token`、`correction`、`auto` |
-| `fields` | string[] 或逗号分隔 string | 无 | 必填，suggest 字段列表 |
+| `fields` | string[] 或逗号分隔 string | 无 | 必填，token 关系字段列表 |
 | `size` | integer | `5` | 返回候选数量 |
 | `scan_limit` | integer | `64` | 扫描候选上限 |
 | `min_prefix_length` | integer | `1` | prefix 模式最小前缀长度 |
@@ -223,10 +232,15 @@
 }
 ```
 
-### 3.5 `GET|POST /_es_tok/related_owners`
+### 3.5 `GET|POST /_es_tok/related_owners_by_tokens`
 
 也支持带索引路由：
 
+- `GET|POST /{index}/_es_tok/related_owners_by_tokens`
+
+兼容说明：
+
+- `GET|POST /_es_tok/related_owners`
 - `GET|POST /{index}/_es_tok/related_owners`
 
 请求字段：
@@ -262,6 +276,50 @@
   ]
 }
 ```
+
+### 3.6 `GET|POST /_es_tok/related_videos_by_videos`
+
+也支持带索引路由：
+
+- `GET|POST /{index}/_es_tok/related_videos_by_videos`
+
+请求字段：
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `bvids` | string[] 或逗号分隔 string | 无 | 必填，视频 seed 列表 |
+| `size` | integer | `10` | 返回视频数量 |
+| `scan_limit` | integer | `128` | 扫描上限 |
+
+### 3.7 `GET|POST /_es_tok/related_owners_by_videos`
+
+也支持带索引路由：
+
+- `GET|POST /{index}/_es_tok/related_owners_by_videos`
+
+请求字段与上节相同，但返回 `owners` 数组。
+
+### 3.8 `GET|POST /_es_tok/related_videos_by_owners`
+
+也支持带索引路由：
+
+- `GET|POST /{index}/_es_tok/related_videos_by_owners`
+
+请求字段：
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `mids` | long[] 或逗号分隔 string | 无 | 必填，owner seed 列表 |
+| `size` | integer | `10` | 返回视频数量 |
+| `scan_limit` | integer | `128` | 扫描上限 |
+
+### 3.9 `GET|POST /_es_tok/related_owners_by_owners`
+
+也支持带索引路由：
+
+- `GET|POST /{index}/_es_tok/related_owners_by_owners`
+
+请求字段与上节相同，但返回 `owners` 数组。
 
 ## 4. Query DSL 扩展
 

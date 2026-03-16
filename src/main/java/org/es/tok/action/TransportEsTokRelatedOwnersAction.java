@@ -170,7 +170,7 @@ public class TransportEsTokRelatedOwnersAction extends TransportBroadcastAction<
     }
 
     private static List<String> resolveSearchFields(IndexService indexService, List<String> requestFields, boolean usePinyin) {
-        if (!usePinyin || requestFields == null || requestFields.isEmpty()) {
+        if (requestFields == null || requestFields.isEmpty()) {
             return requestFields;
         }
 
@@ -182,14 +182,50 @@ public class TransportEsTokRelatedOwnersAction extends TransportBroadcastAction<
             }
             if (field.endsWith(".words")) {
                 String suggestField = field.substring(0, field.length() - ".words".length()) + ".suggest";
-                if (mappedFields.contains(suggestField)) {
+                if (usePinyin && mappedFields.contains(suggestField)) {
                     resolved.add(suggestField);
                     continue;
                 }
             }
             resolved.add(field);
         }
+        maybeAddDescWordsField(mappedFields, resolved, requestFields);
         return List.copyOf(resolved);
+    }
+
+    private static void maybeAddDescWordsField(
+            Set<String> mappedFields,
+            LinkedHashSet<String> resolved,
+            List<String> requestFields) {
+        if (!mappedFields.contains("desc.words")) {
+            return;
+        }
+        for (String field : requestFields) {
+            String sourceField = sourceField(field);
+            if ("title".equals(sourceField) || "tags".equals(sourceField) || "pages.parts".equals(sourceField) || "desc".equals(sourceField)) {
+                resolved.add("desc.words");
+                return;
+            }
+        }
+    }
+
+    private static String sourceField(String field) {
+        if (field == null || field.isBlank()) {
+            return "";
+        }
+        if (field.endsWith(".keyword")) {
+            return field.substring(0, field.length() - ".keyword".length());
+        }
+        if (field.endsWith(".words")) {
+            return field.substring(0, field.length() - ".words".length());
+        }
+        if (field.endsWith(".suggest")) {
+            return field.substring(0, field.length() - ".suggest".length());
+        }
+        if (field.endsWith(".assoc")) {
+            return field.substring(0, field.length() - ".assoc".length());
+        }
+        return field;
     }
 
     @Override

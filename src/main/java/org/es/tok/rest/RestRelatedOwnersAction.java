@@ -25,8 +25,12 @@ public class RestRelatedOwnersAction extends BaseRestHandler {
         return List.of(
                 new Route(GET, "/_es_tok/related_owners"),
                 new Route(POST, "/_es_tok/related_owners"),
+                new Route(GET, "/_es_tok/related_owners_by_tokens"),
+                new Route(POST, "/_es_tok/related_owners_by_tokens"),
                 new Route(GET, "/{index}/_es_tok/related_owners"),
-                new Route(POST, "/{index}/_es_tok/related_owners"));
+                new Route(POST, "/{index}/_es_tok/related_owners"),
+                new Route(GET, "/{index}/_es_tok/related_owners_by_tokens"),
+                new Route(POST, "/{index}/_es_tok/related_owners_by_tokens"));
     }
 
     @Override

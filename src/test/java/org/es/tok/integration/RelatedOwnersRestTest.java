@@ -110,6 +110,16 @@ public class RelatedOwnersRestTest {
                           }
                         }
                       },
+                      "desc": {
+                        "type": "text",
+                        "analyzer": "standard",
+                        "fields": {
+                          "words": {
+                            "type": "text",
+                            "analyzer": "es_tok_analyzer"
+                          }
+                        }
+                      },
                       "owner": {
                         "properties": {
                           "mid": {
@@ -158,6 +168,9 @@ public class RelatedOwnersRestTest {
         indexTopicDocument("12", "红警运营思路", List.of("红警", "运营"), 1005L, "红警持续创作", 3.5f, 55_000L, now - 3_600L);
         indexTopicDocument("13", "红警阵容拆解", List.of("红警", "拆解"), 1005L, "红警持续创作", 3.4f, 52_000L, now - 7_200L);
         indexTopicDocument("14", "红警局势判断", List.of("红警", "判断"), 1005L, "红警持续创作", 3.3f, 48_000L, now - 10_800L);
+        indexTopicDocument("15", "摄影器材入门", List.of("摄影", "器材"), "摄影技巧和摄像布光都在这里", 3001L, "镜头研究所", 3.8f, 31_000L, now - 4_800L);
+        indexTopicDocument("16", "运镜补光技巧", List.of("运镜", "补光"), "摄影与摄像教程实战经验", 3001L, "镜头研究所", 3.5f, 28_000L, now - 9_600L);
+        indexTopicDocument("17", "摄像布光教程", List.of("摄像", "布光"), "运镜实战与画面调度", 3002L, "摄像课堂", 3.6f, 29_000L, now - 3_600L);
 
         client.performRequest(new Request("POST", "/" + TEST_INDEX + "/_refresh"));
         Thread.sleep(500L);
@@ -214,8 +227,8 @@ public class RelatedOwnersRestTest {
         assertFalse(result, result.contains("\"mid\":2003"));
     }
 
-      @Test
-      public void testRelatedOwnersPrefersTopicCoverageOverSingleExplosiveHit() throws Exception {
+    @Test
+    public void testRelatedOwnersPrefersTopicCoverageOverSingleExplosiveHit() throws Exception {
         String result = performRelatedOwners("""
             {
               "text": "红警",
@@ -232,12 +245,29 @@ public class RelatedOwnersRestTest {
         assertTrue(result, coverageOwner >= 0);
         assertTrue(result, singleExplosiveOwner >= 0);
         assertTrue(result, coverageOwner < singleExplosiveOwner);
-      }
+    }
+
+    @Test
+    public void testRelatedOwnersUsesDescAndTokenExpansion() throws Exception {
+        String result = performRelatedOwners("""
+            {
+              "text": "摄影",
+              "fields": ["title.words", "tags.words"],
+              "size": 6,
+              "scan_limit": 64,
+              "use_pinyin": true
+            }
+            """);
+
+        assertTrue(result, result.contains("\"mid\":3001"));
+        assertTrue(result, result.contains("\"mid\":3002"));
+    }
 
     private void indexTopicDocument(
             String id,
             String title,
             List<String> tags,
+          String desc,
             long mid,
             String ownerName,
             float statScore,
@@ -249,9 +279,10 @@ public class RelatedOwnersRestTest {
                 .collect(Collectors.joining(","));
         request.setJsonEntity(String.format(
                 Locale.ROOT,
-                "{\"title\":\"%s\",\"tags\":[%s],\"owner\":{\"mid\":%d,\"name\":\"%s\"},\"stat_score\":%.1f,\"stat\":{\"view\":%d},\"insert_at\":%d}",
+            "{\"title\":\"%s\",\"tags\":[%s],\"desc\":\"%s\",\"owner\":{\"mid\":%d,\"name\":\"%s\"},\"stat_score\":%.1f,\"stat\":{\"view\":%d},\"insert_at\":%d}",
                 title,
                 tagJson,
+            desc,
                 mid,
                 ownerName,
                 statScore,
@@ -259,6 +290,18 @@ public class RelatedOwnersRestTest {
                 insertAt));
         client.performRequest(request);
     }
+
+      private void indexTopicDocument(
+          String id,
+          String title,
+          List<String> tags,
+          long mid,
+          String ownerName,
+          float statScore,
+          long viewCount,
+          long insertAt) throws Exception {
+        indexTopicDocument(id, title, tags, title, mid, ownerName, statScore, viewCount, insertAt);
+      }
 
     private String performRelatedOwners(String jsonBody) throws Exception {
         Request request = new Request("POST", "/" + TEST_INDEX + "/_es_tok/related_owners");

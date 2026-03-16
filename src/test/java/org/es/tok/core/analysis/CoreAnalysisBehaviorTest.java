@@ -113,6 +113,38 @@ public class CoreAnalysisBehaviorTest {
     }
 
     @Test
+    public void testShortMixedAlphaNumericFragmentsDropWhenCoveredByCompactVocab() throws Exception {
+        EsTokConfig config = ConfigBuilder.create()
+                .withVocab("4k")
+                .withCategSplitWord()
+                .withDropDuplicates()
+                .withIgnoreCase()
+                .build();
+
+        List<String> tokens = terms("4K", config);
+
+        assertTrue(tokens.contains("4k"));
+        assertFalse(tokens.contains("4"));
+        assertFalse(tokens.contains("k"));
+    }
+
+    @Test
+    public void testMixedAlphaNumericFragmentsStayWhenOneSideIsMeaningfulSegment() throws Exception {
+        EsTokConfig config = ConfigBuilder.create()
+                .withVocab("v2024")
+                .withCategSplitWord()
+                .withDropDuplicates()
+                .withIgnoreCase()
+                .build();
+
+        List<String> tokens = terms("v2024", config);
+
+        assertTrue(tokens.contains("v2024"));
+        assertTrue(tokens.contains("v"));
+        assertTrue(tokens.contains("2024"));
+    }
+
+    @Test
     public void testDropCogramControlsIntermediateCombinationTokens() throws Exception {
         EsTokConfig keepCograms = ConfigBuilder.create()
                 .withVocab("你的", "名字", "你的名字")

@@ -110,6 +110,8 @@ public class EsTokEngine {
             allTokens = dropDuplicatedTokens(allTokens);
         }
 
+        allTokens = dropRedundantShortAlnumFragments(allTokens);
+
         allTokens = sortTokensByOffset(allTokens);
 
         if (config.getRulesConfig() != null && config.getRulesConfig().hasActiveRules()) {
@@ -254,6 +256,95 @@ public class EsTokEngine {
 
     private boolean isTokenGroup(TokenStrategy.TokenInfo token, String group) {
         return group.equals(token.getGroup());
+    }
+
+    private List<TokenStrategy.TokenInfo> dropRedundantShortAlnumFragments(List<TokenStrategy.TokenInfo> tokens) {
+        if (tokens.isEmpty()) {
+            return tokens;
+        }
+
+        List<TokenStrategy.TokenInfo> retained = new ArrayList<>(tokens);
+        Set<TokenStrategy.TokenInfo> removals = new HashSet<>();
+        for (TokenStrategy.TokenInfo token : tokens) {
+            if (!isTokenGroup(token, "vocab") || !isCompactAsciiAlphaNumeric(token.getText())) {
+                continue;
+            }
+
+            List<TokenStrategy.TokenInfo> fragments = findCoveredSingleCharAlnumFragments(tokens, token);
+            if (fragments.size() < 2) {
+                continue;
+            }
+            if (!hasMixedAlphaNumericFragments(fragments)) {
+                continue;
+            }
+            if (!fragmentsFullySpanToken(fragments, token)) {
+                continue;
+            }
+            removals.addAll(fragments);
+        }
+
+        if (removals.isEmpty()) {
+            return tokens;
+        }
+
+        retained.removeIf(removals::contains);
+        return retained;
+    }
+
+    private List<TokenStrategy.TokenInfo> findCoveredSingleCharAlnumFragments(
+            List<TokenStrategy.TokenInfo> tokens,
+            TokenStrategy.TokenInfo vocabToken) {
+        List<TokenStrategy.TokenInfo> fragments = new ArrayList<>();
+        for (TokenStrategy.TokenInfo candidate : tokens) {
+            if (!isTokenGroup(candidate, "categ")) {
+                continue;
+            }
+            if (!("eng".equals(candidate.getType()) || "arab".equals(candidate.getType()))) {
+                continue;
+            }
+            if (candidate.getStartOffset() < vocabToken.getStartOffset()
+                    || candidate.getEndOffset() > vocabToken.getEndOffset()) {
+                continue;
+            }
+            if (candidate.getText().codePointCount(0, candidate.getText().length()) != 1) {
+                continue;
+            }
+            fragments.add(candidate);
+        }
+        fragments.sort((left, right) -> Integer.compare(left.getStartOffset(), right.getStartOffset()));
+        return fragments;
+    }
+
+    private boolean hasMixedAlphaNumericFragments(List<TokenStrategy.TokenInfo> fragments) {
+        boolean hasDigit = false;
+        boolean hasLetter = false;
+        for (TokenStrategy.TokenInfo fragment : fragments) {
+            if (fragment.getText() == null || fragment.getText().isBlank()) {
+                continue;
+            }
+            int codePoint = fragment.getText().codePointAt(0);
+            hasDigit |= Character.isDigit(codePoint);
+            hasLetter |= Character.isLetter(codePoint);
+        }
+        return hasDigit && hasLetter;
+    }
+
+    private boolean fragmentsFullySpanToken(List<TokenStrategy.TokenInfo> fragments, TokenStrategy.TokenInfo vocabToken) {
+        int expectedOffset = vocabToken.getStartOffset();
+        for (TokenStrategy.TokenInfo fragment : fragments) {
+            if (fragment.getStartOffset() != expectedOffset) {
+                return false;
+            }
+            expectedOffset = fragment.getEndOffset();
+        }
+        return expectedOffset == vocabToken.getEndOffset();
+    }
+
+    private boolean isCompactAsciiAlphaNumeric(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        return text.chars().allMatch(ch -> ch < 128 && Character.isLetterOrDigit(ch));
     }
 
     private boolean isContainedIn(TokenStrategy.TokenInfo token1, TokenStrategy.TokenInfo token2) {

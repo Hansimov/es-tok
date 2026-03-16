@@ -15,7 +15,7 @@
 在动手前，先判断这次改动属于哪一层：
 
 1. 只改分析行为：重点看 core、REST analyze、bridge 和 golden corpus。
-2. 改 query / suggest / related owners：重点看插件适配层、ES 节点、真实索引数据和实际查询结果。
+2. 改 query / token-owner-video relations：重点看插件适配层、ES 节点、真实索引数据和实际查询结果。
 3. 改 mapping 或字段组织：插件和 `bili-scraper` 必须一起调整。
 
 建议同时检查以下来源：
@@ -149,7 +149,7 @@ python -m workers.elastic_videos.commander -ei bili_videos_dev6 -ev elastic_dev 
 
 1. 看索引中的文档样例，确认字段内容、suggest 字段和 assoc 字段确实写入成功
 2. 跑实际查询，验证 `es_tok_query_string`、`es_tok_constraints` 是否与预期一致
-3. 跑实际 suggest / correction / related owners 请求，验证线上真实效果和耗时
+3. 跑实际 `related_tokens_by_tokens` / `related_owners_by_tokens` / graph relations 请求，验证线上真实效果和耗时
 
 建议覆盖：
 
@@ -165,7 +165,7 @@ python -m workers.elastic_videos.commander -ei bili_videos_dev6 -ev elastic_dev 
 
 1. 先确认索引字段和写入内容是否正确
 2. 再确认插件分析行为与查询行为是否一致
-3. 再调 suggest / correction / related owners 的算法参数
+3. 再调 token / owner / video relations 的算法参数
 4. 如有必要，删除索引、重建映射并重新写入数据
 
 如果问题来自设计本身，可以进行较大规模重构。目标是解决根因，而不是在现有结构上持续打补丁。
@@ -182,7 +182,7 @@ python -m workers.elastic_videos.commander -ei bili_videos_dev6 -ev elastic_dev 
 6. 破坏性重建索引
 7. 回灌一小段真实数据
 8. 查看样例文档
-9. 跑实际 suggest / correction / related owners / query 请求
+9. 跑实际 token / owner / video relations / query 请求
 10. 记录问题并进入下一轮
 
 在早期不要一上来灌几百万文档，否则定位问题会很慢；在后期也不要只看 6 小时小样本，否则容易对真实效果过度乐观。

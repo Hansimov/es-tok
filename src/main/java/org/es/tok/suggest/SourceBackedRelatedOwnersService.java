@@ -7,6 +7,7 @@ import org.apache.lucene.index.ReaderUtil;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
@@ -19,6 +20,7 @@ import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.index.mapper.SourceFieldMetrics;
 import org.elasticsearch.search.lookup.Source;
 import org.elasticsearch.search.lookup.SourceProvider;
+import org.es.tok.suggest.LuceneIndexSuggester.CompletionConfig;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -39,6 +41,18 @@ public class SourceBackedRelatedOwnersService {
     private static final String STAT_SCORE_SOURCE_PATH = "stat_score";
     private static final String STAT_VIEW_SOURCE_PATH = "stat.view";
     private static final String INSERT_AT_SOURCE_PATH = "insert_at";
+    private static final float EXPANSION_TERM_BOOST = 0.32f;
+    private static final int MAX_EXPANSION_TERMS = 3;
+
+    private final SourceBackedAssociateSuggester associateSuggester;
+
+    public SourceBackedRelatedOwnersService() {
+        this(new SourceBackedAssociateSuggester());
+    }
+
+    SourceBackedRelatedOwnersService(SourceBackedAssociateSuggester associateSuggester) {
+        this.associateSuggester = associateSuggester;
+    }
 
     public List<RelatedOwnerResult> searchRelatedOwners(
             Engine.Searcher searcher,
@@ -56,7 +70,17 @@ public class SourceBackedRelatedOwnersService {
             return List.of();
         }
 
-        Query query = buildTopicQuery(fieldContexts, text);
+        LinkedHashSet<String> seedTerms = analyzeSeedTerms(fieldContexts, text);
+        if (seedTerms.isEmpty()) {
+            seedTerms.add(normalize(text));
+        }
+        List<String> selectedTerms = selectQueryTerms(seedTerms);
+        if (selectedTerms.isEmpty()) {
+            return List.of();
+        }
+        List<String> expansionTerms = expandTopicTerms(searcher, indexService, fields, text, seedTerms, scanLimit);
+
+        Query query = buildTopicQuery(fieldContexts, text, selectedTerms, expansionTerms);
         if (query == null) {
             return List.of();
         }
@@ -160,16 +184,11 @@ public class SourceBackedRelatedOwnersService {
         return List.copyOf(resolved.values());
     }
 
-    private Query buildTopicQuery(List<FieldContext> fieldContexts, String text) throws IOException {
-        LinkedHashSet<String> seedTerms = analyzeSeedTerms(fieldContexts, text);
-        if (seedTerms.isEmpty()) {
-            seedTerms.add(normalize(text));
-        }
-        List<String> selectedTerms = selectQueryTerms(seedTerms);
-        if (selectedTerms.isEmpty()) {
-            return null;
-        }
-
+    private Query buildTopicQuery(
+            List<FieldContext> fieldContexts,
+            String text,
+            List<String> selectedTerms,
+            List<String> expansionTerms) {
         boolean requireAll = PinyinSupport.containsChinese(text) || text.indexOf(' ') >= 0;
         BooleanQuery.Builder queryBuilder = new BooleanQuery.Builder();
         for (FieldContext fieldContext : fieldContexts) {
@@ -181,6 +200,14 @@ public class SourceBackedRelatedOwnersService {
                             requireAll ? BooleanClause.Occur.MUST : BooleanClause.Occur.SHOULD);
                 }
             }
+            for (String expansionTerm : expansionTerms) {
+                if (expansionTerm == null || expansionTerm.isBlank()) {
+                    continue;
+                }
+                fieldQuery.add(
+                        new BoostQuery(new PrefixQuery(new Term(fieldContext.indexField(), expansionTerm)), EXPANSION_TERM_BOOST),
+                        BooleanClause.Occur.SHOULD);
+            }
             BooleanQuery builtFieldQuery = fieldQuery.build();
             if (!builtFieldQuery.clauses().isEmpty()) {
                 queryBuilder.add(builtFieldQuery, BooleanClause.Occur.SHOULD);
@@ -188,6 +215,33 @@ public class SourceBackedRelatedOwnersService {
         }
         BooleanQuery query = queryBuilder.build();
         return query.clauses().isEmpty() ? null : query;
+    }
+
+    private List<String> expandTopicTerms(
+            Engine.Searcher searcher,
+            IndexService indexService,
+            Collection<String> fields,
+            String text,
+            LinkedHashSet<String> seedTerms,
+            int scanLimit) throws IOException {
+        List<LuceneIndexSuggester.SuggestionOption> suggestions = associateSuggester.suggestAssociate(
+                searcher,
+                indexService,
+                fields,
+                text,
+                new CompletionConfig(MAX_EXPANSION_TERMS * 2, Math.max(scanLimit, 48), 1, 1, true, false));
+        List<String> expansions = new ArrayList<>();
+        for (LuceneIndexSuggester.SuggestionOption suggestion : suggestions) {
+            String candidate = normalize(suggestion.text());
+            if (!isUsefulExpansionTerm(candidate, seedTerms)) {
+                continue;
+            }
+            expansions.add(candidate);
+            if (expansions.size() >= MAX_EXPANSION_TERMS) {
+                break;
+            }
+        }
+        return expansions;
     }
 
     private LinkedHashSet<String> analyzeSeedTerms(List<FieldContext> fieldContexts, String text) throws IOException {
@@ -241,6 +295,26 @@ public class SourceBackedRelatedOwnersService {
             }
         }
         return selected;
+    }
+
+    private static boolean isUsefulExpansionTerm(String candidate, LinkedHashSet<String> seedTerms) {
+        if (candidate == null || candidate.isBlank() || seedTerms.contains(candidate)) {
+            return false;
+        }
+        for (String seedTerm : seedTerms) {
+            if (seedTerm == null || seedTerm.isBlank()) {
+                continue;
+            }
+            if (candidate.contains(seedTerm) || seedTerm.contains(candidate)) {
+                return false;
+            }
+        }
+        boolean asciiAlphaNum = candidate.chars().allMatch(ch -> ch < 128 && Character.isLetterOrDigit(ch));
+        if (asciiAlphaNum) {
+            return candidate.codePointCount(0, candidate.length()) >= 3;
+        }
+        return PinyinSupport.containsChinese(candidate)
+                && candidate.codePointCount(0, candidate.length()) >= 2;
     }
 
     private static String sourcePath(String field) {

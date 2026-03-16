@@ -166,7 +166,9 @@ def normalize_mode(mode):
 
 
 def evaluate_case(base_url, auth_header, ssl_context, index_name, case):
-    url = urllib.parse.urljoin(base_url, f"/{index_name}/_es_tok/suggest")
+    url = urllib.parse.urljoin(
+        base_url, f"/{index_name}/_es_tok/related_tokens_by_tokens"
+    )
     payload = json.dumps(build_request(case)).encode("utf-8")
     request = urllib.request.Request(url, data=payload, method="POST")
     request.add_header("Content-Type", "application/json")
