@@ -109,7 +109,7 @@ public class SourceBackedAssociateSuggester {
         }
         pruneAsciiSeedTerms(seedTerms, text);
         seedTerms.remove("");
-        return seedTerms;
+        return TopicQualityHeuristics.filterAssociateSeedTerms(seedTerms);
     }
 
     private static void pruneAsciiSeedTerms(LinkedHashSet<String> seedTerms, String originalText) {
@@ -164,19 +164,25 @@ public class SourceBackedAssociateSuggester {
             int rank) throws IOException {
         float docWeight = (float) ((Math.log1p(Math.max(1.0f, hitScore)) + 1.0d) / (1.0d + (rank * 0.08d)));
         Set<String> seenInDoc = new LinkedHashSet<>();
+        Map<String, Set<String>> tokenFields = new LinkedHashMap<>();
         for (FieldContext fieldContext : fieldContexts) {
             Object rawValue = source.extractValue(fieldContext.sourcePath(), null);
             for (String value : SourceValueUtils.flattenStringValues(rawValue)) {
                 for (String token : analyze(fieldContext.analyzer(), fieldContext.indexField(), value)) {
-                    if (!isAcceptableAssociateCandidate(token, seedTerms, queryProfile)) {
-                        continue;
-                    }
-                    if (!seenInDoc.add(token)) {
-                        continue;
-                    }
-                    candidates.computeIfAbsent(token, AssociateAccumulator::new)
-                            .add(docWeight, fieldContext.indexField());
+                    tokenFields.computeIfAbsent(token, ignored -> new LinkedHashSet<>()).add(fieldContext.indexField());
                 }
+            }
+        }
+        for (String token : TopicQualityHeuristics.filterAssociateCandidateTerms(tokenFields.keySet())) {
+            if (!isAcceptableAssociateCandidate(token, seedTerms, queryProfile)) {
+                continue;
+            }
+            if (!seenInDoc.add(token)) {
+                continue;
+            }
+            for (String field : tokenFields.getOrDefault(token, Set.of())) {
+                candidates.computeIfAbsent(token, AssociateAccumulator::new)
+                        .add(docWeight, field);
             }
         }
     }

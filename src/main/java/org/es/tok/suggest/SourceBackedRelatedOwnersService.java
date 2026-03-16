@@ -22,6 +22,7 @@ import org.elasticsearch.search.lookup.Source;
 import org.elasticsearch.search.lookup.SourceProvider;
 import org.es.tok.text.SourceValueUtils;
 import org.es.tok.text.TextNormalization;
+import org.es.tok.text.TopicQualityHeuristics;
 import org.es.tok.suggest.LuceneIndexSuggester.CompletionConfig;
 
 import java.io.IOException;
@@ -264,7 +265,7 @@ public class SourceBackedRelatedOwnersService {
                 }
             }
         }
-        return seedTerms;
+        return TopicQualityHeuristics.filterOwnerSeedTerms(seedTerms);
     }
 
     private static List<String> analyze(Analyzer analyzer, String field, String text) throws IOException {
@@ -277,7 +278,7 @@ public class SourceBackedRelatedOwnersService {
             tokenStream.reset();
             while (tokenStream.incrementToken()) {
                 String normalized = TextNormalization.normalizeLower(termAttribute.toString());
-                if (RelatedOwnerQueryTuning.isUsefulSeedTerm(normalized)) {
+                if (!normalized.isBlank()) {
                     tokens.add(normalized);
                 }
             }
@@ -326,10 +327,11 @@ public class SourceBackedRelatedOwnersService {
             weighted.add(new SeedTermProfile(term, weight, RelatedOwnerQueryTuning.isStrongSeedTerm(term)));
         }
         List<SeedTermProfile> discriminative = weighted.stream()
-                .filter(profile -> profile.strongSignal() || profile.term().codePointCount(0, profile.term().length()) >= 5)
+            .filter(profile -> profile.strongSignal()
+                || profile.term().codePointCount(0, profile.term().length()) >= RelatedOwnerQueryTuning.discriminativeTermLengthThreshold())
                 .toList();
         List<SeedTermProfile> chosen = discriminative.isEmpty()
-                ? weighted.stream().limit(Math.min(2, weighted.size())).toList()
+            ? weighted.stream().limit(Math.min(RelatedOwnerQueryTuning.fallbackSeedProfileLimit(), weighted.size())).toList()
                 : discriminative;
         double totalWeight = chosen.stream().mapToDouble(SeedTermProfile::weight).sum();
         if (totalWeight <= 0.0d) {
@@ -356,6 +358,7 @@ public class SourceBackedRelatedOwnersService {
                 analyzedTokens.addAll(analyze(fieldContext.analyzer(), fieldContext.indexField(), value));
             }
         }
+        analyzedTokens = TopicQualityHeuristics.filterOwnerSeedTerms(analyzedTokens);
 
         LinkedHashSet<String> matchedTerms = new LinkedHashSet<>();
         double coverage = 0.0d;
@@ -392,7 +395,8 @@ public class SourceBackedRelatedOwnersService {
                 return false;
             }
         }
-        return RelatedOwnerQueryTuning.isUsefulSeedTerm(candidate);
+        return RelatedOwnerQueryTuning.isUsefulSeedTerm(candidate)
+            && TopicQualityHeuristics.isOwnerSeedTermContextuallyAllowed(candidate, seedTerms);
     }
 
     private static String sourcePath(String field) {

@@ -1,0 +1,134 @@
+{
+    "schema": "es_tok.text_quality_rules",
+    "schema_version": 1,
+    "term_sets": {
+        "noisy_ascii_terms": [
+            "http",
+            "https",
+            "www",
+            "com",
+            "html",
+            "htm",
+            "bilibi",
+            "bilibili"
+        ],
+        "noisy_cjk_terms": [
+            "视频",
+            "最新",
+            "上线",
+            "围观",
+            "快来",
+            "剧情",
+            "挑战",
+            "历史",
+            "游戏",
+            "试玩",
+            "大赛",
+            "奖金",
+            "我们",
+            "这次",
+            "第三集",
+            "第二集",
+            "第一集"
+        ],
+        "noisy_term_fragments": [
+            "最新视频",
+            "视频已",
+            "快来围观",
+            "我们来到",
+            "我们来到了",
+            "全球最大",
+            "全球最大的",
+            "小商品批发",
+            "开放赛道",
+            "创作大赛",
+            "喜欢的话",
+            "别忘记",
+            "点个赞",
+            "点点赞",
+            "点点关注",
+            "不错过",
+            "持续更新",
+            "小日常",
+            "系列中"
+        ],
+        "function_words": [
+            "的",
+            "了",
+            "着",
+            "呢",
+            "吧",
+            "吗",
+            "呀",
+            "啊",
+            "嘛",
+            "向",
+            "所",
+            "把",
+            "被",
+            "给",
+            "和",
+            "与",
+            "及",
+            "又",
+            "还",
+            "都",
+            "就",
+            "再",
+            "太",
+            "很",
+            "也",
+            "让",
+            "在",
+            "是",
+            "于",
+            "我",
+            "你",
+            "他",
+            "她",
+            "它",
+            "们"
+        ]
+    },
+    "profiles": {
+        "owner_seed_terms": {
+            "exclude_exact_term_sets": [
+                "noisy_ascii_terms",
+                "noisy_cjk_terms"
+            ],
+            "exclude_contains_term_sets": [
+                "noisy_term_fragments"
+            ],
+            "declude_prefix_term_sets": [
+                "function_words"
+            ],
+            "declude_suffix_term_sets": [
+                "function_words"
+            ]
+        },
+        "associate_seed_terms": {
+            "declude_prefix_term_sets": [
+                "function_words"
+            ],
+            "declude_suffix_term_sets": [
+                "function_words"
+            ]
+        },
+        "associate_candidates": {
+            "declude_prefix_term_sets": [
+                "function_words"
+            ],
+            "declude_suffix_term_sets": [
+                "function_words"
+            ],
+            "function_word_term_sets": [
+                "function_words"
+            ]
+        },
+        "suggestion_surface": {
+            "function_word_term_sets": [
+                "function_words"
+            ]
+        }
+    }
+}

@@ -20,6 +20,7 @@ import org.elasticsearch.index.mapper.SourceFieldMetrics;
 import org.elasticsearch.search.lookup.Source;
 import org.elasticsearch.search.lookup.SourceProvider;
 import org.es.tok.text.TextNormalization;
+import org.es.tok.text.TopicQualityHeuristics;
 import org.es.tok.suggest.LuceneIndexSuggester.SuggestionOption;
 
 import java.io.IOException;
@@ -344,7 +345,7 @@ public class OwnerBackedSuggestService {
                 }
             }
         }
-        return seedTerms;
+        return TopicQualityHeuristics.filterOwnerSeedTerms(seedTerms);
     }
 
     private Query buildAnalyzedOwnerQuery(List<FieldContext> fieldContexts, String text) throws IOException {

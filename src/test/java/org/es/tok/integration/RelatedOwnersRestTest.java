@@ -312,6 +312,22 @@ public class RelatedOwnersRestTest {
     assertFalse(result, result.contains("\"mid\":2001"));
   }
 
+  @Test
+  public void testRelatedOwnersStripsCallToActionBoilerplateFromLongText() throws Exception {
+    String result = performRelatedOwners("""
+      {
+        "text": "摄影技巧和摄像布光都在这里 点点关注不错过 持续更新小日常系列中",
+        "fields": ["title.words", "tags.words", "desc.words"],
+        "size": 6,
+        "scan_limit": 64,
+        "use_pinyin": true
+      }
+      """);
+
+    assertTrue(result, result.contains("\"mid\":3001"));
+    assertTrue(result, result.contains("\"mid\":3002"));
+  }
+
     private void indexTopicDocument(
             String id,
             String title,

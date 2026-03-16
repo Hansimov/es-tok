@@ -1,5 +1,8 @@
 package org.es.tok.suggest;
 
+import org.es.tok.text.TextNormalization;
+import org.es.tok.text.TopicQualityHeuristics;
+
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.MultiTerms;
 import org.apache.lucene.index.Term;
@@ -1246,165 +1249,24 @@ public class LuceneIndexSuggester {
         return normalized.chars().anyMatch(LuceneIndexSuggester::isDisallowedNextTokenChar) == false;
     }
 
-    private static boolean containsWhitespace(String text) {
-        return text != null && text.chars().anyMatch(Character::isWhitespace);
-    }
-
     private static String normalizeSuggestionSurface(String text) {
-        if (text == null) {
-            return "";
-        }
-
-        String collapsed = collapseWhitespace(text).strip();
-        if (collapsed.isBlank() || containsWhitespace(collapsed) == false) {
-            return collapsed;
-        }
-
-        String tightened = tightenCjkAdjacentWhitespace(collapsed);
-        if (containsWhitespace(tightened) == false) {
-            return tightened;
-        }
-
-        return shouldCompactWhitespace(tightened) ? removeWhitespace(tightened) : tightened;
+        return TextNormalization.normalizeSuggestionSurface(text);
     }
 
-    private static String tightenCjkAdjacentWhitespace(String text) {
-        StringBuilder builder = new StringBuilder(text.length());
-        int[] codePoints = text.codePoints().toArray();
-        for (int index = 0; index < codePoints.length; index++) {
-            int codePoint = codePoints[index];
-            if (isGapCodePoint(codePoint)) {
-                int previous = previousNonWhitespace(codePoints, index - 1);
-                int next = nextNonWhitespace(codePoints, index + 1);
-                if (previous >= 0 && next >= 0 && (isHanCodePoint(previous) || isHanCodePoint(next))) {
-                    continue;
-                }
-                builder.append(' ');
-                continue;
-            }
-            builder.appendCodePoint(codePoint);
-        }
-        return builder.toString().strip();
-    }
-
-    private static int previousNonWhitespace(int[] codePoints, int index) {
-        while (index >= 0) {
-            if (!isGapCodePoint(codePoints[index])) {
-                return codePoints[index];
-            }
-            index--;
-        }
-        return -1;
-    }
-
-    private static int nextNonWhitespace(int[] codePoints, int index) {
-        while (index < codePoints.length) {
-            if (!isGapCodePoint(codePoints[index])) {
-                return codePoints[index];
-            }
-            index++;
-        }
-        return -1;
-    }
-
-    private static boolean isHanCodePoint(int codePoint) {
-        return codePoint >= 0 && Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN;
-    }
-
-    private static boolean isGapCodePoint(int codePoint) {
-        return Character.isWhitespace(codePoint)
-                || Character.isSpaceChar(codePoint)
-                || Character.getType(codePoint) == Character.FORMAT;
-    }
-
-    private static String collapseWhitespace(String text) {
-        StringBuilder builder = new StringBuilder(text.length());
-        boolean previousWhitespace = false;
-        for (int index = 0; index < text.length(); ) {
-            int codePoint = text.codePointAt(index);
-            index += Character.charCount(codePoint);
-            if (isGapCodePoint(codePoint)) {
-                if (!previousWhitespace) {
-                    builder.append(' ');
-                    previousWhitespace = true;
-                }
-                continue;
-            }
-
-            builder.appendCodePoint(codePoint);
-            previousWhitespace = false;
-        }
-        return builder.toString();
-    }
-
-    private static boolean shouldCompactWhitespace(String text) {
-        int asciiLettersOrDigits = 0;
-        int nonAsciiNonWhitespace = 0;
-        for (int index = 0; index < text.length(); ) {
-            int codePoint = text.codePointAt(index);
-            index += Character.charCount(codePoint);
-            if (isGapCodePoint(codePoint)) {
-                continue;
-            }
-            if (codePoint < 128 && Character.isLetterOrDigit(codePoint)) {
-                asciiLettersOrDigits++;
-            } else if (codePoint >= 128) {
-                nonAsciiNonWhitespace++;
-            }
-        }
-        return nonAsciiNonWhitespace > 0 && nonAsciiNonWhitespace >= asciiLettersOrDigits;
-    }
-
-    private static String removeWhitespace(String text) {
-        StringBuilder builder = new StringBuilder(text.length());
-        for (int index = 0; index < text.length(); ) {
-            int codePoint = text.codePointAt(index);
-            index += Character.charCount(codePoint);
-            if (!isGapCodePoint(codePoint)) {
-                builder.appendCodePoint(codePoint);
-            }
-        }
-        return builder.toString();
+    private static boolean containsWhitespace(String text) {
+        return TextNormalization.containsWhitespace(text);
     }
 
     private static boolean hasLeadingOrTrailingFunctionChar(String text) {
-        if (text == null || text.isBlank()) {
-            return false;
-        }
-
-        int first = text.codePointAt(0);
-        int last = text.codePointBefore(text.length());
-        return isCommonFunctionCodePoint(first) || isCommonFunctionCodePoint(last);
+        return TopicQualityHeuristics.hasLeadingOrTrailingFunctionWord(text);
     }
 
     private static boolean isFunctionWordHeavy(String text) {
-        if (text == null || text.isBlank()) {
-            return false;
-        }
-
-        int codePointLength = text.codePointCount(0, text.length());
-        if (codePointLength > 3) {
-            return false;
-        }
-
-        int matched = 0;
-        for (int index = 0; index < text.length(); ) {
-            int codePoint = text.codePointAt(index);
-            index += Character.charCount(codePoint);
-            if (isCommonFunctionCodePoint(codePoint)) {
-                matched++;
-            }
-        }
-        return matched >= Math.max(1, codePointLength - 1);
+        return TopicQualityHeuristics.isFunctionWordHeavy(text);
     }
 
     private static boolean isCommonFunctionCodePoint(int codePoint) {
-        return switch (codePoint) {
-            case '的', '了', '着', '呢', '吧', '吗', '呀', '啊', '嘛', '向', '所', '把', '被', '给', '和', '与',
-                    '及', '又', '还', '都', '就', '再', '太', '很', '也', '让', '在', '是', '于', '我', '你', '他',
-                    '她', '它', '们' -> true;
-            default -> false;
-        };
+        return TopicQualityHeuristics.isFunctionWord(codePoint);
     }
 
     private static boolean isAcceptableCorrectionCandidate(String original, String suggestion) {

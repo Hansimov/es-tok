@@ -18,6 +18,24 @@ public class TopicQualityHeuristicsTest {
     }
 
     @Test
+    public void testSanitizeQueryTextRemovesKnownBoilerplateFragments() {
+        String sanitized = TopicQualityHeuristics.sanitizeQueryText("小企鹅这是在装傻吗 点点关注不错过 小企鹅持续更新咕嘎小日常系列中");
+
+        assertFalse(sanitized.contains("点点关注"));
+        assertFalse(sanitized.contains("持续更新"));
+        assertFalse(sanitized.contains("小日常"));
+        assertTrue(sanitized.contains("小企鹅这是在装傻吗"));
+        assertTrue(sanitized.contains("小企鹅 咕嘎"));
+    }
+
+    @Test
+    public void testSanitizeQueryTextStripsFormatCharacters() {
+        String sanitized = TopicQualityHeuristics.sanitizeQueryText("\u2063 https://t.me/anemoya_chan");
+
+        assertEquals("", sanitized);
+    }
+
+    @Test
     public void testOwnerSeedTermRejectsBoilerplateCjkTerm() {
         assertFalse(TopicQualityHeuristics.isUsefulOwnerQuerySeedTerm("最新视频"));
         assertFalse(TopicQualityHeuristics.isUsefulOwnerQuerySeedTerm("视频"));
@@ -45,6 +63,12 @@ public class TopicQualityHeuristicsTest {
     }
 
     @Test
+    public void testNormalizeSuggestionSurfaceUsesSharedWhitespaceRules() {
+        assertEquals("三丽鸥", TextNormalization.normalizeSuggestionSurface(" 三 丽 鸥 "));
+        assertEquals("Abc 123", TextNormalization.normalizeSuggestionSurface("  Abc   123 "));
+    }
+
+    @Test
     public void testFlattenStringValuesTraversesNestedCollections() {
         List<String> flattened = SourceValueUtils.flattenStringValues(List.of("alpha", List.of("beta", "", List.of("gamma"))));
 
@@ -55,5 +79,19 @@ public class TopicQualityHeuristicsTest {
     public void testFunctionWordRulesAreLoadedFromResources() {
         assertTrue(TopicQualityHeuristics.isFunctionWord('的'));
         assertFalse(TopicQualityHeuristics.isFunctionWord('警'));
+    }
+
+    @Test
+    public void testOwnerSeedTermsApplyContextualDeclusion() {
+        assertEquals(
+                List.of("红色警戒", "政府"),
+                List.copyOf(TopicQualityHeuristics.filterOwnerSeedTerms(List.of("红色警戒", "红色警戒的", "和政府", "政府"))));
+    }
+
+    @Test
+    public void testAssociateCandidateTermsApplyContextualDeclusion() {
+        assertEquals(
+                List.of("政府", "教学"),
+                List.copyOf(TopicQualityHeuristics.filterAssociateCandidateTerms(List.of("和政府", "政府", "教学"))));
     }
 }

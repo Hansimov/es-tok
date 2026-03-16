@@ -1,0 +1,206 @@
+{
+    "schema": "es_tok.relation_tuning",
+    "schema_version": 1,
+    "profiles": {
+        "related_videos_by_videos": {
+            "owner_candidate_boost": 1.5,
+            "owner_score_boost": 16.0,
+            "target_is_videos": true,
+            "minimum_coverage_strict": 0.12,
+            "minimum_coverage_relaxed": 0.08,
+            "minimum_overlap_strict": 2,
+            "minimum_overlap_relaxed": 1,
+            "minimum_surface_overlap_strict": 0,
+            "minimum_surface_overlap_relaxed": 0,
+            "supports_relaxed_fallback": true,
+            "support_profile": {
+                "minimum_supported_token_count": 1,
+                "additional_support_step": 0.12,
+                "max_extra_boost": 0.45,
+                "single_doc_multiplier": 1.0
+            },
+            "score_weights": {
+                "overlap_weight": 12.0,
+                "coverage_weight": 78.0,
+                "strong_overlap_weight": 14.0,
+                "overlap_count_weight": 2.5,
+                "surface_overlap_weight": 0.0,
+                "hit_weight": 2.4,
+                "recency_weight": 12.0,
+                "quality_weight": 8.0,
+                "influence_weight": 3.2
+            },
+            "coverage_penalty_profile": {
+                "strict_threshold": 0.18,
+                "relaxed_threshold": 0.12,
+                "strict_multiplier": 0.62,
+                "relaxed_multiplier": 0.78
+            },
+            "owner_candidate_profile": {
+                "require_same_owner_overlap": false,
+                "minimum_same_owner_coverage": 0.0
+            },
+            "video_ranking_profile": {
+                "owner_penalty": 0.45,
+                "secondary_score_weight": 0.28,
+                "doc_freq_weight": 3.0
+            },
+            "owner_ranking_profile": {
+                "contribution_decay": 0.68,
+                "doc_freq_weight": 4.0,
+                "strict_minimum_score": 320.0,
+                "relaxed_minimum_score": 240.0
+            }
+        },
+        "related_owners_by_videos": {
+            "owner_candidate_boost": 1.8,
+            "owner_score_boost": 22.0,
+            "target_is_videos": false,
+            "minimum_coverage_strict": 0.08,
+            "minimum_coverage_relaxed": 0.05,
+            "minimum_overlap_strict": 1,
+            "minimum_overlap_relaxed": 1,
+            "minimum_surface_overlap_strict": 0,
+            "minimum_surface_overlap_relaxed": 0,
+            "supports_relaxed_fallback": false,
+            "support_profile": {
+                "minimum_supported_token_count": 1,
+                "additional_support_step": 0.12,
+                "max_extra_boost": 0.45,
+                "single_doc_multiplier": 1.0
+            },
+            "score_weights": {
+                "overlap_weight": 12.0,
+                "coverage_weight": 78.0,
+                "strong_overlap_weight": 14.0,
+                "overlap_count_weight": 2.5,
+                "surface_overlap_weight": 0.0,
+                "hit_weight": 2.4,
+                "recency_weight": 12.0,
+                "quality_weight": 8.0,
+                "influence_weight": 3.2
+            },
+            "coverage_penalty_profile": {
+                "strict_threshold": 0.18,
+                "relaxed_threshold": 0.12,
+                "strict_multiplier": 0.62,
+                "relaxed_multiplier": 0.78
+            },
+            "owner_candidate_profile": {
+                "require_same_owner_overlap": false,
+                "minimum_same_owner_coverage": 0.0
+            },
+            "video_ranking_profile": {
+                "owner_penalty": 0.45,
+                "secondary_score_weight": 0.28,
+                "doc_freq_weight": 3.0
+            },
+            "owner_ranking_profile": {
+                "contribution_decay": 0.68,
+                "doc_freq_weight": 4.0,
+                "strict_minimum_score": 320.0,
+                "relaxed_minimum_score": 240.0
+            }
+        },
+        "related_videos_by_owners": {
+            "owner_candidate_boost": 2.2,
+            "owner_score_boost": 24.0,
+            "target_is_videos": true,
+            "minimum_coverage_strict": 0.10,
+            "minimum_coverage_relaxed": 0.06,
+            "minimum_overlap_strict": 2,
+            "minimum_overlap_relaxed": 1,
+            "minimum_surface_overlap_strict": 1,
+            "minimum_surface_overlap_relaxed": 0,
+            "supports_relaxed_fallback": true,
+            "support_profile": {
+                "minimum_supported_token_count": 3,
+                "additional_support_step": 0.36,
+                "max_extra_boost": 1.20,
+                "single_doc_multiplier": 0.38
+            },
+            "score_weights": {
+                "overlap_weight": 12.0,
+                "coverage_weight": 78.0,
+                "strong_overlap_weight": 14.0,
+                "overlap_count_weight": 2.5,
+                "surface_overlap_weight": 6.0,
+                "hit_weight": 2.4,
+                "recency_weight": 12.0,
+                "quality_weight": 8.0,
+                "influence_weight": 3.2
+            },
+            "coverage_penalty_profile": {
+                "strict_threshold": 0.22,
+                "relaxed_threshold": 0.14,
+                "strict_multiplier": 0.48,
+                "relaxed_multiplier": 0.70
+            },
+            "owner_candidate_profile": {
+                "require_same_owner_overlap": true,
+                "minimum_same_owner_coverage": 0.0
+            },
+            "video_ranking_profile": {
+                "owner_penalty": 0.68,
+                "secondary_score_weight": 0.16,
+                "doc_freq_weight": 2.2
+            },
+            "owner_ranking_profile": {
+                "contribution_decay": 0.68,
+                "doc_freq_weight": 4.0,
+                "strict_minimum_score": 320.0,
+                "relaxed_minimum_score": 240.0
+            }
+        },
+        "related_owners_by_owners": {
+            "owner_candidate_boost": 0.0,
+            "owner_score_boost": 0.0,
+            "target_is_videos": false,
+            "minimum_coverage_strict": 0.20,
+            "minimum_coverage_relaxed": 0.12,
+            "minimum_overlap_strict": 2,
+            "minimum_overlap_relaxed": 1,
+            "minimum_surface_overlap_strict": 1,
+            "minimum_surface_overlap_relaxed": 0,
+            "supports_relaxed_fallback": true,
+            "support_profile": {
+                "minimum_supported_token_count": 3,
+                "additional_support_step": 0.32,
+                "max_extra_boost": 1.10,
+                "single_doc_multiplier": 0.52
+            },
+            "score_weights": {
+                "overlap_weight": 12.0,
+                "coverage_weight": 78.0,
+                "strong_overlap_weight": 14.0,
+                "overlap_count_weight": 2.5,
+                "surface_overlap_weight": 4.0,
+                "hit_weight": 2.4,
+                "recency_weight": 12.0,
+                "quality_weight": 8.0,
+                "influence_weight": 3.2
+            },
+            "coverage_penalty_profile": {
+                "strict_threshold": 0.18,
+                "relaxed_threshold": 0.12,
+                "strict_multiplier": 0.62,
+                "relaxed_multiplier": 0.78
+            },
+            "owner_candidate_profile": {
+                "require_same_owner_overlap": false,
+                "minimum_same_owner_coverage": 0.0
+            },
+            "video_ranking_profile": {
+                "owner_penalty": 0.45,
+                "secondary_score_weight": 0.28,
+                "doc_freq_weight": 3.0
+            },
+            "owner_ranking_profile": {
+                "contribution_decay": 0.68,
+                "doc_freq_weight": 4.0,
+                "strict_minimum_score": 320.0,
+                "relaxed_minimum_score": 240.0
+            }
+        }
+    }
+}
