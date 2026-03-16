@@ -94,6 +94,7 @@ python -m workers.elastic_videos.commander -ei bili_videos_dev6 -ev elastic_dev 
 
 - 该命令是破坏性的
 - 运行时需要手工输入原索引名称 `bili_videos_dev6` 以确认删除并重建
+- `--delete-no-confirm` 参数也可以用来跳过确认，但更危险，只在测试阶段使用
 
 适用场景：
 
@@ -136,7 +137,7 @@ python -m workers.elastic_videos.commander -ei bili_videos_dev6 -ev elastic_dev 
 ### 成熟阶段压测或效果验证
 
 ```sh
--s "2026-03-05" -e "2026-03-11"
+-s "2026-03-09" -e "2026-03-16"
 ```
 
 - 约 600 万 docs
@@ -159,6 +160,43 @@ python debugs/evaluate_related_cases.py --password "$ELASTIC_PASSWORD"
 ```
 
 默认会抓取最近一批真实文档，自动对 `related_videos_by_videos`、`related_owners_by_videos`、`related_videos_by_owners`、`related_owners_by_owners` 生成 JSON 报告。
+
+当需要在 1 天样本上做更稳的 related 排序回归时，推荐使用更大的抽样参数：
+
+```sh
+cd /home/asimov/repos/es-tok
+python debugs/evaluate_related_cases.py \
+	--password "$ELASTIC_PASSWORD" \
+	--recent-fetch-size 300 \
+	--video-sample-size 30 \
+	--owner-sample-size 30 \
+	--output build/reports/related_real_case_report_1d.json
+```
+
+报告中的 `summary` 会把真正异常归到 `anomalies`，例如 `no_results`；同时把常见但不一定错误的模式归到 `notes`，例如 `single_owner_cluster`、`same_owner_only`、`few_results`、`low_support_top_results`，方便区分“需要修”与“需要人工判断”的 case。
+
+如果要在 7 天样本上做更大规模的 related 回归，可以先回灌：
+
+```sh
+cd /home/asimov/repos/bili-scraper
+python -m workers.elastic_videos.commander -ei bili_videos_dev6 -ev elastic_dev -f pubdate -s "2026-03-09" -e "2026-03-16"
+```
+
+然后在 `es-tok` 中运行更大的抽样验证：
+
+```sh
+cd /home/asimov/repos/es-tok
+python debugs/evaluate_related_cases.py \
+	--password "$ELASTIC_PASSWORD" \
+	--recent-fetch-size 600 \
+	--video-sample-size 60 \
+	--owner-sample-size 60 \
+	--output build/reports/related_real_case_report_7d.json
+```
+
+脚本除了 JSON 报告外，还会额外输出一个同名的 Markdown 摘要文件，例如 `related_real_case_report_7d.json.summary.md`，用于快速浏览坏例和需要人工复核的 case。
+
+脚本还会自动跳过标题、标签、简介都缺乏有效语义的弱视频 seed，例如只包含数字或空白的内容，避免把这类本就不可评估的样本记成 `no_results` 失败。
 
 建议覆盖：
 

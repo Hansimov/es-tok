@@ -70,7 +70,7 @@ public class SourceBackedEntityRelationsService {
             return RelationResult.empty();
         }
 
-        TopDocs topDocs = searcher.search(candidateQuery, Math.max(scanLimit, size * 24));
+        TopDocs topDocs = searcher.search(candidateQuery, Math.max(scanLimit, size * 48));
         if (topDocs.scoreDocs.length == 0) {
             return RelationResult.empty();
         }
@@ -82,6 +82,42 @@ public class SourceBackedEntityRelationsService {
         List<LeafReaderContext> leaves = searcher.getIndexReader().leaves();
         long nowEpochSeconds = Instant.now().getEpochSecond();
 
+        RelationResult result = collectRelationResults(
+            relation,
+            seedContext,
+            topicFields,
+            topDocs,
+            false,
+            size,
+            sourceProvider,
+            leaves,
+            nowEpochSeconds);
+        if (!result.isEmpty() || !supportsRelaxedFallback(relation)) {
+            return result;
+        }
+
+        return collectRelationResults(
+            relation,
+            seedContext,
+            topicFields,
+            topDocs,
+            true,
+            size,
+            sourceProvider,
+            leaves,
+            nowEpochSeconds);
+        }
+
+        private RelationResult collectRelationResults(
+            String relation,
+            SeedContext seedContext,
+            List<FieldContext> topicFields,
+            TopDocs topDocs,
+            boolean relaxedMode,
+            int size,
+            SourceProvider sourceProvider,
+            List<LeafReaderContext> leaves,
+            long nowEpochSeconds) throws IOException {
         Map<String, VideoAccumulator> videos = new LinkedHashMap<>();
         Map<Long, OwnerAccumulator> owners = new LinkedHashMap<>();
         for (int rank = 0; rank < topDocs.scoreDocs.length; rank++) {
@@ -104,7 +140,7 @@ public class SourceBackedEntityRelationsService {
                 continue;
             }
 
-            DocSignals signals = computeSignals(relation, seedContext, topicFields, source, scoreDoc.score, rank, nowEpochSeconds);
+            DocSignals signals = computeSignals(relation, seedContext, topicFields, source, scoreDoc.score, rank, nowEpochSeconds, relaxedMode);
             if (signals.score() <= 0.0d) {
                 continue;
             }
@@ -128,6 +164,7 @@ public class SourceBackedEntityRelationsService {
                 .map(VideoAccumulator::toResult)
                 .toList();
         List<RelatedOwnerResult> ownerResults = owners.values().stream()
+            .filter(accumulator -> acceptOwnerCandidate(relation, accumulator, relaxedMode))
                 .sorted(OwnerAccumulator.ORDER)
                 .limit(size)
                 .map(OwnerAccumulator::toResult)
@@ -232,7 +269,8 @@ public class SourceBackedEntityRelationsService {
             Source source,
             float hitScore,
             int rank,
-            long nowEpochSeconds) throws IOException {
+            long nowEpochSeconds,
+            boolean relaxedMode) throws IOException {
         Set<String> candidateTokens = extractTopicTokens(topicFields, source);
         double overlapWeight = 0.0d;
         int overlapCount = 0;
@@ -255,13 +293,16 @@ public class SourceBackedEntityRelationsService {
         if (overlapWeight <= 0.0d && !sameOwner) {
             return DocSignals.zero();
         }
-        if (coverage < minimumCoverage(relation) && strongOverlapCount == 0 && !sameOwner) {
+        if (coverage < minimumCoverage(relation, relaxedMode) && strongOverlapCount == 0 && !sameOwner) {
             return DocSignals.zero();
         }
-        if (requiresStrongMatch(relation) && strongOverlapCount == 0 && !sameOwner) {
+        if (requiresStrongMatch(relation, relaxedMode) && strongOverlapCount == 0 && !sameOwner) {
             return DocSignals.zero();
         }
-        if (!sameOwner && overlapCount < 2 && coverage < 0.22d) {
+        if (!sameOwner && overlapCount < minimumOverlapCount(relation, relaxedMode)) {
+            return DocSignals.zero();
+        }
+        if (!sameOwner && overlapCount < (relaxedMode ? 1 : 2) && coverage < (relaxedMode ? 0.14d : 0.22d)) {
             return DocSignals.zero();
         }
 
@@ -280,8 +321,8 @@ public class SourceBackedEntityRelationsService {
                 + (recency * 12.0d)
                 + (quality * 8.0d)
                 + (influence * 3.2d);
-        if (!sameOwner && coverage < 0.18d) {
-            score *= 0.62d;
+        if (!sameOwner && coverage < (relaxedMode ? 0.12d : 0.18d)) {
+            score *= relaxedMode ? 0.78d : 0.62d;
         }
         return new DocSignals(score);
     }
@@ -387,18 +428,47 @@ public class SourceBackedEntityRelationsService {
         return 0.0d;
     }
 
-    private static double minimumCoverage(String relation) {
+    private static double minimumCoverage(String relation, boolean relaxedMode) {
         if (EsTokEntityRelationRequest.RELATED_OWNERS_BY_OWNERS.equals(relation)) {
-            return 0.16d;
+            return relaxedMode ? 0.12d : 0.20d;
         }
         if (EsTokEntityRelationRequest.RELATED_VIDEOS_BY_VIDEOS.equals(relation)) {
-            return 0.12d;
+            return relaxedMode ? 0.08d : 0.12d;
         }
-        return 0.08d;
+        return relaxedMode ? 0.05d : 0.08d;
     }
 
-    private static boolean requiresStrongMatch(String relation) {
+    private static int minimumOverlapCount(String relation, boolean relaxedMode) {
+        if (EsTokEntityRelationRequest.RELATED_OWNERS_BY_OWNERS.equals(relation)) {
+            return relaxedMode ? 1 : 2;
+        }
+        if (EsTokEntityRelationRequest.RELATED_VIDEOS_BY_VIDEOS.equals(relation)) {
+            return relaxedMode ? 1 : 2;
+        }
+        return 1;
+    }
+
+    private static boolean acceptOwnerCandidate(String relation, OwnerAccumulator accumulator, boolean relaxedMode) {
+        if (!EsTokEntityRelationRequest.RELATED_OWNERS_BY_OWNERS.equals(relation)) {
+            return true;
+        }
+        if (relaxedMode) {
+            return accumulator.docFreq() >= 1 && accumulator.score() >= 240.0d;
+        }
+        return accumulator.docFreq() >= 2 || accumulator.score() >= 320.0d;
+    }
+
+    private static boolean requiresStrongMatch(String relation, boolean relaxedMode) {
+        if (relaxedMode) {
+            return false;
+        }
         return EsTokEntityRelationRequest.RELATED_VIDEOS_BY_VIDEOS.equals(relation)
+                || EsTokEntityRelationRequest.RELATED_OWNERS_BY_OWNERS.equals(relation);
+    }
+
+    private static boolean supportsRelaxedFallback(String relation) {
+        return EsTokEntityRelationRequest.RELATED_VIDEOS_BY_VIDEOS.equals(relation)
+                || EsTokEntityRelationRequest.RELATED_VIDEOS_BY_OWNERS.equals(relation)
                 || EsTokEntityRelationRequest.RELATED_OWNERS_BY_OWNERS.equals(relation);
     }
 
@@ -609,6 +679,10 @@ public class SourceBackedEntityRelationsService {
     public record RelationResult(List<RelatedVideoResult> videos, List<RelatedOwnerResult> owners) {
         private static RelationResult empty() {
             return new RelationResult(List.of(), List.of());
+        }
+
+        private boolean isEmpty() {
+            return videos.isEmpty() && owners.isEmpty();
         }
     }
 
