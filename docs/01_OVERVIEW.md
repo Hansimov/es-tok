@@ -2,130 +2,129 @@
 
 ## 目标
 
-ES-TOK 面向 Elasticsearch 的中文分析、查询扩展与建议场景。当前仓库不是单一插件代码，而是一个多模块工程：共享分析 core 负责真正的分词和版本指纹；bridge 负责给非 JVM 调用方暴露统一 JSON 契约；根工程负责把这些能力接入 Elasticsearch 的 tokenizer、analyzer、REST、query DSL 和 shard warmup 生命周期。
+ES-TOK 是一个面向 Elasticsearch 的中文分析与关系检索插件工程，不是单一 tokenizer 的示例仓库。当前代码库同时覆盖三层能力：
 
-设计目标有三点：
+1. 分析 core：统一分词、规则、默认资源和版本指纹。
+2. Elasticsearch 插件适配层：把 core 接入 tokenizer、analyzer、REST、query DSL、warmup 生命周期。
+3. Bridge CLI：让 Python 或其他非 JVM 进程复用同一套分析语义，而不是各自重写一份分词逻辑。
 
-1. 同一份分析语义可以同时服务于索引分词、REST 调试和 bridge 调用。
-2. 配置、默认资源和版本哈希在不同调用路径上保持一致。
-3. 查询扩展、token/owner/video 关系接口建立在索引内已写入的 token 与 source 信号之上，而不是旁路实现。
+工程的核心约束是同一份分析语义要在索引期、REST 调试期和 bridge 调用期保持一致；关系接口和查询扩展则建立在索引内已经写入的 token、source 和统计信号之上。
 
 ## 模块结构
 
 | 模块 | 位置 | 职责 |
-|------|------|------|
-| Elasticsearch 插件适配层 | 根工程 `src/main/java` | 注册 `es_tok` tokenizer / analyzer、REST handler、transport action、自定义 query builder，以及 shard warmup 监听器 |
-| 共享分析 core | `core/` | 配置加载、默认资源解析、词表和规则处理、分析执行、版本哈希输出 |
-| Bridge CLI | `bridge/` | 通过 stdin/stdout JSON 调用共享 core，供 Python 或其他非 JVM 进程复用 |
-| 测试与 golden corpus | `src/test`、`bridge/src/test`、`testing/golden` | 验证 core、REST analyze、bridge 输出一致性，以及 suggest 真实案例回归 |
-| 调试脚本 | `debugs/` | 存放实际联调和评估脚本 |
+|---|---|---|
+| Elasticsearch 插件适配层 | `src/main/java` | 注册 `es_tok` tokenizer、analyzer、REST handler、query builder、warmup 监听器 |
+| 共享分析 core | `core/` | 规则加载、文本归一化、共享分析执行、默认资源指纹 |
+| Bridge CLI | `bridge/` | 通过 stdin/stdout 暴露统一 JSON 契约 |
+| 测试与 golden corpus | `src/test`、`bridge/src/test`、`testing/golden` | 校验 core、REST analyze、bridge、integration 与 golden 一致性 |
+| 调试与评估脚本 | `debugs/` | 真实 Elasticsearch 节点上的效果验证、回归和性能采样 |
+| 文档 | `docs/` | 面向使用者与开发者的 API、用法、环境和 workflow 说明 |
 
-## 核心执行流
+## 核心能力
 
-### 1. 索引分析流
+### 分析
 
-1. Elasticsearch 读取索引 settings。
-2. 插件通过 `EsTokTokenizerFactory` 或 `EsTokAnalyzerProvider` 加载配置。
-3. 配置由 core 中的 `EsTokConfigLoader` 解析为 `ExtraConfig`、`CategConfig`、`VocabConfig`、`NgramConfig`、`RulesConfig`。
-4. `EsTokEngine` 执行分析，输出 token 列表和版本哈希。
+ES-TOK 统一处理以下分析配置：
 
-这一层的关键点是：索引 analyzer 的行为在索引创建后基本固定。如果修改默认词表、规则文件或 tokenizer 配置，通常需要重建索引或重启节点后再验证真实行为。
-
-### 2. REST analyze 调试流
-
-1. `/_es_tok/analyze` 接收 query params 或 JSON body。
-2. `RestAnalyzeAction` 将请求转为 payload map。
-3. `AnalysisPayloadService` 将 payload 展平成 settings，并复用同一套 core 配置加载与分析逻辑。
-4. 返回 `tokens + version` 结构。
-
-这一路径用于快速调试分析行为，但它不是某个具体索引 analyzer 的镜像。若请求没有显式传入与索引相同的配置，结果可能与真实索引 analyzer 存在差异。
-
-### 3. Bridge 调用流
-
-1. `EsTokCliMain` 从标准输入读取一个 JSON 对象。
-2. `EsTokBridgeService` 直接调用 `AnalysisPayloadService`。
-3. 结果通过标准输出返回，结构与 REST analyze 保持一致。
-
-这使得 Python 侧可以不重写分词逻辑，而是直接复用 Java core。
-
-### 4. 搜索扩展流
-
-插件注册了两类查询扩展：
-
-- `es_tok_query_string`：在 query string 解析基础上叠加 token 约束、动态高频词过滤和 query-side spell correction。
-- `es_tok_constraints`：独立的 token 约束过滤器，适合作为 bool filter 或 KNN filter 使用。
-
-这些查询能力基于已索引 token 工作，不会重新执行一遍索引期分析链。
-
-### 5. Token / Owner / Entity Relations 流
-
-插件还暴露了两类搜索接口：
-
-- `/_es_tok/related_tokens_by_tokens`：prefix、next token、associate、correction、auto 五种 token 关系模式；旧的 `/_es_tok/suggest` 仍保留为兼容别名。
-- `/_es_tok/related_owners_by_tokens`：基于输入文本与 token 共现聚合相关 UP 主；旧的 `/_es_tok/related_owners` 仍保留为兼容别名。
-- `/_es_tok/related_videos_by_videos`、`/_es_tok/related_owners_by_videos`、`/_es_tok/related_videos_by_owners`、`/_es_tok/related_owners_by_owners`：基于视频 / 作者 seed 的关系检索接口。
-
-内部依赖 Lucene term dictionary、shard 级缓存和可选的拼音索引。为避免第一次请求把预热成本打到线上查询，插件在 shard 启动阶段使用 `PinyinWarmupIndexListener` 做异步 warmup，并通过 `/_cat/es_tok` 暴露业务 shard 的 readiness。
-
-## 配置与资源边界
-
-### 分析配置
-
-分析配置分为五组：
-
-- `extra_config`：归一化、去重、汉字转换、附加拼音 token。
-- `categ_config`：基于字符类别的切分行为。
+- `extra_config`：大小写、繁简、去重、拼音附加 token 等。
+- `categ_config`：字符类别切分。
 - `vocab_config`：词表文件或内联词表。
 - `ngram_config`：bigram、vbgram、vcgram 等派生 token。
-- `rules_config`：include / exclude / declude 规则。
+- `rules_config`：include、exclude、declude 规则。
 
-### 默认资源
+默认资源和共享文本规则集中在 `core` 中维护，分析结果统一输出：
 
-默认资源随模块打包：
+- `tokens`
+- `version.analysis_hash`
+- `version.vocab_hash`
+- `version.rules_hash`
 
-- `core/src/main/resources/vocabs.txt`
-- `core/src/main/resources/rules.json`
-- `core/src/main/resources/hants.json`
+### 查询扩展
 
-默认资源一旦变化，会影响 `analysis_hash`、`vocab_hash`、`rules_hash`，并要求同步更新 golden corpus 和相关文档。
+插件注册两类 Query DSL：
 
-### 版本指纹
+- `es_tok_query_string`：在 query string 解析上叠加 token 约束、高频词过滤和 query-side correction。
+- `es_tok_constraints`：独立 token 约束过滤器，可直接作为 bool filter 或 KNN filter 使用。
 
-系统统一输出三个版本字段：
+### 文本相关接口
 
-- `analysis_hash`：有效分析配置与依赖资源组合后的总指纹。
-- `vocab_hash`：词表内容指纹；关闭词表时返回 `disabled`。
-- `rules_hash`：规则内容指纹；关闭规则时返回 `disabled`。
+当前对外文本接口只有 canonical 路径：
 
-这三个字段同时用于 REST analyze、bridge 和 `/_cat/es_tok/version` 诊断。
+- `/_es_tok/related_tokens_by_tokens`
+- `/_es_tok/related_owners_by_tokens`
 
-## 对外暴露面
+其中：
 
-### Elasticsearch 注册项
+- `related_tokens_by_tokens` 面向 prefix、associate、next token、correction、auto 五类 token 关系检索。
+- `related_owners_by_tokens` 面向输入文本到相关 UP 主的聚合和排序。
 
-- Tokenizer 名称：`es_tok`
-- Analyzer 名称：`es_tok`
-- REST：`/_cat/es_tok`、`/_cat/es_tok/version`、`/_es_tok/analyze`、`/_es_tok/related_tokens_by_tokens`、`/_es_tok/related_owners_by_tokens`、`/_es_tok/related_videos_by_videos`、`/_es_tok/related_owners_by_videos`、`/_es_tok/related_videos_by_owners`、`/_es_tok/related_owners_by_owners`
-- Query DSL：`es_tok_query_string`、`es_tok_constraints`
+旧兼容别名已经移除，文档和测试也以 canonical 路径为准。
 
-### Bridge 契约
+### Graph 关系接口
 
-bridge CLI 只要求请求里至少包含 `text`，其余字段沿用 REST analyze 的 payload 结构。也就是说，bridge 与 REST analyze 不是两套 API，而是同一套 payload 通过不同 transport 暴露。
+面向 seed 视频或 seed owner 的关系接口包括：
 
-## 测试结构
+- `/_es_tok/related_videos_by_videos`
+- `/_es_tok/related_owners_by_videos`
+- `/_es_tok/related_videos_by_owners`
+- `/_es_tok/related_owners_by_owners`
 
-回归测试围绕“跨层输出一致”展开：
+这组接口依赖索引里已经写入的视频、作者和 topic 信号，不会绕过索引再做一套旁路逻辑。
 
-- core golden 测试验证 `EsTokEngine` 输出。
-- REST golden 测试验证 `AnalysisPayloadService` 输出。
-- bridge golden 测试验证 CLI 服务输出。
-- suggest 真实案例测试和 `debugs/evaluate_suggest_cases.py` 用于质量评估与迭代。
+## 数据与运行边界
 
-共享样例位于 `testing/golden/analysis/analysis_cases.json`。如果修改了分析行为、默认资源或 bridge 文档规范，必须同步更新这份语料和对应文档。
+### 什么时候只需要重载插件
 
-## 运行约束
+如果改动只发生在以下范围，通常不需要重建索引：
 
-1. `/_es_tok/analyze` 适合调试 payload，不代表某个现存索引的 analyzer 一定一致。
-2. token / owner / video 关系接口依赖字段映射和已写入的数据结构；没有对应字段或索引内容时，请求会失败或结果为空。
-3. warmup 是业务可用性的一个实际门槛。异步 warmup 场景下，应优先看 `/_cat/es_tok` 的 ready/total，而不是只看 cluster green。
-4. 真实效果优化通常不是只改插件一侧，还会牵涉 sibling 仓库中的索引 mapping、写入字段和数据回灌流程。
+- REST handler
+- 查询侧逻辑
+- 关系排序逻辑
+- 共享文本清洗、停用片段、query-time 规则
+- 纯资源调参文件
+
+这类改动通常只需要重新构建并通过 `./load.sh -a` 让节点加载新插件，再做真实请求验证。
+
+### 什么时候需要重建索引
+
+如果改动会改变索引期 analyzer 或字段组织，通常必须重建索引：
+
+- analyzer / tokenizer settings
+- mapping
+- suggest / assoc / words 等字段布局
+- `bili-scraper` 写入逻辑和 source 结构
+
+否则你验证到的只是“新插件读取旧索引”的混合状态，结论会失真。
+
+## Warmup 与业务可用性
+
+ES-TOK 在 shard 启动后会对业务索引做异步 warmup，避免首次请求承担全部预热成本。运行状态通过以下接口暴露：
+
+- `/_cat/es_tok`
+- `/_cat/es_tok/version`
+
+实际联调时，应优先看 warmup ready/total，而不是只看 cluster 是否 green。
+
+## 测试与评估结构
+
+仓库当前分成三类验证：
+
+1. 代码级回归：`./gradlew test yamlRestTest :bridge:test check`
+2. 跨层一致性：core、REST analyze、bridge 共享 golden corpus
+3. 真实数据效果验证：`debugs/evaluate_related_cases.py` 和 `debugs/evaluate_text_related_cases.py`
+
+其中真实效果验证已经覆盖：
+
+- graph 四接口批量抽样
+- 文本 token / owner 双接口批量抽样
+- 多种 query variant，如 `title`、`combo`、`long`、`desc`、`boilerplate`、`typo`
+- curated hard cases 固定样本集
+- 延迟、空结果、seed owner 覆盖等统计
+
+## 文档导航
+
+- `docs/01_API.md`：准确的接口与 payload 说明。
+- `docs/01_USAGE.md`：如何调用 analyzer、query DSL 和 relations 接口。
+- `docs/02_SETUP.md`：环境、构建、测试、插件加载。
+- `docs/02_WORKFLOW.md`：真实节点上的开发、重载、回灌、评估与迭代流程。

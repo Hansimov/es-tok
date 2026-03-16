@@ -591,7 +591,7 @@ public class SuggestRestTest {
     }
 
     private String performSuggest(String jsonBody) throws Exception {
-        Request request = new Request("POST", "/" + TEST_INDEX + "/_es_tok/suggest");
+        Request request = new Request("POST", "/" + TEST_INDEX + "/_es_tok/related_tokens_by_tokens");
         request.setJsonEntity(jsonBody);
         Response response = client.performRequest(request);
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent()))) {

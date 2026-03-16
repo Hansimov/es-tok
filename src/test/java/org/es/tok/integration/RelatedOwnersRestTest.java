@@ -394,7 +394,7 @@ public class RelatedOwnersRestTest {
       }
 
     private String performRelatedOwners(String jsonBody) throws Exception {
-        Request request = new Request("POST", "/" + TEST_INDEX + "/_es_tok/related_owners");
+        Request request = new Request("POST", "/" + TEST_INDEX + "/_es_tok/related_owners_by_tokens");
         request.setJsonEntity(jsonBody);
         Response response = client.performRequest(request);
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent()))) {

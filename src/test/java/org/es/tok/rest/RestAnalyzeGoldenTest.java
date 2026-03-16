@@ -1,6 +1,6 @@
 package org.es.tok.rest;
 
-import org.es.tok.core.compat.AnalysisPayloadService;
+import org.es.tok.core.payload.AnalysisPayloadService;
 import org.es.tok.support.GoldenAnalysisCaseLoader;
 import org.junit.Test;
 

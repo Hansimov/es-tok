@@ -7,7 +7,7 @@ import org.elasticsearch.rest.RestResponse;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentParser;
-import org.es.tok.core.compat.AnalysisPayloadService;
+import org.es.tok.core.payload.AnalysisPayloadService;
 
 import java.io.IOException;
 import java.util.LinkedHashMap;

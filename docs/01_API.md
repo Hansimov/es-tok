@@ -2,62 +2,53 @@
 
 ## 说明
 
-本文档定义 ES-TOK 当前对外暴露的接口与配置语义，覆盖：
-
-- Elasticsearch tokenizer / analyzer 配置
-- REST 诊断、分析、token/owner/video 关系接口
-- Query DSL 扩展
-- Java 侧公共入口
-- bridge CLI 契约
-
-下文只记录“代码中已经存在并被注册”的接口，不记录历史设计或计划中的能力。
+本文档只记录当前代码已经注册并公开支持的接口、配置和响应结构，不再保留历史兼容别名说明。文本相关接口的公开路径以 canonical endpoint 为准。
 
 ## 1. Elasticsearch 注册项
 
 | 类型 | 名称 | 说明 |
-|------|------|------|
+|---|---|---|
 | Tokenizer | `es_tok` | 由 `EsTokTokenizerFactory` 注册 |
 | Analyzer | `es_tok` | 由 `EsTokAnalyzerProvider` 注册 |
-| Query DSL | `es_tok_query_string` | 扩展 query string，支持 constraints、max_freq、spell correct |
+| Query DSL | `es_tok_query_string` | 扩展 query string，支持 constraints、max freq 和 spell correction |
 | Query DSL | `es_tok_constraints` | 独立 token 约束过滤器 |
-| REST | `/_cat/es_tok` | 查看 warmup 状态与分析版本 |
-| REST | `/_cat/es_tok/version` | 查看插件版本与版本指纹 |
-| REST | `/_es_tok/analyze` | 直接调试分析 payload |
-| REST | `/_es_tok/related_tokens_by_tokens` | token 关系接口，支持 prefix / correction / associate / next_token / auto；`/_es_tok/suggest` 为兼容别名 |
-| REST | `/_es_tok/related_owners_by_tokens` | 基于输入文本聚合相关 owner；`/_es_tok/related_owners` 为兼容别名 |
-| REST | `/_es_tok/related_videos_by_videos` | 基于视频 seed 找相关视频 |
-| REST | `/_es_tok/related_owners_by_videos` | 基于视频 seed 找相关 owner |
-| REST | `/_es_tok/related_videos_by_owners` | 基于 owner seed 找相关视频 |
-| REST | `/_es_tok/related_owners_by_owners` | 基于 owner seed 找相关 owner |
+| REST | `/_cat/es_tok` | warmup 状态与版本诊断 |
+| REST | `/_cat/es_tok/version` | 插件版本与哈希诊断 |
+| REST | `/_es_tok/analyze` | 统一分析 payload 调试接口 |
+| REST | `/_es_tok/related_tokens_by_tokens` | token 关系接口 |
+| REST | `/_es_tok/related_owners_by_tokens` | 文本到 owner 的关系接口 |
+| REST | `/_es_tok/related_videos_by_videos` | 视频到视频 |
+| REST | `/_es_tok/related_owners_by_videos` | 视频到 owner |
+| REST | `/_es_tok/related_videos_by_owners` | owner 到视频 |
+| REST | `/_es_tok/related_owners_by_owners` | owner 到 owner |
 
 ## 2. 分析配置模型
 
-### 2.1 顶层字段
-
-这些字段可以出现在：
+以下配置同时适用于：
 
 - 索引 analyzer / tokenizer settings
-- `/_es_tok/analyze` 请求体
+- `/_es_tok/analyze`
 - bridge CLI 请求 JSON
 
+### 顶层字段
+
 | 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `text` | string | 无 | 待分析文本。仅 REST analyze 和 bridge 必填 |
+|---|---|---|---|
+| `text` | string | 无 | 待分析文本；仅 REST analyze 和 bridge 必填 |
 | `use_vocab` | boolean | `true` | 是否启用词表分词 |
 | `use_categ` | boolean | `true` | 是否启用分类分词 |
 | `use_ngram` | boolean | `false` | 是否启用 ngram 输出 |
 | `use_rules` | boolean | `false` | 是否启用规则过滤 |
-| `use_extra` | boolean | 未单独消费 | REST analyze 接口会接收该字段，但当前核心配置加载按 `extra_config` 或扁平 extra 字段生效 |
 | `extra_config` | object | 空 | 额外归一化配置 |
 | `categ_config` | object | 空 | 分类切分配置 |
 | `vocab_config` | object | 空 | 词表配置 |
 | `ngram_config` | object | 空 | ngram 配置 |
-| `rules_config` | object | 空 | 规则配置 |
+| `rules_config` | object | 空 | include / exclude / declude 规则配置 |
 
-### 2.2 `extra_config`
+### `extra_config`
 
 | 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `ignore_case` | boolean | `true` | 大小写归一化 |
 | `ignore_hant` | boolean | `true` | 繁体转简体 |
 | `drop_duplicates` | boolean | `true` | 去重 |
@@ -65,39 +56,32 @@
 | `drop_vocabs` | boolean | `true` | 隐藏词表 token |
 | `emit_pinyin_terms` | boolean | `false` | 额外输出拼音 token |
 
-这些字段也支持以扁平方式直接出现在顶层 settings 中。
-
-### 2.3 `categ_config`
+### `categ_config`
 
 | 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `split_word` | boolean | `true` | 分类切分时是否进一步拆词 |
+|---|---|---|---|
+| `split_word` | boolean | `true` | 分类切分后是否继续拆词 |
 
-### 2.4 `vocab_config`
+### `vocab_config`
 
 | 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `file` | string | `vocabs.txt` 的默认加载逻辑由调用侧决定 | 从资源文件加载词表 |
+|---|---|---|---|
+| `file` | string | 调用方决定 | 从资源文件加载词表 |
 | `list` | string[] | 空 | 使用内联词表 |
 
-当 `use_vocab=true` 且调用侧没有提供 `vocab_config` 时：
-
-- 索引 settings 取决于当前 settings 解析结果。
-- `/_es_tok/analyze` 与 bridge 常用默认行为是补上内置 `vocabs.txt`。
-
-### 2.5 `ngram_config`
+### `ngram_config`
 
 | 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `use_bigram` | boolean | `false` | 输出 bigram |
-| `use_vcgram` | boolean | `false` | 输出 vcgram |
 | `use_vbgram` | boolean | `false` | 输出 vbgram |
+| `use_vcgram` | boolean | `false` | 输出 vcgram |
 | `drop_cogram` | boolean | `true` | 丢弃中间组合 token |
 
-### 2.6 `rules_config`
+### `rules_config`
 
 | 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `file` | string | `rules.json` | 从规则文件加载 |
 | `exclude_tokens` | string[] | 空 | 精确排除 |
 | `exclude_prefixes` | string[] | 空 | 前缀排除 |
@@ -112,40 +96,41 @@
 | `declude_prefixes` | string[] | 空 | 条件排除前缀 |
 | `declude_suffixes` | string[] | 空 | 条件排除后缀 |
 
-## 3. REST 接口
+## 3. 诊断接口
 
-### 3.1 `GET /_cat/es_tok`
+### `GET /_cat/es_tok`
 
-返回业务 warmup 状态与版本摘要。
+返回 warmup 状态与版本摘要。
 
 | 字段 | 类型 | 说明 |
-|------|------|------|
+|---|---|---|
 | `plugin` | string | 固定为 `es_tok` |
 | `status` | string | `Ready` 或 `Warming ready/total` |
 | `plugin_version` | string | 插件版本 |
-| `analysis_hash` | string | 诊断分析哈希 |
-| `vocab_hash` | string | 诊断词表哈希 |
-| `rules_hash` | string | 诊断规则哈希 |
-| `warmup_ready_shards` | integer | 已 ready 的业务 shard 数 |
-| `warmup_total_shards` | integer | 追踪的业务 shard 总数 |
+| `analysis_hash` | string | 分析配置指纹 |
+| `vocab_hash` | string | 词表指纹 |
+| `rules_hash` | string | 规则指纹 |
+| `warmup_ready_shards` | integer | 已 ready shard 数 |
+| `warmup_total_shards` | integer | 追踪业务 shard 总数 |
 | `warmup_running_shards` | integer | 正在 warmup 的 shard 数 |
 | `warmup_queued_shards` | integer | 排队中的 shard 数 |
-| `description` | string | 描述文本 |
 
-### 3.2 `GET /_cat/es_tok/version`
+### `GET /_cat/es_tok/version`
 
-返回相同字段，但 `status` 固定为插件版本字符串，更适合版本诊断而不是 serving gate。
+返回同类版本诊断字段，更适合做版本核对，不适合作为 serving gate。
 
-### 3.3 `GET|POST /_es_tok/analyze`
+## 4. Analyze 接口
+
+### `GET|POST /_es_tok/analyze`
 
 支持 query param 和 JSON body 混合传参，body 会覆盖同名 query param。
 
-请求字段见“分析配置模型”。其中：
+请求体沿用上面的分析配置模型，其中：
 
-- `text` 必填。
-- `use_vocab`、`use_categ`、`use_ngram`、`use_rules`、`use_extra` 支持直接作为 query param 传入。
+- `text` 必填
+- `use_vocab`、`use_categ`、`use_ngram`、`use_rules` 支持 query param
 
-响应结构：
+成功响应：
 
 ```json
 {
@@ -167,7 +152,7 @@
 }
 ```
 
-错误返回：
+错误响应：
 
 ```json
 {
@@ -175,39 +160,37 @@
 }
 ```
 
-### 3.4 `GET|POST /_es_tok/related_tokens_by_tokens`
+## 5. Token 关系接口
 
-也支持带索引路由：
+### 路径
 
-- `GET|POST /{index}/_es_tok/related_tokens_by_tokens`
+```http
+GET|POST /_es_tok/related_tokens_by_tokens
+GET|POST /{index}/_es_tok/related_tokens_by_tokens
+```
 
-兼容说明：
-
-- `GET|POST /_es_tok/suggest`
-- `GET|POST /{index}/_es_tok/suggest`
-
-请求字段：
+### 请求字段
 
 | 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `text` | string | 无 | 查询文本；除 `prewarm_pinyin=true` 预热请求外必填 |
-| `mode` | string | `prefix` | 支持 `prefix`、`associate`、`next_token`、`correction`、`auto` |
+|---|---|---|---|
+| `text` | string | 无 | 查询文本；仅 `prewarm_pinyin=true` 时可为空 |
+| `mode` | string | `prefix` | `prefix`、`associate`、`next_token`、`correction`、`auto` |
 | `fields` | string[] 或逗号分隔 string | 无 | 必填，token 关系字段列表 |
-| `size` | integer | `5` | 返回候选数量 |
+| `size` | integer | `5` | 返回候选数 |
 | `scan_limit` | integer | `64` | 扫描候选上限 |
-| `min_prefix_length` | integer | `1` | prefix 模式最小前缀长度 |
+| `min_prefix_length` | integer | `1` | prefix 最小前缀长度 |
 | `min_candidate_length` | integer | `1` | 候选最小长度 |
-| `max_fields` | integer | `8` | 允许的字段上限 |
-| `allow_compact_bigrams` | boolean | `true` | 是否允许紧凑 bigram 行为 |
+| `max_fields` | integer | `8` | 允许字段上限 |
+| `allow_compact_bigrams` | boolean | `true` | 是否启用紧凑 bigram 逻辑 |
 | `cache` | boolean | `true` | 是否启用缓存 |
 | `use_pinyin` | boolean | `false` | 是否启用拼音逻辑 |
-| `prewarm_pinyin` | boolean | `false` | 是否把请求作为拼音预热使用 |
-| `correction_rare_doc_freq` | integer | `0` | 纠错稀有词阈值 |
-| `correction_min_length` | integer | `4` | 纠错最短长度；中文拼音场景可能自动收缩到 `2` |
-| `correction_max_edits` | integer | `2` | 编辑距离，仅支持 `1` 或 `2` |
-| `correction_prefix_length` | integer | `1` | 纠错前缀保护长度 |
+| `prewarm_pinyin` | boolean | `false` | 是否把请求作为拼音预热 |
+| `correction_rare_doc_freq` | integer | `0` | 稀有词阈值 |
+| `correction_min_length` | integer | `4` | correction 最短长度 |
+| `correction_max_edits` | integer | `2` | 允许的编辑距离，支持 `1` 或 `2` |
+| `correction_prefix_length` | integer | `1` | correction 前缀保护长度 |
 
-响应结构：
+### 响应字段
 
 ```json
 {
@@ -218,13 +201,13 @@
   },
   "text": "黑神",
   "mode": "prefix",
-  "fields": ["title.suggest"],
+  "fields": ["title.suggest", "tags.suggest"],
   "cache_hit_count": 1,
   "options": [
     {
       "text": "黑神话",
-      "doc_freq": 42,
-      "score": 42.0,
+      "doc_freq": 123,
+      "score": 42.5,
       "type": "prefix",
       "shard_count": 1
     }
@@ -232,29 +215,35 @@
 }
 ```
 
-### 3.5 `GET|POST /_es_tok/related_owners_by_tokens`
+`options[]` 每项字段：
 
-也支持带索引路由：
+- `text`
+- `doc_freq`
+- `score`
+- `type`
+- `shard_count`
 
-- `GET|POST /{index}/_es_tok/related_owners_by_tokens`
+## 6. Owner 关系接口
 
-兼容说明：
+### 路径
 
-- `GET|POST /_es_tok/related_owners`
-- `GET|POST /{index}/_es_tok/related_owners`
+```http
+GET|POST /_es_tok/related_owners_by_tokens
+GET|POST /{index}/_es_tok/related_owners_by_tokens
+```
 
-请求字段：
+### 请求字段
 
 | 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `text` | string | 无 | 必填 |
-| `fields` | string[] 或逗号分隔 string | 无 | 必填，关联字段列表 |
+|---|---|---|---|
+| `text` | string | 无 | 必填，输入话题文本 |
+| `fields` | string[] 或逗号分隔 string | 无 | 必填，topic 字段列表 |
 | `size` | integer | `10` | 返回 owner 数量 |
-| `scan_limit` | integer | `128` | 扫描上限 |
-| `max_fields` | integer | `8` | 允许的字段上限 |
-| `use_pinyin` | boolean | `false` | 是否启用拼音逻辑 |
+| `scan_limit` | integer | `128` | 候选文档扫描上限 |
+| `max_fields` | integer | `8` | 允许字段上限 |
+| `use_pinyin` | boolean | `false` | 是否启用拼音相关逻辑 |
 
-响应结构：
+### 响应字段
 
 ```json
 {
@@ -263,179 +252,115 @@
     "successful": 1,
     "failed": 0
   },
-  "text": "黑神话",
-  "fields": ["title.assoc", "tags.assoc"],
+  "text": "红色警戒月亮3高清对战",
+  "fields": ["title.words", "tags.words", "desc.words"],
   "owners": [
     {
-      "mid": 12345,
-      "name": "某个UP主",
-      "doc_freq": 20,
-      "score": 20.0,
+      "mid": 546195,
+      "name": "月亮3",
+      "doc_freq": 18,
+      "score": 71.3,
       "shard_count": 1
     }
   ]
 }
 ```
 
-### 3.6 `GET|POST /_es_tok/related_videos_by_videos`
+`owners[]` 每项字段：
 
-也支持带索引路由：
+- `mid`
+- `name`
+- `doc_freq`
+- `score`
+- `shard_count`
 
-- `GET|POST /{index}/_es_tok/related_videos_by_videos`
+## 7. Graph 关系接口
 
-请求字段：
+### 路径
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `bvids` | string[] 或逗号分隔 string | 无 | 必填，视频 seed 列表 |
-| `size` | integer | `10` | 返回视频数量 |
-| `scan_limit` | integer | `128` | 扫描上限 |
-
-### 3.7 `GET|POST /_es_tok/related_owners_by_videos`
-
-也支持带索引路由：
-
-- `GET|POST /{index}/_es_tok/related_owners_by_videos`
-
-请求字段与上节相同，但返回 `owners` 数组。
-
-### 3.8 `GET|POST /_es_tok/related_videos_by_owners`
-
-也支持带索引路由：
-
-- `GET|POST /{index}/_es_tok/related_videos_by_owners`
-
-请求字段：
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `mids` | long[] 或逗号分隔 string | 无 | 必填，owner seed 列表 |
-| `size` | integer | `10` | 返回视频数量 |
-| `scan_limit` | integer | `128` | 扫描上限 |
-
-### 3.9 `GET|POST /_es_tok/related_owners_by_owners`
-
-也支持带索引路由：
-
-- `GET|POST /{index}/_es_tok/related_owners_by_owners`
-
-请求字段与上节相同，但返回 `owners` 数组。
-
-## 4. Query DSL 扩展
-
-### 4.1 `es_tok_query_string`
-
-这是在 Elasticsearch query string 基础上的扩展 query。除标准字段外，新增以下能力：
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `constraints` | array | 空 | token 级约束数组 |
-| `max_freq` | integer | `0` | 过滤高频 token；`0` 表示关闭 |
-| `spell_correct` | boolean | `false` | 是否启用 query-side 纠错 |
-| `spell_correct_rare_doc_freq` | integer | `0` | 稀有词阈值 |
-| `spell_correct_min_length` | integer | `4` | 最短纠错长度 |
-| `spell_correct_max_edits` | integer | `2` | 编辑距离，只能是 `1` 或 `2` |
-| `spell_correct_prefix_length` | integer | `1` | 前缀保护长度 |
-| `spell_correct_size` | integer | `3` | 候选数量 |
-
-此外，它继续支持标准 query string 常用字段，包括：
-
-- `query`
-- `fields`
-- `default_field`
-- `default_operator`
-- `analyzer`
-- `quote_analyzer`
-- `quote_field_suffix`
-- `phrase_slop`
-- `fuzziness`
-- `fuzzy_prefix_length`
-- `fuzzy_max_expansions`
-- `fuzzy_transpositions`
-- `fuzzy_rewrite`
-- `lenient`
-- `analyze_wildcard`
-- `time_zone`
-- `type`
-- `tie_breaker`
-- `rewrite`
-- `minimum_should_match`
-- `enable_position_increments`
-- `max_determinized_states`
-- `auto_generate_synonyms_phrase_query`
-- `boost`
-- `_name`
-
-### 4.2 `es_tok_constraints`
-
-这是纯过滤型 query，不做 query string 解析。字段只有：
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `fields` | string[] | 默认字段列表；为空时默认使用 `[*]` |
-| `constraints` | array | 必填，约束列表 |
-| `boost` | float | 可选 |
-| `_name` | string | 可选 |
-
-当所有约束都为空时，内部退化为 `match_all`。
-
-### 4.3 `constraints` 语法
-
-每个 constraint item 顶层仍然按 AND 组合。单个 item 支持三种布尔包装和一种简写：
-
-```json
-{"have_token": ["科技"]}
-{"AND": {"with_prefixes": ["深度"]}}
-{"NOT": {"have_token": ["广告"]}}
-{"OR": [
-  {"have_token": ["AI"]},
-  {"with_patterns": [".*模型.*"]}
-]}
+```http
+GET|POST /_es_tok/related_videos_by_videos
+GET|POST /_es_tok/related_owners_by_videos
+GET|POST /_es_tok/related_videos_by_owners
+GET|POST /_es_tok/related_owners_by_owners
 ```
 
-每个 constraint item 可额外带 `fields`，覆盖 query 顶层 `fields`：
+也都支持带索引前缀的形式：
 
-```json
-{
-  "NOT": {"with_contains": ["广告"]},
-  "fields": ["title^3", "tags"]
-}
+```http
+GET|POST /{index}/_es_tok/...
 ```
 
-单个 match condition 支持的字段：
+### 请求字段
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `have_token` | string[] | 精确 token 命中 |
-| `with_prefixes` | string[] | token 前缀命中 |
-| `with_suffixes` | string[] | token 后缀命中 |
-| `with_contains` | string[] | token 子串命中 |
-| `with_patterns` | string[] | token 正则命中 |
+| 字段 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `bvid` / `bvids` | string 或 string[] | 空 | 视频 seed，视频源 relation 必填 |
+| `mid` / `mids` | long 或 long[] | 空 | owner seed，owner 源 relation 必填 |
+| `size` | integer | `10` | 返回候选数量 |
+| `scan_limit` | integer | `128` | 候选扫描上限 |
 
-## 5. Java 公共入口
+约束：
 
-虽然 core 主要由插件和 bridge 复用，但当前仓库中对外语义最稳定的 Java 入口主要有两类：
+- 每次请求最多 `32` 个 seed
+- 视频源 relation 必须提供 `bvids`
+- owner 源 relation 必须提供 `mids`
 
-### 5.1 `org.es.tok.core.facade.EsTokEngine`
+### 响应字段
 
-职责：接收 `EsTokConfig` 并输出 `AnalyzeResult`。
+所有 graph relation 响应都会返回：
 
-关键方法：
+- `_shards`
+- `relation`
+- `bvids` 或 `mids`
+- `videos[]` 或 `owners[]`
 
-- `analyze(String text)`
-- `analyze(AnalyzeRequest request)`
-- `resolveVersion()`
+视频候选项字段：
 
-### 5.2 `org.es.tok.core.compat.AnalysisPayloadService`
+- `bvid`
+- `title`
+- `owner_mid`
+- `owner_name`
+- `doc_freq`
+- `score`
+- `shard_count`
 
-职责：接收 payload map，做 settings 扁平化、配置加载与统一响应转换。
+owner 候选项字段：
 
-关键方法：
+- `mid`
+- `name`
+- `doc_freq`
+- `score`
+- `shard_count`
 
-- `analyze(Map<String, Object> payload)`
-- `toResponse(AnalyzeResult result)`
+## 8. Query DSL
 
-这也是 REST analyze 与 bridge 共享的真正边界层。
+### `es_tok_query_string`
+
+扩展标准 query string，额外支持：
+
+- `constraints`
+- `max_freq`
+- `spell_correct`
+- `spell_correct_min_length`
+- `spell_correct_size`
+
+### `es_tok_constraints`
+
+独立 token 约束过滤器，常作为：
+
+- bool filter
+- KNN filter
+- 与其他 query 组合的业务过滤层
+
+## 9. Java 侧共享边界
+
+对外协议虽然分散在 analyzer、REST 和 bridge，但核心共享边界只有两层：
+
+1. `EsTokEngine`：真正执行分析。
+2. `AnalysisPayloadService`：接收 payload map，完成 settings 扁平化、配置加载与统一响应转换。
+
+REST analyze 与 bridge CLI 共用的是同一个 payload 语义，而不是两套独立协议。
 
 <!-- BEGIN AUTO-GENERATED: BRIDGE_API -->
 
@@ -443,12 +368,12 @@
 
 bridge CLI 通过标准输入/输出暴露共享的 ES-TOK Java core，供 Python 和其他非 JVM 调用方复用同一套分析语义。
 
-### 传输方式
+## 传输方式
 
 - 请求：向标准输入写入一个 JSON 对象
 - 响应：从标准输出读取一个 JSON 对象
 
-### 请求体
+## 请求体
 
 bridge 至少需要 `text` 字段；其余字段会继续传给 ES-TOK 配置加载器。嵌套配置对象保持与插件 REST 分析接口一致的命名。
 
@@ -467,14 +392,14 @@ bridge 至少需要 `text` 字段；其余字段会继续传给 ES-TOK 配置加
 
 除 `text` 外，其余字段会按原样传递给 ES-TOK 配置加载器，因此可以直接复用插件 REST 分析接口中的嵌套配置结构。
 
-### 响应体
+## 响应体
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `tokens` | array | 是 | 共享 Java core 输出的有序 token 列表。 |
 | `version` | object | 是 | 描述当前分析行为和资源快照的版本哈希。 |
 
-#### Token 对象
+### Token 对象
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
@@ -485,7 +410,7 @@ bridge 至少需要 `text` 字段；其余字段会继续传给 ES-TOK 配置加
 | `group` | string | 是 | ES-TOK 分组，例如 categ、vocab、ngram。 |
 | `position` | integer | 是 | token 在最终有序输出中的位置。 |
 
-#### 版本对象
+### 版本对象
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
@@ -493,59 +418,209 @@ bridge 至少需要 `text` 字段；其余字段会继续传给 ES-TOK 配置加
 | `vocab_hash` | string | 是 | 解析后词表内容的哈希；当词表关闭时返回 `disabled`。 |
 | `rules_hash` | string | 是 | 解析后规则内容的哈希；当规则关闭时返回 `disabled`。 |
 
-### 示例
+## 示例
+
+### 内联词表分词
 
 请求：
-
 ```json
 {
-  "text": "自然语言处理技术",
-  "use_vocab": true,
-  "use_categ": false,
-  "vocab_config": {
-    "list": ["自然语言", "语言处理", "处理技术"]
-  }
+    "text": "自然语言处理技术",
+    "use_vocab": true,
+    "use_categ": false,
+    "vocab_config": {
+        "list": [
+            "自然语言",
+            "语言处理",
+            "处理技术"
+        ]
+    }
 }
 ```
 
 响应：
-
 ```json
 {
-  "tokens": [
-    {
-      "token": "自然语言",
-      "start_offset": 0,
-      "end_offset": 4,
-      "type": "vocab",
-      "group": "vocab",
-      "position": 0
-    },
-    {
-      "token": "处理技术",
-      "start_offset": 4,
-      "end_offset": 8,
-      "type": "vocab",
-      "group": "vocab",
-      "position": 1
+    "tokens": [
+        {
+            "token": "自然语言",
+            "start_offset": 0,
+            "end_offset": 4,
+            "type": "vocab",
+            "group": "vocab",
+            "position": 0
+        },
+        {
+            "token": "语言处理",
+            "start_offset": 2,
+            "end_offset": 6,
+            "type": "vocab",
+            "group": "vocab",
+            "position": 1
+        },
+        {
+            "token": "处理技术",
+            "start_offset": 4,
+            "end_offset": 8,
+            "type": "vocab",
+            "group": "vocab",
+            "position": 2
+        }
+    ],
+    "version": {
+        "analysis_hash": "5b89b632d3a9916c",
+        "vocab_hash": "3edf73e70c75ac7c",
+        "rules_hash": "disabled"
     }
-  ],
-  "version": {
-    "analysis_hash": "...",
-    "vocab_hash": "...",
-    "rules_hash": "disabled"
-  }
 }
 ```
 
-CLI 成功时退出码为 `0`；当参数校验失败时会输出：
+### 基础分类分词
 
+请求：
 ```json
 {
-  "error": "text is required"
+    "text": "红警HBK08",
+    "use_vocab": false,
+    "use_categ": true,
+    "categ_config": {
+        "split_word": true
+    }
 }
 ```
 
-并以退出码 `2` 结束。
+响应：
+```json
+{
+    "tokens": [
+        {
+            "token": "红",
+            "start_offset": 0,
+            "end_offset": 1,
+            "type": "cjk",
+            "group": "categ",
+            "position": 0
+        },
+        {
+            "token": "警",
+            "start_offset": 1,
+            "end_offset": 2,
+            "type": "cjk",
+            "group": "categ",
+            "position": 1
+        },
+        {
+            "token": "hbk",
+            "start_offset": 2,
+            "end_offset": 5,
+            "type": "eng",
+            "group": "categ",
+            "position": 2
+        },
+        {
+            "token": "08",
+            "start_offset": 5,
+            "end_offset": 7,
+            "type": "arab",
+            "group": "categ",
+            "position": 3
+        }
+    ],
+    "version": {
+        "analysis_hash": "a46959c9605c59ef",
+        "vocab_hash": "disabled",
+        "rules_hash": "disabled"
+    }
+}
+```
+
+### 词表、分类与 N-gram 联合输出
+
+请求：
+```json
+{
+    "text": "红警hbk08",
+    "use_vocab": true,
+    "use_categ": true,
+    "use_ngram": true,
+    "vocab_config": {
+        "list": [
+            "红警hbk08"
+        ]
+    },
+    "categ_config": {
+        "split_word": true
+    },
+    "ngram_config": {
+        "use_bigram": true
+    },
+    "extra_config": {
+        "drop_categs": true,
+        "drop_duplicates": true,
+        "ignore_case": true
+    }
+}
+```
+
+响应：
+```json
+{
+    "tokens": [
+        {
+            "token": "红警",
+            "start_offset": 0,
+            "end_offset": 2,
+            "type": "bigram",
+            "group": "ngram",
+            "position": 0
+        },
+        {
+            "token": "红警hbk08",
+            "start_offset": 0,
+            "end_offset": 7,
+            "type": "vocab",
+            "group": "vocab",
+            "position": 1
+        },
+        {
+            "token": "警hbk",
+            "start_offset": 1,
+            "end_offset": 5,
+            "type": "bigram",
+            "group": "ngram",
+            "position": 2
+        },
+        {
+            "token": "hbk",
+            "start_offset": 2,
+            "end_offset": 5,
+            "type": "eng",
+            "group": "categ",
+            "position": 3
+        },
+        {
+            "token": "hbk08",
+            "start_offset": 2,
+            "end_offset": 7,
+            "type": "bigram",
+            "group": "ngram",
+            "position": 4
+        },
+        {
+            "token": "08",
+            "start_offset": 5,
+            "end_offset": 7,
+            "type": "arab",
+            "group": "categ",
+            "position": 5
+        }
+    ],
+    "version": {
+        "analysis_hash": "715391491e74843c",
+        "vocab_hash": "fcc7e70d9b65b20d",
+        "rules_hash": "disabled"
+    }
+}
+```
 
 <!-- END AUTO-GENERATED: BRIDGE_API -->

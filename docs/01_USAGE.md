@@ -2,29 +2,27 @@
 
 ## 适用范围
 
-本指南覆盖三类使用方式：
+本文档覆盖三类使用方式：
 
-1. 作为 Elasticsearch 插件使用 tokenizer、analyzer、query DSL、REST token/owner/video 关系接口。
-2. 作为调试接口调用 `/_es_tok/analyze`。
-3. 作为 bridge CLI 在 Python 或其他非 JVM 进程中复用分析能力。
+1. 作为 Elasticsearch 插件使用 analyzer、query DSL 和关系接口。
+2. 通过 `/_es_tok/analyze` 调试分析 payload。
+3. 通过 bridge CLI 在非 JVM 进程中复用同一套分析语义。
 
-如果你是开发者，环境搭建和构建测试命令见 `docs/02_SETUP.md`；真实集成、重载插件、重建索引和回归流程见 `docs/02_WORKFLOW.md`。
+环境安装、构建和测试见 `docs/02_SETUP.md`；真实节点上的重载、回灌和效果验证见 `docs/02_WORKFLOW.md`。
 
 ## 1. 检查插件状态
-
-### 查看插件版本与 warmup
 
 ```http
 GET /_cat/es_tok?v
 GET /_cat/es_tok/version?v
 ```
 
-推荐优先看 `/_cat/es_tok`：
+建议优先查看 `/_cat/es_tok`：
 
-- `status` 为 `Ready` 表示业务 shard warmup 已完成。
-- 若显示 `Warming ready/total`，说明节点虽然可能已经启动成功，但建议接口的首次请求成本还没有完全前移。
+- `status = Ready` 表示业务 shard warmup 已完成。
+- `status = Warming ready/total` 表示节点已启动，但真实请求仍可能承担预热成本。
 
-## 2. 直接调试分析结果
+## 2. 调试分析结果
 
 ### 最小请求
 
@@ -35,7 +33,7 @@ POST /_es_tok/analyze
 }
 ```
 
-### 使用内联词表
+### 指定内联词表
 
 ```json
 POST /_es_tok/analyze
@@ -49,7 +47,7 @@ POST /_es_tok/analyze
 }
 ```
 
-### 同时启用分类、词表和 N-gram
+### 同时启用分类、词表和 ngram
 
 ```json
 POST /_es_tok/analyze
@@ -69,14 +67,16 @@ POST /_es_tok/analyze
 }
 ```
 
-返回结构统一为：
+响应中最关键的字段是：
 
-- `tokens`：有序 token 列表。
-- `version.analysis_hash` / `version.vocab_hash` / `version.rules_hash`：当前行为的版本指纹。
+- `tokens`
+- `version.analysis_hash`
+- `version.vocab_hash`
+- `version.rules_hash`
+
+如果你要对比索引 analyzer 与 REST analyze 的差异，必须显式传入与索引相同的配置。`/_es_tok/analyze` 是 payload 调试接口，不会自动镜像某个现存索引的 analyzer。
 
 ## 3. 在索引中挂接 analyzer
-
-### 注册 tokenizer 与 custom analyzer
 
 ```json
 PUT /test
@@ -111,17 +111,15 @@ PUT /test
 }
 ```
 
-### 关键说明
+使用时需要注意：
 
-1. 注册名称固定是 `es_tok`，你可以给具体 tokenizer / analyzer 起自己的实例名。
-2. analyzer 的真实行为由索引创建时的 settings 决定。改了插件默认资源或配置后，通常需要重建索引重新验证。
-3. 若希望 REST analyze 与索引行为一致，应把 analyzer 里的相同配置显式传给 `/_es_tok/analyze`。
+1. 注册类型名固定是 `es_tok`，具体 tokenizer / analyzer 实例名可以自定义。
+2. 修改默认资源、索引 analyzer 或 mapping 后，通常要重建索引再验证真实行为。
+3. 如果只改 query-time 逻辑或 REST 层，通常不需要重建索引。
 
-## 4. 使用查询扩展
+## 4. 使用 Query DSL 扩展
 
-### 4.1 `es_tok_query_string`
-
-适用于正常全文查询，同时叠加 ES-TOK 扩展能力。
+### `es_tok_query_string`
 
 ```json
 POST /test/_search
@@ -147,15 +145,13 @@ POST /test/_search
 }
 ```
 
-典型用途：
+适合场景：
 
-- 用 `constraints` 做 token 级业务过滤。
-- 用 `max_freq` 过滤过高频 token。
-- 用 `spell_correct` 让 query-side 纠错先修正输入，再进入解析。
+- 需要 query string 语法，同时叠加 token 级业务约束。
+- 需要按高频词阈值过滤 query token。
+- 需要 query-side typo correction。
 
-### 4.2 `es_tok_constraints`
-
-适用于纯过滤场景，尤其适合作为 bool filter 或 KNN filter。
+### `es_tok_constraints`
 
 ```json
 POST /test/_search
@@ -181,11 +177,22 @@ POST /test/_search
 }
 ```
 
-## 5. 使用 `related_tokens_by_tokens` 接口
+适合场景：
 
-### 请求约束
+- 纯过滤条件。
+- bool filter。
+- KNN filter 或其他需要把 token 约束单独拆出来的查询。
 
-`/_es_tok/related_tokens_by_tokens` 至少需要：
+## 5. 使用 `related_tokens_by_tokens`
+
+当前只支持 canonical 路径：
+
+```http
+GET|POST /_es_tok/related_tokens_by_tokens
+GET|POST /{index}/_es_tok/related_tokens_by_tokens
+```
+
+最小请求至少需要：
 
 - `text`
 - `fields`
@@ -198,7 +205,7 @@ POST /test/_search
 - `correction`
 - `auto`
 
-### Prefix suggest
+### Prefix 示例
 
 ```json
 POST /bili_videos_dev6/_es_tok/related_tokens_by_tokens
@@ -212,7 +219,7 @@ POST /bili_videos_dev6/_es_tok/related_tokens_by_tokens
 }
 ```
 
-### Next-token suggest
+### Next-token 示例
 
 ```json
 POST /bili_videos_dev6/_es_tok/related_tokens_by_tokens
@@ -225,7 +232,7 @@ POST /bili_videos_dev6/_es_tok/related_tokens_by_tokens
 }
 ```
 
-### Correction suggest
+### Correction 示例
 
 ```json
 POST /bili_videos_dev6/_es_tok/related_tokens_by_tokens
@@ -241,7 +248,7 @@ POST /bili_videos_dev6/_es_tok/related_tokens_by_tokens
 }
 ```
 
-### Auto 模式
+### Auto 示例
 
 ```json
 POST /bili_videos_dev6/_es_tok/related_tokens_by_tokens
@@ -255,34 +262,60 @@ POST /bili_videos_dev6/_es_tok/related_tokens_by_tokens
 }
 ```
 
-### 返回结果说明
+常用参数：
 
-`options` 数组中的每一项包含：
+- `size`
+- `scan_limit`
+- `min_prefix_length`
+- `min_candidate_length`
+- `max_fields`
+- `allow_compact_bigrams`
+- `cache`
+- `use_pinyin`
+- `prewarm_pinyin`
+- `correction_rare_doc_freq`
+- `correction_min_length`
+- `correction_max_edits`
+- `correction_prefix_length`
 
-- `text`：候选文本。
-- `doc_freq`：候选文档频次。
-- `score`：排序分数。
-- `type`：候选类型。
-- `shard_count`：命中候选的 shard 数。
+响应中的 `options[]` 每项包含：
 
-兼容说明：旧的 `/_es_tok/suggest` 路由仍然可用，但推荐新调用方直接切到 `related_tokens_by_tokens`。
+- `text`
+- `doc_freq`
+- `score`
+- `type`
+- `shard_count`
 
-## 6. 使用 `related_owners_by_tokens` 接口
+## 6. 使用 `related_owners_by_tokens`
+
+当前只支持 canonical 路径：
+
+```http
+GET|POST /_es_tok/related_owners_by_tokens
+GET|POST /{index}/_es_tok/related_owners_by_tokens
+```
+
+最小请求至少需要：
+
+- `text`
+- `fields`
+
+常见请求：
 
 ```json
 POST /bili_videos_dev6/_es_tok/related_owners_by_tokens
 {
-  "text": "黑神话",
-  "fields": ["title.words", "tags.words"],
+  "text": "红色警戒月亮3高清对战",
+  "fields": ["title.words", "tags.words", "desc.words"],
   "size": 10,
   "scan_limit": 128,
   "use_pinyin": true
 }
 ```
 
-兼容说明：旧的 `/_es_tok/related_owners` 路由仍然可用，但推荐新调用方直接切到 `related_owners_by_tokens`。
+接口会先对 query text 做统一清洗，再基于索引内 topic token 和 source 聚合相关 owner。它更偏“话题相关 owner”而不是 owner name prefix suggest。
 
-返回的 `owners` 数组包含：
+响应中的 `owners[]` 每项包含：
 
 - `mid`
 - `name`
@@ -290,78 +323,85 @@ POST /bili_videos_dev6/_es_tok/related_owners_by_tokens
 - `score`
 - `shard_count`
 
-## 7. 使用 graph relations 接口
+## 7. 使用 graph relation 接口
 
-### Videos -> Videos
+四个 canonical 路径如下：
+
+```http
+GET|POST /_es_tok/related_videos_by_videos
+GET|POST /_es_tok/related_owners_by_videos
+GET|POST /_es_tok/related_videos_by_owners
+GET|POST /_es_tok/related_owners_by_owners
+```
+
+也都支持带索引前缀的形式：
+
+```http
+GET|POST /{index}/_es_tok/...
+```
+
+请求字段按 relation 类型变化：
+
+- 视频 seed 使用 `bvid` 或 `bvids`
+- owner seed 使用 `mid` 或 `mids`
+- 公共参数是 `size` 和 `scan_limit`
+
+示例：
 
 ```json
 POST /bili_videos_dev6/_es_tok/related_videos_by_videos
 {
-  "bvids": ["BV1xxxxxx"],
+  "bvids": ["BV1xx411c7mD"],
   "size": 10,
   "scan_limit": 128
 }
 ```
-
-### Videos -> Owners
-
-```json
-POST /bili_videos_dev6/_es_tok/related_owners_by_videos
-{
-  "bvids": ["BV1xxxxxx"],
-  "size": 10,
-  "scan_limit": 128
-}
-```
-
-### Owners -> Videos
-
-```json
-POST /bili_videos_dev6/_es_tok/related_videos_by_owners
-{
-  "mids": [123456],
-  "size": 10,
-  "scan_limit": 128
-}
-```
-
-### Owners -> Owners
 
 ```json
 POST /bili_videos_dev6/_es_tok/related_owners_by_owners
 {
-  "mids": [123456],
+  "mids": [546195],
   "size": 10,
   "scan_limit": 128
 }
 ```
 
+响应会回显：
+
+- `relation`
+- `bvids` 或 `mids`
+- `videos[]` 或 `owners[]`
+
+其中视频候选项包含：
+
+- `bvid`
+- `title`
+- `owner_mid`
+- `owner_name`
+- `doc_freq`
+- `score`
+- `shard_count`
+
 ## 8. 使用 bridge CLI
 
-### 构建 fat jar
+bridge CLI 通过 stdin/stdout 复用同一套 Java core，最适合 Python 侧联调或离线调试。
 
-```sh
-./gradlew :bridge:fatJar
-```
-
-### 从标准输入传入 JSON
-
-```sh
-echo '{
+```json
+{
   "text": "自然语言处理技术",
   "use_vocab": true,
   "use_categ": false,
   "vocab_config": {
     "list": ["自然语言", "语言处理", "处理技术"]
   }
-}' | java -jar bridge/build/libs/bridge-0.10.1-all.jar
+}
 ```
 
-bridge 与 REST analyze 使用同一套 payload 结构。成功时退出码为 `0`；当 `text` 缺失或为空导致参数校验失败时，返回 `{ "error": ... }` 并以退出码 `2` 结束。
+bridge 的 payload 命名与 `/_es_tok/analyze` 一致，因此不需要维护第二套分析协议。
 
-## 9. 常见使用建议
+## 9. 使用建议
 
-1. 先用 `/_es_tok/analyze` 把 payload 调通，再落到索引 settings。
-2. `related_tokens_by_tokens` 与 `related_owners_by_tokens` 不要直接对普通全文字段试验，应该使用专门的 `*.suggest`、`*.assoc` 或 `*.words` 字段。
-3. 线上联调时，先确认 `/_cat/es_tok` 是否 ready，再评估第一次请求耗时。
-4. 如果插件改动牵涉 mapping 或写入字段，不要只重载插件；应同步重建索引并回灌数据。
+1. 调 analyzer 行为时，优先用 `/_es_tok/analyze`。
+2. 调线上实际效果时，不要只看 analyzer，必须对真实索引跑 canonical relation 接口。
+3. 改动 query-time 逻辑后，通常只需要重载插件；改动索引 analyzer 或 mapping 后，通常需要重建索引。
+4. 大规模效果回归不要人工点查，直接使用 `debugs/evaluate_related_cases.py` 与 `debugs/evaluate_text_related_cases.py`。

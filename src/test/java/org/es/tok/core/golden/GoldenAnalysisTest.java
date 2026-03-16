@@ -3,10 +3,10 @@ package org.es.tok.core.golden;
 import org.elasticsearch.common.settings.Settings;
 import org.es.tok.config.EsTokConfig;
 import org.es.tok.config.EsTokConfigLoader;
-import org.es.tok.core.compat.SettingsFlattener;
 import org.es.tok.core.facade.EsTokEngine;
 import org.es.tok.core.model.AnalyzeResult;
 import org.es.tok.core.model.AnalyzeToken;
+import org.es.tok.core.payload.SettingsFlattener;
 import org.es.tok.support.GoldenAnalysisCaseLoader;
 import org.junit.Test;
 

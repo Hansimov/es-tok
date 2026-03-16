@@ -1,6 +1,6 @@
 package org.es.tok.bridge;
 
-import org.es.tok.core.compat.AnalysisPayloadService;
+import org.es.tok.core.payload.AnalysisPayloadService;
 
 import java.util.Map;
 

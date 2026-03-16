@@ -1,4 +1,4 @@
-package org.es.tok.core.compat;
+package org.es.tok.core.payload;
 
 import org.elasticsearch.common.settings.Settings;
 

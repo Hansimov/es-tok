@@ -117,7 +117,7 @@ public class SuggestRealCasesTest {
         requestBody.put("fields", fields);
         requestBody.put("prewarm_pinyin", true);
 
-        Request request = new Request("POST", "/bili_videos_dev6/_es_tok/suggest");
+        Request request = new Request("POST", "/bili_videos_dev6/_es_tok/related_tokens_by_tokens");
         request.setJsonEntity(MAPPER.writeValueAsString(requestBody));
         client.performRequest(request);
     }
@@ -130,7 +130,7 @@ public class SuggestRealCasesTest {
         requestBody.putAll(defaultRequest(realCase.mode()));
         requestBody.putAll(realCase.requestOverrides());
 
-        Request request = new Request("POST", "/bili_videos_dev6/_es_tok/suggest");
+        Request request = new Request("POST", "/bili_videos_dev6/_es_tok/related_tokens_by_tokens");
         request.setJsonEntity(MAPPER.writeValueAsString(requestBody));
 
         Response response = client.performRequest(request);
