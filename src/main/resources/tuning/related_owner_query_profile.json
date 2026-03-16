@@ -3,6 +3,8 @@
     "schema_version": 1,
     "profile": {
         "expansion_term_boost": 0.32,
+        "exact_seed_term_boost_factor": 1.9,
+        "prefix_seed_term_boost_factor": 0.72,
         "max_expansion_terms": 3,
         "max_short_query_terms": 8,
         "max_medium_query_terms": 6,
@@ -26,6 +28,9 @@
         "seed_rank_decay_floor": 0.72,
         "representative_quality_factor": 1.05,
         "representative_influence_factor": 1.35,
+        "representative_term_coverage_factor": 1.15,
+        "representative_matched_term_factor": 0.24,
+        "representative_matched_strong_term_factor": 0.32,
         "representative_base_offset": 1.0,
         "ranking_topic_weight": 3.0,
         "ranking_term_coverage_weight": 2.0,

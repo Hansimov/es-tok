@@ -1,0 +1,94 @@
+[
+    {
+        "label": "BV15EwWzLEwa:long_curated",
+        "variant": "curated_long",
+        "text": "我在雪山救了100只狐狸！ 尝试制作的邵氏ai反转短剧，喜欢的话别忘记点个赞呀。",
+        "seed": {
+            "bvid": "BV15EwWzLEwa",
+            "title": "我在雪山救了100只狐狸！",
+            "tid": 216,
+            "owner": {
+                "name": "一朵五颜六色的白云",
+                "mid": 108876940
+            },
+            "tags": [
+                "邵氏",
+                "搞笑",
+                "雪山救狐狸",
+                "雪山"
+            ]
+        }
+    },
+    {
+        "label": "BV1EvPDzKEQt:long_curated",
+        "variant": "curated_long",
+        "text": "小企鹅这是在装傻吗？咕咕嘎嘎！【终末地】 点点关注不错过，小企鹅持续更新咕嘎小日常系列中",
+        "seed": {
+            "bvid": "BV1EvPDzKEQt",
+            "title": "小企鹅这是在装傻吗？咕咕嘎嘎！【终末地】",
+            "tid": 162,
+            "owner": {
+                "name": "嘎嘎咕嘎小企鹅",
+                "mid": 3537121952401913
+            },
+            "tags": [
+                "终末地",
+                "小企鹅",
+                "动画短片"
+            ]
+        }
+    },
+    {
+        "label": "BV1UBwNzUEW7:url_only_curated",
+        "variant": "curated_url",
+        "text": "⁣ https://t.me/anemoya_chan",
+        "seed": {
+            "bvid": "BV1UBwNzUEW7",
+            "title": "⁣",
+            "tid": 26,
+            "owner": {
+                "name": "智能仿生魂",
+                "mid": 1480142565
+            },
+            "tags": [
+                "Yakui the maid"
+            ]
+        }
+    },
+    {
+        "label": "BV1jywMzGEyx:boilerplate_curated",
+        "variant": "curated_boilerplate",
+        "text": "【紫罗兰2534】最新视频已上线，快来围观！ 点点关注不错过 持续更新小日常系列中",
+        "seed": {
+            "bvid": "BV1jywMzGEyx",
+            "title": "【紫罗兰2534】最新视频已上线，快来围观！",
+            "tid": 85,
+            "owner": {
+                "name": "紫罗兰2534",
+                "mid": 355272914
+            },
+            "tags": [
+                "紫罗兰2534",
+                "围观"
+            ]
+        }
+    },
+    {
+        "label": "BV1NMP9zHEHZ:combo_curated",
+        "variant": "curated_combo",
+        "text": "开学之后，三角洲像换了个游戏 三角洲行动 新春来三角洲接红",
+        "seed": {
+            "bvid": "BV1NMP9zHEHZ",
+            "title": "开学之后，三角洲像换了个游戏",
+            "tid": 65,
+            "owner": {
+                "name": "阿肃SUSU",
+                "mid": 3546619855243482
+            },
+            "tags": [
+                "三角洲行动",
+                "新春来三角洲接红"
+            ]
+        }
+    }
+]

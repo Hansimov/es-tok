@@ -11,6 +11,7 @@ import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.elasticsearch.common.lucene.Lucene;
@@ -30,10 +31,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class SourceBackedRelatedOwnersService {
 
@@ -81,14 +84,14 @@ public class SourceBackedRelatedOwnersService {
         if (selectedTerms.isEmpty()) {
             return List.of();
         }
-        List<SeedTermProfile> seedTermProfiles = buildSeedTermProfiles(selectedTerms);
+        List<SeedTermProfile> seedTermProfiles = buildSeedTermProfiles(searcher, fieldContexts, selectedTerms);
         List<String> expansionTerms = RelatedOwnerQueryTuning.shouldExpandTopicTerms(sanitizedText, selectedTerms.size())
             ? expandTopicTerms(searcher, indexService, fields, sanitizedText, seedTerms, scanLimit)
             : List.of();
 
         TopDocs topDocs = null;
         for (RelatedOwnerQueryTuning.QueryPlan plan : RelatedOwnerQueryTuning.buildQueryPlans(sanitizedText, selectedTerms.size())) {
-            Query query = buildTopicQuery(fieldContexts, selectedTerms, expansionTerms, plan.minimumSeedMatches());
+            Query query = buildTopicQuery(fieldContexts, seedTermProfiles, expansionTerms, plan.minimumSeedMatches());
             if (query == null) {
                 continue;
             }
@@ -160,7 +163,8 @@ public class SourceBackedRelatedOwnersService {
             seedTermMatch.coverage(),
             seedTermMatch.matchedTermCount(),
             seedTermMatch.matchedStrongTermCount());
-        owners.computeIfAbsent(mid, RelatedOwnerAccumulator::new)
+        int totalSeedTermCount = Math.max(1, seedTermProfiles.size());
+        owners.computeIfAbsent(mid, ignored -> new RelatedOwnerAccumulator(mid, totalSeedTermCount))
             .add(docId, ownerName, docSignals, seedTermMatch);
     }
 
@@ -186,19 +190,24 @@ public class SourceBackedRelatedOwnersService {
 
     private Query buildTopicQuery(
             List<FieldContext> fieldContexts,
-            List<String> selectedTerms,
+            List<SeedTermProfile> seedTermProfiles,
             List<String> expansionTerms,
             int minimumSeedMatches) {
         BooleanQuery.Builder queryBuilder = new BooleanQuery.Builder();
         for (FieldContext fieldContext : fieldContexts) {
             BooleanQuery.Builder fieldQuery = new BooleanQuery.Builder();
             int seedClauseCount = 0;
-            for (String seedTerm : selectedTerms) {
-                if (!seedTerm.isBlank()) {
+            for (SeedTermProfile seedTermProfile : seedTermProfiles) {
+                if (!seedTermProfile.term().isBlank()) {
                     fieldQuery.add(
                             new BoostQuery(
-                                    new PrefixQuery(new Term(fieldContext.indexField(), seedTerm)),
-                                        RelatedOwnerQueryTuning.seedTermBoost(seedTerm, seedClauseCount)),
+                                    new TermQuery(new Term(fieldContext.indexField(), seedTermProfile.term())),
+                                    seedTermProfile.exactQueryBoost()),
+                            BooleanClause.Occur.SHOULD);
+                    fieldQuery.add(
+                            new BoostQuery(
+                                    new PrefixQuery(new Term(fieldContext.indexField(), seedTermProfile.term())),
+                                    seedTermProfile.prefixQueryBoost()),
                             BooleanClause.Occur.SHOULD);
                     seedClauseCount++;
                 }
@@ -316,15 +325,27 @@ public class SourceBackedRelatedOwnersService {
         return selected;
     }
 
-    private static List<SeedTermProfile> buildSeedTermProfiles(List<String> selectedTerms) {
+    private static List<SeedTermProfile> buildSeedTermProfiles(
+            Engine.Searcher searcher,
+            List<FieldContext> fieldContexts,
+            List<String> selectedTerms) throws IOException {
         if (selectedTerms.isEmpty()) {
             return List.of();
         }
+        int maxDoc = Math.max(1, searcher.getIndexReader().maxDoc());
         List<SeedTermProfile> weighted = new ArrayList<>(selectedTerms.size());
         for (int index = 0; index < selectedTerms.size(); index++) {
             String term = selectedTerms.get(index);
-            double weight = RelatedOwnerQueryTuning.seedTermBoost(term, index);
-            weighted.add(new SeedTermProfile(term, weight, RelatedOwnerQueryTuning.isStrongSeedTerm(term)));
+            float baseBoost = RelatedOwnerQueryTuning.seedTermBoost(term, index);
+            boolean strongSignal = RelatedOwnerQueryTuning.isStrongSeedTerm(term);
+            double specificityWeight = specificityWeight(searcher, fieldContexts, term, maxDoc);
+            double rankingWeight = baseBoost * specificityWeight;
+            weighted.add(new SeedTermProfile(
+                    term,
+                    rankingWeight,
+                    strongSignal,
+                    RelatedOwnerQueryTuning.exactSeedTermBoost(baseBoost, strongSignal, specificityWeight),
+                    RelatedOwnerQueryTuning.prefixSeedTermBoost(baseBoost, strongSignal, specificityWeight)));
         }
         List<SeedTermProfile> discriminative = weighted.stream()
             .filter(profile -> profile.strongSignal()
@@ -333,15 +354,43 @@ public class SourceBackedRelatedOwnersService {
         List<SeedTermProfile> chosen = discriminative.isEmpty()
             ? weighted.stream().limit(Math.min(RelatedOwnerQueryTuning.fallbackSeedProfileLimit(), weighted.size())).toList()
                 : discriminative;
+        chosen = chosen.stream()
+                .sorted(Comparator.comparingDouble(SeedTermProfile::weight).reversed())
+                .toList();
         double totalWeight = chosen.stream().mapToDouble(SeedTermProfile::weight).sum();
         if (totalWeight <= 0.0d) {
             return List.of();
         }
         List<SeedTermProfile> normalized = new ArrayList<>(chosen.size());
         for (SeedTermProfile profile : chosen) {
-            normalized.add(new SeedTermProfile(profile.term(), profile.weight() / totalWeight, profile.strongSignal()));
+            normalized.add(new SeedTermProfile(
+                    profile.term(),
+                    profile.weight() / totalWeight,
+                    profile.strongSignal(),
+                    profile.exactQueryBoost(),
+                    profile.prefixQueryBoost()));
         }
         return List.copyOf(normalized);
+    }
+
+    private static double specificityWeight(
+            Engine.Searcher searcher,
+            List<FieldContext> fieldContexts,
+            String term,
+            int maxDoc) throws IOException {
+        int totalDocFreq = 0;
+        Set<String> seenFields = new HashSet<>();
+        for (FieldContext fieldContext : fieldContexts) {
+            if (!seenFields.add(fieldContext.indexField())) {
+                continue;
+            }
+            totalDocFreq += Math.max(0, searcher.getIndexReader().docFreq(new Term(fieldContext.indexField(), term)));
+        }
+        if (totalDocFreq <= 0) {
+            return 2.4d;
+        }
+        double inverseDensity = Math.log1p((double) maxDoc / (totalDocFreq + 1.0d));
+        return Math.max(1.0d, Math.min(2.6d, 1.0d + (inverseDensity * 0.32d)));
     }
 
     private SeedTermMatch matchSeedTerms(
@@ -351,27 +400,32 @@ public class SourceBackedRelatedOwnersService {
         if (seedTermProfiles.isEmpty()) {
             return SeedTermMatch.empty();
         }
-        LinkedHashSet<String> analyzedTokens = new LinkedHashSet<>();
+        Map<String, SeedTermProfile> unmatchedProfiles = new LinkedHashMap<>();
+        for (SeedTermProfile profile : seedTermProfiles) {
+            unmatchedProfiles.put(profile.term(), profile);
+        }
+
         for (FieldContext fieldContext : fieldContexts) {
             Object rawValue = source.extractValue(fieldContext.sourcePath(), null);
             for (String value : SourceValueUtils.flattenStringValues(rawValue)) {
-                analyzedTokens.addAll(analyze(fieldContext.analyzer(), fieldContext.indexField(), value));
+                if (value == null || value.isBlank() || unmatchedProfiles.isEmpty()) {
+                    continue;
+                }
+                consumeMatchingTerms(fieldContext.analyzer(), fieldContext.indexField(), value, unmatchedProfiles);
+                if (unmatchedProfiles.isEmpty()) {
+                    break;
+                }
+            }
+            if (unmatchedProfiles.isEmpty()) {
+                break;
             }
         }
-        analyzedTokens = TopicQualityHeuristics.filterOwnerSeedTerms(analyzedTokens);
 
         LinkedHashSet<String> matchedTerms = new LinkedHashSet<>();
         double coverage = 0.0d;
         int matchedStrongTermCount = 0;
         for (SeedTermProfile profile : seedTermProfiles) {
-            boolean matched = false;
-            for (String token : analyzedTokens) {
-                if (token.equals(profile.term())) {
-                    matched = true;
-                    break;
-                }
-            }
-            if (!matched) {
+            if (unmatchedProfiles.containsKey(profile.term())) {
                 continue;
             }
             matchedTerms.add(profile.term());
@@ -381,6 +435,27 @@ public class SourceBackedRelatedOwnersService {
             }
         }
         return new SeedTermMatch(matchedTerms, Math.min(1.0d, coverage), matchedTerms.size(), matchedStrongTermCount);
+    }
+
+    private static void consumeMatchingTerms(
+            Analyzer analyzer,
+            String field,
+            String text,
+            Map<String, SeedTermProfile> unmatchedProfiles) throws IOException {
+        try (TokenStream tokenStream = analyzer.tokenStream(field, text)) {
+            CharTermAttribute termAttribute = tokenStream.addAttribute(CharTermAttribute.class);
+            tokenStream.reset();
+            while (tokenStream.incrementToken()) {
+                String normalized = TextNormalization.normalizeLower(termAttribute.toString());
+                if (!normalized.isBlank()) {
+                    unmatchedProfiles.remove(normalized);
+                    if (unmatchedProfiles.isEmpty()) {
+                        break;
+                    }
+                }
+            }
+            tokenStream.end();
+        }
     }
 
     private static boolean isUsefulExpansionTerm(String candidate, LinkedHashSet<String> seedTerms) {
@@ -511,10 +586,12 @@ public class SourceBackedRelatedOwnersService {
                 .thenComparing(RelatedOwnerAccumulator::displayName);
 
         private final long mid;
+        private final int totalSeedTermCount;
         private final Map<Integer, RelatedOwnerDocContribution> contributionsByDoc = new HashMap<>();
 
-        private RelatedOwnerAccumulator(long mid) {
+        private RelatedOwnerAccumulator(long mid, int totalSeedTermCount) {
             this.mid = mid;
+            this.totalSeedTermCount = Math.max(1, totalSeedTermCount);
         }
 
         private void add(int docId, String ownerName, RelatedOwnerDocSignals docSignals, SeedTermMatch seedTermMatch) {
@@ -557,6 +634,10 @@ public class SourceBackedRelatedOwnersService {
                     .orElse(0.0d);
             double maxTermCoverage = contributions.stream().mapToDouble(RelatedOwnerDocContribution::termCoverage).max().orElse(0.0d);
             double totalTermCoverage = contributions.stream().mapToDouble(RelatedOwnerDocContribution::termCoverage).sum();
+                double topTermCoverage = contributions.stream()
+                    .limit(3)
+                    .mapToDouble(RelatedOwnerDocContribution::termCoverage)
+                    .sum();
             double averageMatchedTermCount = contributions.stream()
                     .limit(4)
                     .mapToDouble(RelatedOwnerDocContribution::matchedTermCount)
@@ -576,22 +657,25 @@ public class SourceBackedRelatedOwnersService {
             double maxQuality = contributions.stream().mapToDouble(RelatedOwnerDocContribution::qualitySignal).max().orElse(0.0d);
             double maxInfluence = contributions.stream().mapToDouble(RelatedOwnerDocContribution::influenceSignal).max().orElse(0.0d);
             double coverageDepth = Math.log1p(docFreq());
-                return (bestRepresentative * 112.0d)
-                    + (secondRepresentative * 52.0d)
-                    + (thirdRepresentative * 24.0d)
+            double seedCoverageRatio = Math.min(1.0d, matchedSeedTerms.size() / (double) totalSeedTermCount);
+                return (bestRepresentative * (88.0d + (seedCoverageRatio * 34.0d)))
+                    + (secondRepresentative * (40.0d + (seedCoverageRatio * 16.0d)))
+                    + (thirdRepresentative * 18.0d)
                     + (maxTopicWeight * 34.0d)
                     + (topCoverageWeight * 28.0d)
                     + (averageCoverageRepresentative * 16.0d)
                     + (Math.log1p(totalTopicWeight) * 16.0d)
-                    + (maxTermCoverage * 8.0d)
-                    + (Math.log1p(totalTermCoverage) * 3.0d)
-                    + (matchedSeedTerms.size() * 4.0d)
-                    + (matchedStrongTerms * 6.0d)
-                    + (multiTermDocs * 4.0d)
-                    + (averageMatchedTermCount * 2.0d)
+                    + (maxTermCoverage * 14.0d)
+                    + (topTermCoverage * 18.0d)
+                    + (Math.log1p(totalTermCoverage) * 8.0d)
+                    + (seedCoverageRatio * 96.0d)
+                    + (matchedSeedTerms.size() * 10.0d)
+                    + (matchedStrongTerms * 9.0d)
+                    + (multiTermDocs * 9.0d)
+                    + (averageMatchedTermCount * 6.0d)
                     + (maxQuality * 12.0d)
-                    + (maxInfluence * 16.0d)
-                    + (coverageDepth * 28.0d);
+                    + (maxInfluence * 11.0d)
+                    + (coverageDepth * 34.0d);
         }
 
         private int docFreq() {
@@ -618,7 +702,12 @@ public class SourceBackedRelatedOwnersService {
     public record RelatedOwnerResult(long mid, String name, int docFreq, float score) {
     }
 
-    private record SeedTermProfile(String term, double weight, boolean strongSignal) {
+        private record SeedTermProfile(
+            String term,
+            double weight,
+            boolean strongSignal,
+            float exactQueryBoost,
+            float prefixQueryBoost) {
     }
 
     private record SeedTermMatch(java.util.Set<String> matchedTerms, double coverage, int matchedTermCount, int matchedStrongTermCount) {

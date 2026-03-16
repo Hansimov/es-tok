@@ -15,6 +15,7 @@ final class RelatedOwnerQueryTuning {
     static final float EXPANSION_TERM_BOOST = PROFILE.expansionTermBoost();
     static final int MAX_EXPANSION_TERMS = PROFILE.maxExpansionTerms();
     static final int MAX_EXPANSION_SCAN_LIMIT = PROFILE.maxExpansionScanLimit();
+
     static String sanitizeQueryText(String text) {
         return TopicQualityHeuristics.sanitizeQueryText(text);
     }
@@ -82,6 +83,16 @@ final class RelatedOwnerQueryTuning {
         return (float) (lengthBoost * rankDecay);
     }
 
+    static float exactSeedTermBoost(float baseSeedBoost, boolean strongSignal, double specificityWeight) {
+        double signalFactor = strongSignal ? 1.12d : 1.0d;
+        return (float) (baseSeedBoost * PROFILE.exactSeedTermBoostFactor() * signalFactor * specificityWeight);
+    }
+
+    static float prefixSeedTermBoost(float baseSeedBoost, boolean strongSignal, double specificityWeight) {
+        double signalFactor = strongSignal ? 1.06d : 1.0d;
+        return (float) (baseSeedBoost * PROFILE.prefixSeedTermBoostFactor() * signalFactor * Math.max(1.0d, specificityWeight * 0.85d));
+    }
+
     static int discriminativeTermLengthThreshold() {
         return PROFILE.discriminativeTermLengthThreshold();
     }
@@ -112,10 +123,14 @@ final class RelatedOwnerQueryTuning {
         double ageDays = ageDays(nowEpochSeconds, insertAt);
         double recencyFactor = 1.0d / (1.0d + (ageDays / PROFILE.recencyHalflifeDays()));
         double freshness = recencyFactor * PROFILE.freshnessMultiplier();
+        double relevanceMultiplier = 1.0d
+                + (termCoverage * PROFILE.representativeTermCoverageFactor())
+                + (matchedTermCount * PROFILE.representativeMatchedTermFactor())
+                + (matchedStrongTermCount * PROFILE.representativeMatchedStrongTermFactor());
         double representativeSignal = topicWeight * ((quality * PROFILE.representativeQualityFactor())
             + (influence * PROFILE.representativeInfluenceFactor())
             + freshness
-            + PROFILE.representativeBaseOffset());
+            + PROFILE.representativeBaseOffset()) * relevanceMultiplier;
         double rankingWeight = representativeSignal
             + (topicWeight * PROFILE.rankingTopicWeight())
             + (termCoverage * PROFILE.rankingTermCoverageWeight())
@@ -177,6 +192,8 @@ final class RelatedOwnerQueryTuning {
             Map<?, ?> profile = (Map<?, ?>) root.get("profile");
             return new QueryTuningProfile(
                     floatValue(profile, "expansion_term_boost", 0.32f),
+                    floatValue(profile, "exact_seed_term_boost_factor", 1.9f),
+                    floatValue(profile, "prefix_seed_term_boost_factor", 0.72f),
                     intValue(profile, "max_expansion_terms", 3),
                     intValue(profile, "max_short_query_terms", 8),
                     intValue(profile, "max_medium_query_terms", 6),
@@ -200,6 +217,9 @@ final class RelatedOwnerQueryTuning {
                     doubleValue(profile, "seed_rank_decay_floor", 0.72d),
                     doubleValue(profile, "representative_quality_factor", 1.05d),
                     doubleValue(profile, "representative_influence_factor", 1.35d),
+                    doubleValue(profile, "representative_term_coverage_factor", 1.15d),
+                    doubleValue(profile, "representative_matched_term_factor", 0.24d),
+                    doubleValue(profile, "representative_matched_strong_term_factor", 0.32d),
                     doubleValue(profile, "representative_base_offset", 1.0d),
                     doubleValue(profile, "ranking_topic_weight", 3.0d),
                     doubleValue(profile, "ranking_term_coverage_weight", 2.0d),
@@ -239,6 +259,8 @@ final class RelatedOwnerQueryTuning {
 
     private record QueryTuningProfile(
             float expansionTermBoost,
+            float exactSeedTermBoostFactor,
+            float prefixSeedTermBoostFactor,
             int maxExpansionTerms,
             int maxShortQueryTerms,
             int maxMediumQueryTerms,
@@ -262,6 +284,9 @@ final class RelatedOwnerQueryTuning {
             double seedRankDecayFloor,
             double representativeQualityFactor,
             double representativeInfluenceFactor,
+            double representativeTermCoverageFactor,
+            double representativeMatchedTermFactor,
+            double representativeMatchedStrongTermFactor,
             double representativeBaseOffset,
             double rankingTopicWeight,
             double rankingTermCoverageWeight,

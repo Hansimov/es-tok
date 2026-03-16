@@ -171,6 +171,8 @@ public class RelatedOwnersRestTest {
         indexTopicDocument("15", "摄影器材入门", List.of("摄影", "器材"), "摄影技巧和摄像布光都在这里", 3001L, "镜头研究所", 3.8f, 31_000L, now - 4_800L);
         indexTopicDocument("16", "运镜补光技巧", List.of("运镜", "补光"), "摄影与摄像教程实战经验", 3001L, "镜头研究所", 3.5f, 28_000L, now - 9_600L);
         indexTopicDocument("17", "摄像布光教程", List.of("摄像", "布光"), "运镜实战与画面调度", 3002L, "摄像课堂", 3.6f, 29_000L, now - 3_600L);
+        indexTopicDocument("18", "摄影圈最新视频已上线", List.of("摄影", "最新", "围观"), "快来围观 摄影资讯整理", 3003L, "摄影情报站", 5.8f, 380_000L, now - 1_800L);
+        indexTopicDocument("19", "摄影话题速递", List.of("摄影", "热点"), "最新视频 已上线 快来围观", 3003L, "摄影情报站", 5.4f, 320_000L, now - 5_400L);
 
         client.performRequest(new Request("POST", "/" + TEST_INDEX + "/_refresh"));
         Thread.sleep(500L);
@@ -326,6 +328,29 @@ public class RelatedOwnersRestTest {
 
     assertTrue(result, result.contains("\"mid\":3001"));
     assertTrue(result, result.contains("\"mid\":3002"));
+  }
+
+  @Test
+  public void testRelatedOwnersPrefersSpecificCoverageOverGenericHighInfluencePhotographyOwner() throws Exception {
+    String result = performRelatedOwners("""
+      {
+        "text": "摄影技巧 摄像布光 运镜实战",
+        "fields": ["title.words", "tags.words", "desc.words"],
+        "size": 5,
+        "scan_limit": 64,
+        "use_pinyin": true
+      }
+      """);
+
+    int owner3001 = result.indexOf("\"mid\":3001");
+    int owner3002 = result.indexOf("\"mid\":3002");
+    int owner3003 = result.indexOf("\"mid\":3003");
+
+    assertTrue(result, owner3001 >= 0);
+    assertTrue(result, owner3002 >= 0);
+    assertTrue(result, owner3003 >= 0);
+    assertTrue(result, owner3001 < owner3003);
+    assertTrue(result, owner3002 < owner3003);
   }
 
     private void indexTopicDocument(

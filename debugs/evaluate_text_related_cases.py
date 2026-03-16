@@ -115,6 +115,9 @@ def build_text_variants(doc: dict) -> list[dict]:
     tags = parse_tag_text(doc)
     variants = []
 
+    if len(title) >= 6:
+        variants.append({"kind": "title", "text": title})
+
     combo_parts = [title]
     combo_parts.extend(tags[:2])
     combo_text = collapse_text(" ".join(part for part in combo_parts if part))
@@ -129,6 +132,16 @@ def build_text_variants(doc: dict) -> list[dict]:
     long_text = collapse_text(" ".join(part for part in long_parts if part))
     if len(long_text) >= 12:
         variants.append({"kind": "long", "text": long_text})
+
+    if desc and len(desc) >= 18:
+        desc_text = collapse_text(f"{title} {desc[:64]}")
+        if len(desc_text) >= 14:
+            variants.append({"kind": "desc", "text": desc_text})
+
+    if title:
+        boilerplate_text = collapse_text(f"{title} 点点关注不错过 持续更新小日常系列中")
+        if len(boilerplate_text) >= 12:
+            variants.append({"kind": "boilerplate", "text": boilerplate_text})
 
     typo_text = mutate_single_typo(long_text or combo_text)
     if typo_text and typo_text != (long_text or combo_text):
@@ -261,6 +274,14 @@ def collect_docs(
             fetch_size,
             [{"stat.view": "desc"}],
         ),
+        fetch_docs(
+            base_url,
+            auth_header,
+            ssl_context,
+            index,
+            fetch_size,
+            [{"stat_score": "desc"}],
+        ),
     ):
         append_unique_docs(combined, docs, seen)
 
@@ -341,13 +362,53 @@ def round_robin_variant_cases(grouped_docs: dict[int, list[dict]], sample_size: 
     return selected
 
 
-def build_cases(docs: list[dict], sample_size: int):
+def load_curated_cases(path: str) -> list[dict]:
+    if not path:
+        return []
+    case_path = Path(path)
+    if not case_path.exists():
+        return []
+    loaded = json.loads(case_path.read_text(encoding="utf-8"))
+    cases = []
+    for item in loaded:
+        label = collapse_text(item.get("label", ""))
+        text = collapse_text(item.get("text", ""))
+        variant = collapse_text(item.get("variant", "curated")) or "curated"
+        seed = item.get("seed") or {}
+        if not label or not text:
+            continue
+        cases.append(
+            {
+                "label": label,
+                "variant": variant,
+                "seed": {
+                    "bvid": seed.get("bvid"),
+                    "title": seed.get("title", ""),
+                    "tid": seed.get("tid"),
+                    "owner": seed.get("owner") or {},
+                    "tags": seed.get("tags") or [],
+                },
+                "text": text,
+            }
+        )
+    return cases
+
+
+def build_cases(
+    docs: list[dict], sample_size: int, curated_cases: list[dict] | None = None
+):
     grouped_docs = defaultdict(list)
     for doc in docs:
         tid = int(doc.get("tid") or -1)
         if tid >= 0:
             grouped_docs[tid].append(doc)
-    cases = round_robin_variant_cases(grouped_docs, sample_size)
+    cases = list(curated_cases or [])
+    seen_labels = {case["label"] for case in cases}
+    for case in round_robin_variant_cases(grouped_docs, sample_size):
+        if case["label"] in seen_labels:
+            continue
+        cases.append(case)
+        seen_labels.add(case["label"])
     tid_counter = Counter(int(case["seed"].get("tid") or -1) for case in cases)
     return cases, tid_counter.most_common()
 
@@ -476,17 +537,31 @@ def evaluate_cases(
 def build_summary(cases: list[dict]):
     summary = {
         "by_relation": {},
+        "by_variant": {},
         "anomaly_counts": {},
         "note_counts": {},
         "flagged_cases": [],
         "noted_cases": [],
     }
     latency_by_relation = defaultdict(list)
+    latency_by_variant = defaultdict(list)
     for case in cases:
         for response in case["responses"]:
             relation = response["relation"]
+            variant_key = f"{case['variant']}::{relation}"
             bucket = summary["by_relation"].setdefault(
                 relation,
+                {
+                    "cases": 0,
+                    "empty": 0,
+                    "avg_result_count": 0.0,
+                    "avg_latency_ms": 0.0,
+                    "p95_latency_ms": 0.0,
+                    "flagged": 0,
+                },
+            )
+            variant_bucket = summary["by_variant"].setdefault(
+                variant_key,
                 {
                     "cases": 0,
                     "empty": 0,
@@ -501,10 +576,16 @@ def build_summary(cases: list[dict]):
             bucket["avg_result_count"] += result_summary["result_count"]
             bucket["avg_latency_ms"] += result_summary["latency_ms"]
             latency_by_relation[relation].append(result_summary["latency_ms"])
+            variant_bucket["cases"] += 1
+            variant_bucket["avg_result_count"] += result_summary["result_count"]
+            variant_bucket["avg_latency_ms"] += result_summary["latency_ms"]
+            latency_by_variant[variant_key].append(result_summary["latency_ms"])
             if result_summary["result_count"] == 0:
                 bucket["empty"] += 1
+                variant_bucket["empty"] += 1
             if result_summary["anomalies"]:
                 bucket["flagged"] += 1
+                variant_bucket["flagged"] += 1
                 summary["flagged_cases"].append(
                     {
                         "label": case["label"],
@@ -535,6 +616,15 @@ def build_summary(cases: list[dict]):
                 bucket["avg_latency_ms"] / bucket["cases"], 2
             )
             bucket["p95_latency_ms"] = percentile(latency_by_relation[relation], 0.95)
+    for variant_key, bucket in summary["by_variant"].items():
+        if bucket["cases"]:
+            bucket["avg_result_count"] = round(
+                bucket["avg_result_count"] / bucket["cases"], 2
+            )
+            bucket["avg_latency_ms"] = round(
+                bucket["avg_latency_ms"] / bucket["cases"], 2
+            )
+            bucket["p95_latency_ms"] = percentile(latency_by_variant[variant_key], 0.95)
     return summary
 
 
@@ -556,6 +646,13 @@ def build_markdown(report: dict) -> str:
     lines.extend(["", "## Sampled Tids"])
     for tid, count in report.get("sampled_tid_counts", [])[:24]:
         lines.append(f"- tid={tid}: samples={count}")
+    lines.extend(["", "## By Variant"])
+    for variant_key, stats in list(report["summary"].get("by_variant", {}).items())[
+        :24
+    ]:
+        lines.append(
+            f"- {variant_key}: cases={stats['cases']} empty={stats['empty']} flagged={stats['flagged']} avg_result_count={stats['avg_result_count']} avg_latency_ms={stats['avg_latency_ms']} p95_latency_ms={stats['p95_latency_ms']}"
+        )
     lines.extend(["", "## Failures"])
     flagged = report["summary"].get("flagged_cases", [])
     if not flagged:
@@ -629,6 +726,10 @@ def main():
     parser.add_argument("--tid-count", type=int, default=48)
     parser.add_argument("--docs-per-tid", type=int, default=12)
     parser.add_argument(
+        "--curated-case-file",
+        default="testing/text_related_curated_cases.json",
+    )
+    parser.add_argument(
         "--ca-cert", default="/media/ssd/elasticsearch-docker-9.2.4-dev/certs/ca/ca.crt"
     )
     args = parser.parse_args()
@@ -650,7 +751,8 @@ def main():
         args.tid_count,
         args.docs_per_tid,
     )
-    cases, sampled_tid_counts = build_cases(docs, args.sample_size)
+    curated_cases = load_curated_cases(args.curated_case_file)
+    cases, sampled_tid_counts = build_cases(docs, args.sample_size, curated_cases)
     results = evaluate_cases(base_url, auth_header, ssl_context, args.index, cases)
     report = {
         "index": args.index,
