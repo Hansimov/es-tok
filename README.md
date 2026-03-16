@@ -1,6 +1,6 @@
 # ES-TOK
 
-![](https://img.shields.io/badge/es__tok-0.10.1-blue)
+![](https://img.shields.io/badge/es__tok-1.0.0-blue)
 ![](https://img.shields.io/badge/elasticsearch-9.2.4-green)
 ![](https://img.shields.io/badge/java-21-orange)
 
@@ -53,7 +53,7 @@ POST /_es_tok/analyze
 ```sh
 ./gradlew :bridge:fatJar
 echo '{"text":"自然语言处理技术","use_vocab":true}' \
-  | java -jar bridge/build/libs/bridge-0.10.1-all.jar
+  | java -jar bridge/build/libs/bridge-1.0.0-all.jar
 ```
 
 索引接入、查询 DSL、token/owner/video 关系接口和完整参数说明见 [docs/01_USAGE.md](docs/01_USAGE.md) 与 [docs/01_API.md](docs/01_API.md)。

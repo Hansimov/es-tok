@@ -44,7 +44,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 public class EsTokPlugin extends Plugin implements AnalysisPlugin, ActionPlugin, SearchPlugin {
-    public static final String VERSION = "0.10.1";
+    public static final String VERSION = "1.0.0";
 
     private final PinyinWarmupIndexListener pinyinWarmupIndexListener = new PinyinWarmupIndexListener();
 

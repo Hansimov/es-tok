@@ -18,7 +18,7 @@ apply plugin: 'elasticsearch.esplugin'
 apply plugin: 'elasticsearch.yaml-rest-test'
 
 group = 'org.es'
-version = '0.10.1'
+version = '1.0.0'
 
 allprojects {
     group = rootProject.group
