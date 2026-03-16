@@ -90,6 +90,7 @@ public class RelatedEntitiesRestTest {
         assertTrue(result, result.contains("\"bvid\":\"AV2\""));
         assertTrue(result, result.contains("\"bvid\":\"BV1\""));
         assertFalse(result, result.contains("\"bvid\":\"AV1\""));
+        assertFalse(result, result.contains("\"bvid\":\"av2\""));
     }
 
     @Test
@@ -132,6 +133,7 @@ public class RelatedEntitiesRestTest {
 
         assertTrue(result, result.contains("\"mid\":3002"));
         assertFalse(result, result.contains("\"mid\":3001"));
+        assertFalse(result, result.contains("\"mid\":4001"));
     }
 
     private String performRelation(String relation, String jsonBody) throws Exception {

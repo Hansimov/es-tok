@@ -151,6 +151,15 @@ python -m workers.elastic_videos.commander -ei bili_videos_dev6 -ev elastic_dev 
 2. 跑实际查询，验证 `es_tok_query_string`、`es_tok_constraints` 是否与预期一致
 3. 跑实际 `related_tokens_by_tokens` / `related_owners_by_tokens` / graph relations 请求，验证线上真实效果和耗时
 
+如果需要批量抽样最近的真实视频和 owner，生成四个 related 接口的回归报告，可以直接运行：
+
+```sh
+cd /home/asimov/repos/es-tok
+python debugs/evaluate_related_cases.py --password "$ELASTIC_PASSWORD"
+```
+
+默认会抓取最近一批真实文档，自动对 `related_videos_by_videos`、`related_owners_by_videos`、`related_videos_by_owners`、`related_owners_by_owners` 生成 JSON 报告。
+
 建议覆盖：
 
 - 中文前缀输入
@@ -195,6 +204,7 @@ python -m workers.elastic_videos.commander -ei bili_videos_dev6 -ev elastic_dev 
 - `testing/golden/analysis/analysis_cases.json`
 - `testing/golden/suggest/real_cases.json`
 - `debugs/evaluate_suggest_cases.py`
+- `debugs/evaluate_related_cases.py`
 - `docs/01_USAGE.md` 与 `docs/01_API.md`
 
 如果修改了默认资源、分析输出或 bridge 契约，还必须运行：
