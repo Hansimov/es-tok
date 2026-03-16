@@ -58,6 +58,8 @@ public class RelatedEntitiesRestTest {
         long now = Instant.now().getEpochSecond();
         indexDocument("AV1", "摄影器材入门", List.of("摄影", "器材"), "摄像布光教程", 3001L, "镜头研究所", 3.8f, 31_000L, now - 4_800L);
         indexDocument("AV2", "运镜补光技巧", List.of("运镜", "补光"), "摄影构图实战", 3001L, "镜头研究所", 3.6f, 28_000L, now - 9_600L);
+        indexDocument("AV3", "旅行vlog", List.of("旅行", "日常"), "完全无关的出游记录", 3001L, "镜头研究所", 2.4f, 12_000L, now - 2_400L);
+        indexDocument("AV4", "摄影布光复盘", List.of("摄影", "布光"), "镜头调度和补光复盘", 3001L, "镜头研究所", 3.9f, 33_000L, now - 1_200L);
         indexDocument("BV1", "摄像布光教程", List.of("摄像", "布光"), "运镜实战与画面调度", 3002L, "摄像课堂", 3.7f, 29_000L, now - 3_600L);
         indexDocument("BV2", "摄像灯开箱", List.of("摄像", "器材"), "摄影补光推荐", 3002L, "摄像课堂", 3.4f, 19_000L, now - 12_000L);
         indexDocument("CV1", "红警对战", List.of("红警", "游戏"), "完全无关样本", 4001L, "游戏情报站", 2.1f, 9_000L, now - 7_200L);
@@ -119,6 +121,8 @@ public class RelatedEntitiesRestTest {
 
         assertTrue(result, result.contains("\"bvid\":\"AV1\""));
         assertTrue(result, result.contains("\"bvid\":\"AV2\""));
+        assertTrue(result, result.contains("\"bvid\":\"AV4\""));
+        assertFalse(result, result.contains("\"bvid\":\"AV3\""));
     }
 
     @Test

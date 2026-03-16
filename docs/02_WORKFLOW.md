@@ -82,14 +82,6 @@ GET /_cat/es_tok/version?v
 
 那么应直接修改该文件，而不是只改插件仓库内的示例文档。
 
-当前 `video_index_settings_v6.py` 还支持一个面向存储优化的开关：
-
-```sh
-ELASTIC_VIDEO_ENABLE_TEXT_EMB=0
-```
-
-它会在建索引时跳过 `text_emb` mapping。注意这只影响 mapping；如果你还要真正省掉 embedding 数据写入，回灌时还需要配合 `workers.elastic_videos.commander --no-embed`。
-
 ## 5. 重建索引
 
 创建或重建索引的命令在 sibling 仓库中执行：
@@ -142,19 +134,6 @@ python -m workers.elastic_videos.commander -ei bili_videos_dev6 -ev elastic_dev 
 - 约 1 天数据
 - 约 100 万 docs
 - 预计 5 分钟左右
-
-如果要做“同一批真实数据的 control / compact 空间对比”，建议直接建两个索引：
-
-```sh
-cd /home/asimov/repos/bili-scraper
-ELASTIC_VIDEO_ENABLE_TEXT_EMB=1 python -m workers.elastic_videos.commander -ei bili_videos_dev6_control -ev elastic_dev -r
-ELASTIC_VIDEO_ENABLE_TEXT_EMB=1 python -m workers.elastic_videos.commander -ei bili_videos_dev6_control -ev elastic_dev -f pubdate -s "2026-03-10" -e "2026-03-11"
-
-ELASTIC_VIDEO_ENABLE_TEXT_EMB=0 python -m workers.elastic_videos.commander -ei bili_videos_dev6_compact -ev elastic_dev -r --no-embed
-ELASTIC_VIDEO_ENABLE_TEXT_EMB=0 python -m workers.elastic_videos.commander -ei bili_videos_dev6_compact -ev elastic_dev --no-embed -f pubdate -s "2026-03-10" -e "2026-03-11"
-```
-
-这样可以避免把 7 天大样本直接作为第一轮 mapping/storage 验证对象，先在 1 天数据上确认空间和性能趋势再放大。
 
 ### 成熟阶段压测或效果验证
 

@@ -37,6 +37,45 @@ def looks_like_useful_token(token: str) -> bool:
     return any((ord(ch) > 127 and not ch.isspace()) or ch.isalpha() for ch in token)
 
 
+def topic_tokens(*values) -> set[str]:
+    tokens = set()
+    for value in values:
+        for token in extract_topic_tokens(value):
+            if looks_like_useful_token(token):
+                tokens.add(token)
+    return tokens
+
+
+def extract_topic_tokens(value) -> list[str]:
+    normalized = normalize_seed_text(value)
+    if not normalized:
+        return []
+
+    parts = []
+    buffer = []
+    for ch in normalized:
+        if ch.isalnum() or ord(ch) > 127:
+            buffer.append(ch)
+            continue
+        if buffer:
+            parts.append("".join(buffer))
+            buffer = []
+    if buffer:
+        parts.append("".join(buffer))
+
+    tokens = []
+    for part in parts:
+        if len(part) < 2:
+            continue
+        tokens.append(part)
+        if any(ord(ch) > 127 for ch in part) and len(part) <= 12:
+            max_width = min(4, len(part))
+            for width in range(2, max_width + 1):
+                for index in range(0, len(part) - width + 1):
+                    tokens.append(part[index : index + width])
+    return tokens
+
+
 def seed_has_useful_signal(seed: dict, include_owner_name: bool = True) -> bool:
     owner = seed.get("owner") or {}
     candidates = [seed.get("title", ""), seed.get("tags", ""), seed.get("desc", "")]
@@ -94,6 +133,17 @@ def summarize_relation(seed: dict, relation: str, request: dict, response: dict)
     if relation == "related_videos_by_owners":
         if items and len({item.get("owner_mid") for item in items}) == 1:
             summary["notes"].append("single_owner_cluster")
+        seed_tokens = topic_tokens(seed.get("sample_title", ""), seed.get("name", ""))
+        top_titles = [normalize_seed_text(item.get("title", "")) for item in items[:3]]
+        if (
+            seed_tokens
+            and top_titles
+            and not any(
+                any(token and token in title for token in seed_tokens)
+                for title in top_titles
+            )
+        ):
+            summary["notes"].append("weak_topic_overlap")
         if 0 < len(items) < min(2, request.get("size", 5)):
             summary["notes"].append("few_results")
 

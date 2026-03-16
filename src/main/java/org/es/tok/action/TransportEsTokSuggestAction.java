@@ -50,6 +50,8 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         ShardEsTokSuggestRequest,
         ShardEsTokSuggestResponse> {
 
+    private static final int MAX_LONG_TEXT_FALLBACKS = 3;
+
     private final IndicesService indicesService;
     private final ProjectResolver projectResolver;
     private final CachedShardSuggestService suggestService;
@@ -312,7 +314,8 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             suggestFields,
             associateFields,
             completionConfig,
-            correctionConfig);
+            correctionConfig,
+            true);
         if (!shouldRunLongTextFallback(request.text(), primary.options(), request.size())) {
             return primary;
         }
@@ -330,7 +333,8 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
                 suggestFields,
                 associateFields,
                 completionConfig,
-                correctionConfig);
+                correctionConfig,
+                false);
             cacheHit = cacheHit || fallback.cacheHit();
             float variantWeight = index == 0 ? 0.78f : 0.62f;
             mergeAutoOptions(merged, fallback.options(), variantWeight);
@@ -351,7 +355,8 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             List<String> suggestFields,
             List<String> associateFields,
             LuceneIndexSuggester.CompletionConfig completionConfig,
-            LuceneIndexSuggester.CorrectionConfig correctionConfig) throws IOException {
+            LuceneIndexSuggester.CorrectionConfig correctionConfig,
+            boolean includeCorrection) throws IOException {
         CachedShardSuggestService.SuggestResult prefixResult = suggestService.suggest(
             reader,
             "prefix",
@@ -360,14 +365,16 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             completionConfig,
             correctionConfig,
             request.useCache());
-        CachedShardSuggestService.SuggestResult correctionResult = suggestService.suggest(
-            reader,
-            "correction",
-            suggestFields,
-            text,
-            completionConfig,
-            correctionConfig,
-            request.useCache());
+        CachedShardSuggestService.SuggestResult correctionResult = includeCorrection
+            ? suggestService.suggest(
+                reader,
+                "correction",
+                suggestFields,
+                text,
+                completionConfig,
+                correctionConfig,
+                request.useCache())
+            : new CachedShardSuggestService.SuggestResult(List.of(), false);
         List<LuceneIndexSuggester.SuggestionOption> associateOptions = shouldRunAssociateInAuto(
             text,
             request.usePinyin(),
@@ -617,7 +624,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             variants.add(firstSpan);
         }
         variants.remove(collapseWhitespace(text));
-        return List.copyOf(variants);
+        return variants.stream().limit(MAX_LONG_TEXT_FALLBACKS).toList();
         }
 
         private static List<String> analyzedFallbackTexts(

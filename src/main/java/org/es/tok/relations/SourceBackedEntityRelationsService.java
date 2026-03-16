@@ -61,7 +61,7 @@ public class SourceBackedEntityRelationsService {
             return RelationResult.empty();
         }
 
-        seedContext.prepareQueryTerms(searcher, topicFields);
+        seedContext.prepareQueryTerms(searcher, topicFields, relation);
         if (!seedContext.hasQueryTerms()) {
             return RelationResult.empty();
         }
@@ -287,6 +287,9 @@ public class SourceBackedEntityRelationsService {
         long ownerMid = asLong(source.extractValue(OWNER_MID_SOURCE_PATH, null), -1L);
         boolean sameOwner = seedContext.containsOwnerMid(ownerMid);
         double coverage = seedContext.totalQueryWeight() <= 0.0d ? 0.0d : overlapWeight / seedContext.totalQueryWeight();
+        if (!acceptSameOwnerCandidate(relation, sameOwner, overlapWeight, overlapCount, strongOverlapCount, coverage)) {
+            return DocSignals.zero();
+        }
         if (overlapWeight <= 0.0d && !sameOwner) {
             return DocSignals.zero();
         }
@@ -322,6 +325,25 @@ public class SourceBackedEntityRelationsService {
             score *= relaxedMode ? 0.78d : 0.62d;
         }
         return new DocSignals(score);
+    }
+
+    private static boolean acceptSameOwnerCandidate(
+            String relation,
+            boolean sameOwner,
+            double overlapWeight,
+            int overlapCount,
+            int strongOverlapCount,
+            double coverage) {
+        if (!sameOwner) {
+            return true;
+        }
+        if (!EsTokEntityRelationRequest.RELATED_VIDEOS_BY_OWNERS.equals(relation)) {
+            return true;
+        }
+        if (overlapWeight <= 0.0d || overlapCount <= 0) {
+            return false;
+        }
+        return strongOverlapCount > 0 || coverage >= 0.08d;
     }
 
     private double recencyScore(long nowEpochSeconds, List<Long> seedInsertAt, long candidateInsertAt) {
@@ -404,7 +426,7 @@ public class SourceBackedEntityRelationsService {
 
     private static float ownerCandidateBoost(String relation) {
         if (EsTokEntityRelationRequest.RELATED_VIDEOS_BY_OWNERS.equals(relation)) {
-            return 2.8f;
+            return 2.2f;
         }
         if (EsTokEntityRelationRequest.RELATED_OWNERS_BY_VIDEOS.equals(relation)) {
             return 1.8f;
@@ -414,7 +436,7 @@ public class SourceBackedEntityRelationsService {
 
     private static double ownerScoreBoost(String relation) {
         if (EsTokEntityRelationRequest.RELATED_VIDEOS_BY_OWNERS.equals(relation)) {
-            return 34.0d;
+            return 24.0d;
         }
         if (EsTokEntityRelationRequest.RELATED_OWNERS_BY_VIDEOS.equals(relation)) {
             return 22.0d;
@@ -593,13 +615,23 @@ public class SourceBackedEntityRelationsService {
         return 1.0d + (hanCount * 0.12d) + (otherCount * 0.04d);
     }
 
-    private static List<TokenWeight> selectQueryTerms(Engine.Searcher searcher, List<FieldContext> fieldContexts, Map<String, Double> seedTerms)
+    private static List<TokenWeight> selectQueryTerms(
+            Engine.Searcher searcher,
+            List<FieldContext> fieldContexts,
+            Map<String, Double> seedTerms,
+            Map<String, Integer> tokenDocSupport,
+            String relation)
             throws IOException {
         int docCount = Math.max(1, searcher.getIndexReader().numDocs());
+        boolean preferSupportedTokens = shouldPreferSupportedTokens(relation, tokenDocSupport);
         List<TokenWeight> weighted = new ArrayList<>();
         for (Map.Entry<String, Double> entry : seedTerms.entrySet()) {
             String token = entry.getKey();
             if (!isCandidateQueryToken(token)) {
+                continue;
+            }
+            int supportCount = Math.max(1, tokenDocSupport.getOrDefault(token, 1));
+            if (preferSupportedTokens && supportCount <= 1) {
                 continue;
             }
             long docFrequency = 0L;
@@ -607,7 +639,8 @@ public class SourceBackedEntityRelationsService {
                 docFrequency += searcher.getIndexReader().docFreq(new Term(fieldContext.indexField(), token));
             }
             double rarityBoost = 1.0d + (Math.log1p((double) docCount / (1.0d + docFrequency)) / 4.0d);
-            double signalWeight = Math.sqrt(entry.getValue()) * tokenLengthBoost(token) * rarityBoost;
+            double supportBoost = supportSignalBoost(relation, supportCount);
+            double signalWeight = Math.sqrt(entry.getValue()) * tokenLengthBoost(token) * rarityBoost * supportBoost;
             boolean strongSignal = isStrongSignalToken(token);
             weighted.add(new TokenWeight(
                     token,
@@ -640,6 +673,29 @@ public class SourceBackedEntityRelationsService {
             }
         }
         return selected;
+    }
+
+    private static boolean shouldPreferSupportedTokens(String relation, Map<String, Integer> tokenDocSupport) {
+        if (!EsTokEntityRelationRequest.RELATED_VIDEOS_BY_OWNERS.equals(relation)
+                && !EsTokEntityRelationRequest.RELATED_OWNERS_BY_OWNERS.equals(relation)) {
+            return false;
+        }
+        long supportedTokenCount = tokenDocSupport.values().stream().filter(count -> count != null && count >= 2).count();
+        return supportedTokenCount >= 3;
+    }
+
+    private static double supportSignalBoost(String relation, int supportCount) {
+        if (supportCount <= 1) {
+            return EsTokEntityRelationRequest.RELATED_VIDEOS_BY_OWNERS.equals(relation)
+                    || EsTokEntityRelationRequest.RELATED_OWNERS_BY_OWNERS.equals(relation)
+                    ? 0.52d
+                    : 1.0d;
+        }
+        if (EsTokEntityRelationRequest.RELATED_VIDEOS_BY_OWNERS.equals(relation)
+                || EsTokEntityRelationRequest.RELATED_OWNERS_BY_OWNERS.equals(relation)) {
+            return 1.0d + Math.min(1.1d, (supportCount - 1) * 0.32d);
+        }
+        return 1.0d + Math.min(0.45d, (supportCount - 1) * 0.12d);
     }
 
     private static List<String> flattenSourceValues(Object value) {
@@ -778,6 +834,7 @@ public class SourceBackedEntityRelationsService {
         private final LinkedHashSet<String> seedBvidKeys = new LinkedHashSet<>();
         private final LinkedHashSet<Long> seedOwnerMids = new LinkedHashSet<>();
         private final LinkedHashMap<String, Double> tokenSeedWeights = new LinkedHashMap<>();
+        private final LinkedHashMap<String, Integer> tokenDocSupport = new LinkedHashMap<>();
         private final List<Long> seedInsertAt = new ArrayList<>();
         private List<TokenWeight> queryTerms = List.of();
         private Map<String, TokenWeight> queryTermsByToken = Map.of();
@@ -805,11 +862,12 @@ public class SourceBackedEntityRelationsService {
         private void addTokens(Map<String, Double> tokens) {
             for (Map.Entry<String, Double> entry : tokens.entrySet()) {
                 tokenSeedWeights.merge(entry.getKey(), entry.getValue(), Double::sum);
+                tokenDocSupport.merge(entry.getKey(), 1, Integer::sum);
             }
         }
 
-        private void prepareQueryTerms(Engine.Searcher searcher, List<FieldContext> fieldContexts) throws IOException {
-            queryTerms = Collections.unmodifiableList(selectQueryTerms(searcher, fieldContexts, tokenSeedWeights));
+        private void prepareQueryTerms(Engine.Searcher searcher, List<FieldContext> fieldContexts, String relation) throws IOException {
+            queryTerms = Collections.unmodifiableList(selectQueryTerms(searcher, fieldContexts, tokenSeedWeights, tokenDocSupport, relation));
             LinkedHashMap<String, TokenWeight> tokenWeights = new LinkedHashMap<>();
             double total = 0.0d;
             for (TokenWeight tokenWeight : queryTerms) {

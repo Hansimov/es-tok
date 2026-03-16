@@ -46,6 +46,7 @@ public class SourceBackedRelatedOwnersService {
     private static final int MAX_SHORT_QUERY_TERMS = 8;
     private static final int MAX_MEDIUM_QUERY_TERMS = 6;
     private static final int MAX_LONG_QUERY_TERMS = 5;
+    private static final int MAX_EXPANSION_SCAN_LIMIT = 48;
 
     private final SourceBackedAssociateSuggester associateSuggester;
 
@@ -81,7 +82,9 @@ public class SourceBackedRelatedOwnersService {
         if (selectedTerms.isEmpty()) {
             return List.of();
         }
-        List<String> expansionTerms = expandTopicTerms(searcher, indexService, fields, text, seedTerms, scanLimit);
+        List<String> expansionTerms = shouldExpandTopicTerms(text, selectedTerms.size())
+            ? expandTopicTerms(searcher, indexService, fields, text, seedTerms, scanLimit)
+            : List.of();
 
         TopDocs topDocs = null;
         for (QueryPlan plan : buildQueryPlans(text, selectedTerms.size())) {
@@ -246,7 +249,13 @@ public class SourceBackedRelatedOwnersService {
                 indexService,
                 fields,
                 text,
-                new CompletionConfig(MAX_EXPANSION_TERMS * 2, Math.max(scanLimit, 48), 1, 1, true, false));
+            new CompletionConfig(
+                MAX_EXPANSION_TERMS * 2,
+                Math.min(MAX_EXPANSION_SCAN_LIMIT, Math.max(24, scanLimit)),
+                1,
+                1,
+                true,
+                false));
         List<String> expansions = new ArrayList<>();
         for (LuceneIndexSuggester.SuggestionOption suggestion : suggestions) {
             String candidate = normalize(suggestion.text());
@@ -362,12 +371,24 @@ public class SourceBackedRelatedOwnersService {
         return Math.min(MAX_SHORT_QUERY_TERMS, availableTermCount);
     }
 
-    private static int candidateDocLimit(int size, int scanLimit, int selectedTermCount, int minimumSeedMatches) {
-        int floor = minimumSeedMatches <= 1 ? 80 : 48;
-        if (selectedTermCount >= 5) {
-            floor = Math.max(floor, 64);
+    private static boolean shouldExpandTopicTerms(String text, int selectedTermCount) {
+        if (selectedTermCount <= 0) {
+            return false;
         }
-        int target = Math.max(size * 12, floor);
+        if (selectedTermCount >= 4) {
+            return false;
+        }
+        int codePointLength = text == null ? 0 : text.codePointCount(0, text.length());
+        boolean hasWhitespace = text != null && text.chars().anyMatch(Character::isWhitespace);
+        return !hasWhitespace && codePointLength < 18;
+    }
+
+    private static int candidateDocLimit(int size, int scanLimit, int selectedTermCount, int minimumSeedMatches) {
+        int floor = minimumSeedMatches <= 1 ? 64 : 40;
+        if (selectedTermCount >= 5) {
+            floor = Math.max(floor, 56);
+        }
+        int target = Math.max(size * 10, floor);
         return Math.min(Math.max(size, scanLimit), target);
     }
 
