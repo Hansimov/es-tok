@@ -263,6 +263,38 @@ public class RelatedOwnersRestTest {
         assertTrue(result, result.contains("\"mid\":3002"));
     }
 
+  @Test
+  public void testRelatedOwnersMatchesLongMixedTopicText() throws Exception {
+    String result = performRelatedOwners("""
+      {
+        "text": "摄影技巧和摄像布光都在这里 运镜实战经验",
+        "fields": ["title.words", "tags.words", "desc.words"],
+        "size": 6,
+        "scan_limit": 64,
+        "use_pinyin": true
+      }
+      """);
+
+    assertTrue(result, result.contains("\"mid\":3001"));
+    assertTrue(result, result.contains("\"mid\":3002"));
+  }
+
+  @Test
+  public void testRelatedOwnersLongTextToleratesSingleTypo() throws Exception {
+    String result = performRelatedOwners("""
+      {
+        "text": "摄影技巧和摄像布光都在这理 运镜实战经验",
+        "fields": ["title.words", "tags.words", "desc.words"],
+        "size": 6,
+        "scan_limit": 64,
+        "use_pinyin": true
+      }
+      """);
+
+    assertTrue(result, result.contains("\"mid\":3001"));
+    assertTrue(result, result.contains("\"mid\":3002"));
+  }
+
     private void indexTopicDocument(
             String id,
             String title,

@@ -198,6 +198,19 @@ def build_bad_case_lines(report: dict):
                 f"- {case['label']} | {case['relation']} | notes={', '.join(case['notes'])}"
             )
 
+    lines.extend(["", "## Top Notes By Relation"])
+    notes_by_relation = {}
+    for case in noted_cases:
+        bucket = notes_by_relation.setdefault(case["relation"], [])
+        bucket.append(case)
+    if not notes_by_relation:
+        lines.append("- none")
+    else:
+        for relation in sorted(notes_by_relation):
+            lines.append(f"### {relation}")
+            for case in notes_by_relation[relation][:10]:
+                lines.append(f"- {case['label']} | notes={', '.join(case['notes'])}")
+
     return lines
 
 

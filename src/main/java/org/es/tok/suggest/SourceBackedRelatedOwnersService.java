@@ -43,6 +43,9 @@ public class SourceBackedRelatedOwnersService {
     private static final String INSERT_AT_SOURCE_PATH = "insert_at";
     private static final float EXPANSION_TERM_BOOST = 0.32f;
     private static final int MAX_EXPANSION_TERMS = 3;
+    private static final int MAX_SHORT_QUERY_TERMS = 8;
+    private static final int MAX_MEDIUM_QUERY_TERMS = 6;
+    private static final int MAX_LONG_QUERY_TERMS = 5;
 
     private final SourceBackedAssociateSuggester associateSuggester;
 
@@ -74,19 +77,27 @@ public class SourceBackedRelatedOwnersService {
         if (seedTerms.isEmpty()) {
             seedTerms.add(normalize(text));
         }
-        List<String> selectedTerms = selectQueryTerms(seedTerms);
+        List<String> selectedTerms = selectQueryTerms(seedTerms, text);
         if (selectedTerms.isEmpty()) {
             return List.of();
         }
         List<String> expansionTerms = expandTopicTerms(searcher, indexService, fields, text, seedTerms, scanLimit);
 
-        Query query = buildTopicQuery(fieldContexts, text, selectedTerms, expansionTerms);
-        if (query == null) {
-            return List.of();
+        TopDocs topDocs = null;
+        for (QueryPlan plan : buildQueryPlans(text, selectedTerms.size())) {
+            Query query = buildTopicQuery(fieldContexts, selectedTerms, expansionTerms, plan.minimumSeedMatches());
+            if (query == null) {
+                continue;
+            }
+            TopDocs candidateTopDocs = searcher.search(
+                    query,
+                    candidateDocLimit(size, scanLimit, selectedTerms.size(), plan.minimumSeedMatches()));
+            if (candidateTopDocs.scoreDocs.length > 0) {
+                topDocs = candidateTopDocs;
+                break;
+            }
         }
-
-        TopDocs topDocs = searcher.search(query, Math.max(scanLimit, size * 24));
-        if (topDocs.scoreDocs.length == 0) {
+        if (topDocs == null || topDocs.scoreDocs.length == 0) {
             return List.of();
         }
 
@@ -186,18 +197,21 @@ public class SourceBackedRelatedOwnersService {
 
     private Query buildTopicQuery(
             List<FieldContext> fieldContexts,
-            String text,
             List<String> selectedTerms,
-            List<String> expansionTerms) {
-        boolean requireAll = PinyinSupport.containsChinese(text) || text.indexOf(' ') >= 0;
+            List<String> expansionTerms,
+            int minimumSeedMatches) {
         BooleanQuery.Builder queryBuilder = new BooleanQuery.Builder();
         for (FieldContext fieldContext : fieldContexts) {
             BooleanQuery.Builder fieldQuery = new BooleanQuery.Builder();
+            int seedClauseCount = 0;
             for (String seedTerm : selectedTerms) {
                 if (!seedTerm.isBlank()) {
                     fieldQuery.add(
-                            new PrefixQuery(new Term(fieldContext.indexField(), seedTerm)),
-                            requireAll ? BooleanClause.Occur.MUST : BooleanClause.Occur.SHOULD);
+                            new BoostQuery(
+                                    new PrefixQuery(new Term(fieldContext.indexField(), seedTerm)),
+                                    seedTermBoost(seedTerm, seedClauseCount)),
+                            BooleanClause.Occur.SHOULD);
+                    seedClauseCount++;
                 }
             }
             for (String expansionTerm : expansionTerms) {
@@ -207,6 +221,9 @@ public class SourceBackedRelatedOwnersService {
                 fieldQuery.add(
                         new BoostQuery(new PrefixQuery(new Term(fieldContext.indexField(), expansionTerm)), EXPANSION_TERM_BOOST),
                         BooleanClause.Occur.SHOULD);
+            }
+            if (seedClauseCount > 1 && minimumSeedMatches > 1) {
+                fieldQuery.setMinimumNumberShouldMatch(Math.min(seedClauseCount, minimumSeedMatches));
             }
             BooleanQuery builtFieldQuery = fieldQuery.build();
             if (!builtFieldQuery.clauses().isEmpty()) {
@@ -275,10 +292,11 @@ public class SourceBackedRelatedOwnersService {
         return tokens;
     }
 
-    private static List<String> selectQueryTerms(LinkedHashSet<String> seedTerms) {
+    private static List<String> selectQueryTerms(LinkedHashSet<String> seedTerms, String text) {
         List<String> orderedTerms = new ArrayList<>(seedTerms);
         orderedTerms.sort(Comparator.comparingInt(String::length).reversed().thenComparing(String::compareTo));
         List<String> selected = new ArrayList<>();
+        int maxQueryTerms = maxQueryTerms(text, orderedTerms.size());
         for (String term : orderedTerms) {
             if (term == null || term.isBlank()) {
                 continue;
@@ -292,9 +310,72 @@ public class SourceBackedRelatedOwnersService {
             }
             if (!covered) {
                 selected.add(term);
+                if (selected.size() >= maxQueryTerms) {
+                    break;
+                }
             }
         }
         return selected;
+    }
+
+    private static List<QueryPlan> buildQueryPlans(String text, int selectedTermCount) {
+        int primaryMinimumMatches = minimumSeedMatches(text, selectedTermCount);
+        List<QueryPlan> plans = new ArrayList<>();
+        plans.add(new QueryPlan(primaryMinimumMatches));
+        if (primaryMinimumMatches > 1) {
+            plans.add(new QueryPlan(Math.max(1, primaryMinimumMatches - 1)));
+        }
+        return plans;
+    }
+
+    private static int minimumSeedMatches(String text, int selectedTermCount) {
+        if (selectedTermCount <= 1) {
+            return 1;
+        }
+
+        int codePointLength = text == null ? 0 : text.codePointCount(0, text.length());
+        boolean hasWhitespace = text != null && text.chars().anyMatch(Character::isWhitespace);
+        if (selectedTermCount == 2) {
+            return hasWhitespace || codePointLength >= 8 ? 1 : 2;
+        }
+        if (selectedTermCount <= 4) {
+            return hasWhitespace || codePointLength >= 12 ? 2 : 3;
+        }
+        if (hasWhitespace || codePointLength >= 18) {
+            return Math.min(3, selectedTermCount);
+        }
+        return Math.min(4, Math.max(2, (int) Math.ceil(selectedTermCount * 0.6d)));
+    }
+
+    private static int maxQueryTerms(String text, int availableTermCount) {
+        if (availableTermCount <= 0) {
+            return 0;
+        }
+        int codePointLength = text == null ? 0 : text.codePointCount(0, text.length());
+        boolean hasWhitespace = text != null && text.chars().anyMatch(Character::isWhitespace);
+        if (hasWhitespace || codePointLength >= 18) {
+            return Math.min(MAX_LONG_QUERY_TERMS, availableTermCount);
+        }
+        if (codePointLength >= 10) {
+            return Math.min(MAX_MEDIUM_QUERY_TERMS, availableTermCount);
+        }
+        return Math.min(MAX_SHORT_QUERY_TERMS, availableTermCount);
+    }
+
+    private static int candidateDocLimit(int size, int scanLimit, int selectedTermCount, int minimumSeedMatches) {
+        int floor = minimumSeedMatches <= 1 ? 80 : 48;
+        if (selectedTermCount >= 5) {
+            floor = Math.max(floor, 64);
+        }
+        int target = Math.max(size * 12, floor);
+        return Math.min(Math.max(size, scanLimit), target);
+    }
+
+    private static float seedTermBoost(String seedTerm, int rank) {
+        int codePointLength = seedTerm.codePointCount(0, seedTerm.length());
+        double lengthBoost = 1.0d + (Math.min(5, codePointLength) * 0.12d);
+        double rankDecay = Math.max(0.72d, 1.0d - (rank * 0.06d));
+        return (float) (lengthBoost * rankDecay);
     }
 
     private static boolean isUsefulExpansionTerm(String candidate, LinkedHashSet<String> seedTerms) {
@@ -405,6 +486,9 @@ public class SourceBackedRelatedOwnersService {
     }
 
     private record FieldContext(String indexField, String sourcePath, Analyzer analyzer) {
+    }
+
+    private record QueryPlan(int minimumSeedMatches) {
     }
 
     private record RelatedOwnerDocSignals(

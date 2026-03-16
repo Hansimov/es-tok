@@ -1,6 +1,9 @@
 package org.es.tok.action;
 
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.elasticsearch.action.support.ActionFilters;
 import org.elasticsearch.action.support.DefaultShardOperationFailedException;
 import org.elasticsearch.action.support.broadcast.BroadcastShardOperationFailedException;
@@ -14,9 +17,11 @@ import org.elasticsearch.cluster.project.ProjectResolver;
 import org.elasticsearch.cluster.routing.ShardIterator;
 import org.elasticsearch.cluster.routing.ShardRouting;
 import org.elasticsearch.cluster.service.ClusterService;
+import org.elasticsearch.common.lucene.Lucene;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.index.IndexService;
 import org.elasticsearch.index.mapper.MappingLookup;
+import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.index.engine.Engine;
 import org.elasticsearch.index.shard.IndexShard;
 import org.elasticsearch.indices.IndicesService;
@@ -271,41 +276,14 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
                 result.cacheHit());
         }
         if ("auto".equals(mode)) {
-            CachedShardSuggestService.SuggestResult prefixResult = suggestService.suggest(
+            return executeAutoSuggest(
                 reader,
-                "prefix",
+                indexService,
+                request,
                 suggestFields,
-                request.text(),
+                associateFields,
                 completionConfig,
-                correctionConfig,
-                request.useCache());
-            CachedShardSuggestService.SuggestResult correctionResult = suggestService.suggest(
-                reader,
-                "correction",
-                suggestFields,
-                request.text(),
-                completionConfig,
-                correctionConfig,
-                request.useCache());
-            List<LuceneIndexSuggester.SuggestionOption> associateOptions = shouldRunAssociateInAuto(
-                request.text(),
-                request.usePinyin(),
-                prefixResult.options(),
-                correctionResult.options())
-                ? retagSuggestions(
-                    suggestService.suggest(
-                        reader,
-                        "next_token",
-                        associateFields,
-                        request.text(),
-                        completionConfig,
-                        correctionConfig,
-                        request.useCache()).options(),
-                    "associate")
-                : List.of();
-            return new ShardSuggestExecution(
-                mergeAuto(prefixResult.options(), correctionResult.options(), associateOptions, request.size(), request.text(), request.usePinyin()),
-                prefixResult.cacheHit() || correctionResult.cacheHit());
+                correctionConfig);
         }
 
         CachedShardSuggestService.SuggestResult result = suggestService.suggest(
@@ -317,6 +295,98 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             correctionConfig,
             request.useCache());
         return new ShardSuggestExecution(result.options(), result.cacheHit());
+        }
+
+        private ShardSuggestExecution executeAutoSuggest(
+            IndexReader reader,
+            IndexService indexService,
+            ShardEsTokSuggestRequest request,
+            List<String> suggestFields,
+            List<String> associateFields,
+            LuceneIndexSuggester.CompletionConfig completionConfig,
+            LuceneIndexSuggester.CorrectionConfig correctionConfig) throws IOException {
+        ShardSuggestExecution primary = executeAutoSuggestForText(
+            reader,
+            request,
+            request.text(),
+            suggestFields,
+            associateFields,
+            completionConfig,
+            correctionConfig);
+        if (!shouldRunLongTextFallback(request.text(), primary.options(), request.size())) {
+            return primary;
+        }
+
+        Map<String, AutoAccumulator> merged = new HashMap<>();
+        mergeAutoOptions(merged, primary.options(), 1.0f);
+        boolean cacheHit = primary.cacheHit();
+        List<String> fallbackTexts = buildFallbackTexts(indexService, suggestFields, request.text());
+        for (int index = 0; index < fallbackTexts.size(); index++) {
+            String fallbackText = fallbackTexts.get(index);
+            ShardSuggestExecution fallback = executeAutoSuggestForText(
+                reader,
+                request,
+                fallbackText,
+                suggestFields,
+                associateFields,
+                completionConfig,
+                correctionConfig);
+            cacheHit = cacheHit || fallback.cacheHit();
+            float variantWeight = index == 0 ? 0.78f : 0.62f;
+            mergeAutoOptions(merged, fallback.options(), variantWeight);
+        }
+
+        List<LuceneIndexSuggester.SuggestionOption> mergedOptions = merged.values().stream()
+            .sorted(AutoAccumulator.ORDER)
+            .limit(request.size())
+            .map(AutoAccumulator::toOption)
+            .toList();
+        return new ShardSuggestExecution(mergedOptions, cacheHit);
+        }
+
+        private ShardSuggestExecution executeAutoSuggestForText(
+            IndexReader reader,
+            ShardEsTokSuggestRequest request,
+            String text,
+            List<String> suggestFields,
+            List<String> associateFields,
+            LuceneIndexSuggester.CompletionConfig completionConfig,
+            LuceneIndexSuggester.CorrectionConfig correctionConfig) throws IOException {
+        CachedShardSuggestService.SuggestResult prefixResult = suggestService.suggest(
+            reader,
+            "prefix",
+            suggestFields,
+            text,
+            completionConfig,
+            correctionConfig,
+            request.useCache());
+        CachedShardSuggestService.SuggestResult correctionResult = suggestService.suggest(
+            reader,
+            "correction",
+            suggestFields,
+            text,
+            completionConfig,
+            correctionConfig,
+            request.useCache());
+        List<LuceneIndexSuggester.SuggestionOption> associateOptions = shouldRunAssociateInAuto(
+            text,
+            request.usePinyin(),
+            prefixResult.options(),
+            correctionResult.options())
+            ? retagSuggestions(
+                suggestService.suggest(
+                    reader,
+                    "next_token",
+                    associateFields,
+                    text,
+                    completionConfig,
+                    correctionConfig,
+                    request.useCache()).options(),
+                "associate")
+            : List.of();
+        return new ShardSuggestExecution(
+            mergeAuto(prefixResult.options(), correctionResult.options(), associateOptions, request.size(), text, request.usePinyin()),
+            prefixResult.cacheHit() || correctionResult.cacheHit());
         }
 
         private static List<String> resolveAssociateFields(IndexService indexService, List<String> requestFields) {
@@ -481,6 +551,225 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             .limit(size)
             .map(AutoAccumulator::toOption)
             .toList();
+        }
+
+        private static void mergeAutoOptions(
+            Map<String, AutoAccumulator> merged,
+            List<LuceneIndexSuggester.SuggestionOption> options,
+            float variantWeight) {
+        if (options.isEmpty() || variantWeight <= 0.0f) {
+            return;
+        }
+        Map<String, List<LuceneIndexSuggester.SuggestionOption>> byType = new HashMap<>();
+        for (LuceneIndexSuggester.SuggestionOption option : options) {
+            byType.computeIfAbsent(option.type(), ignored -> new ArrayList<>()).add(option);
+        }
+        for (Map.Entry<String, List<LuceneIndexSuggester.SuggestionOption>> entry : byType.entrySet()) {
+            mergeAutoBranch(merged, entry.getValue(), variantWeight, entry.getKey());
+        }
+        }
+
+        private static boolean shouldRunLongTextFallback(
+            String text,
+            List<LuceneIndexSuggester.SuggestionOption> options,
+            int requestedSize) {
+        if (!isLongTextQuery(text)) {
+            return false;
+        }
+        return options.size() < Math.min(2, requestedSize);
+        }
+
+        private static boolean isLongTextQuery(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String normalized = collapseWhitespace(text);
+        return normalized.codePointCount(0, normalized.length()) >= 12 || normalized.chars().anyMatch(Character::isWhitespace);
+        }
+
+        private static List<String> buildFallbackTexts(IndexService indexService, List<String> suggestFields, String text) throws IOException {
+        if (text == null || text.isBlank()) {
+            return List.of();
+        }
+        LinkedHashSet<String> variants = new LinkedHashSet<>();
+        String collapsed = collapseWhitespace(text);
+        String compacted = compactHanWhitespace(collapsed);
+        for (String analyzedVariant : analyzedFallbackTexts(indexService, suggestFields, compacted)) {
+            variants.add(analyzedVariant);
+        }
+        if (!compacted.equals(collapsed)) {
+            variants.add(compacted);
+        }
+        if (compacted.codePointCount(0, compacted.length()) > 12) {
+            variants.add(sliceLeadingCodePoints(compacted, 12));
+        }
+        if (compacted.codePointCount(0, compacted.length()) > 8) {
+            variants.add(sliceLeadingCodePoints(compacted, 8));
+        }
+        if (compacted.codePointCount(0, compacted.length()) > 6) {
+            variants.add(sliceLeadingCodePoints(compacted, 6));
+        }
+        if (compacted.codePointCount(0, compacted.length()) > 10) {
+            variants.add(sliceTrailingCodePoints(compacted, 10));
+        }
+        String firstSpan = firstFallbackSpan(compacted);
+        if (!firstSpan.isBlank()) {
+            variants.add(firstSpan);
+        }
+        variants.remove(collapseWhitespace(text));
+        return List.copyOf(variants);
+        }
+
+        private static List<String> analyzedFallbackTexts(
+            IndexService indexService,
+            List<String> suggestFields,
+            String text) throws IOException {
+        Analyzer analyzer = resolveFallbackAnalyzer(indexService, suggestFields);
+        if (analyzer == null) {
+            return List.of();
+        }
+        List<String> tokens = analyzeFallbackTokens(analyzer, fallbackAnalyzeField(suggestFields), text);
+        if (tokens.isEmpty()) {
+            return List.of();
+        }
+
+        LinkedHashSet<String> variants = new LinkedHashSet<>();
+        variants.add(tokens.get(0));
+        if (tokens.size() > 1) {
+            variants.add(joinFallbackTokens(tokens.subList(0, Math.min(2, tokens.size()))));
+        }
+        List<String> byLength = new ArrayList<>(tokens);
+        byLength.sort(Comparator.comparingInt(String::length).reversed().thenComparing(String::compareTo));
+        variants.add(byLength.get(0));
+        if (byLength.size() > 1) {
+            variants.add(joinFallbackTokens(byLength.subList(0, Math.min(2, byLength.size()))));
+        }
+        return List.copyOf(variants);
+        }
+
+        private static Analyzer resolveFallbackAnalyzer(IndexService indexService, List<String> suggestFields) {
+        if (indexService == null) {
+            return Lucene.KEYWORD_ANALYZER;
+        }
+        String field = fallbackAnalyzeField(suggestFields);
+        if (field.isBlank()) {
+            return Lucene.KEYWORD_ANALYZER;
+        }
+        MappedFieldType fieldType = indexService.mapperService().fieldType(field);
+        if (fieldType == null) {
+            return Lucene.KEYWORD_ANALYZER;
+        }
+        return fieldType.getTextSearchInfo().searchAnalyzer();
+        }
+
+        private static String fallbackAnalyzeField(List<String> suggestFields) {
+        if (suggestFields == null || suggestFields.isEmpty()) {
+            return "";
+        }
+        return suggestFields.get(0);
+        }
+
+        private static List<String> analyzeFallbackTokens(Analyzer analyzer, String field, String text) throws IOException {
+        if (analyzer == null || text == null || text.isBlank()) {
+            return List.of();
+        }
+        LinkedHashSet<String> tokens = new LinkedHashSet<>();
+        try (TokenStream tokenStream = analyzer.tokenStream(field, text)) {
+            CharTermAttribute termAttribute = tokenStream.addAttribute(CharTermAttribute.class);
+            tokenStream.reset();
+            while (tokenStream.incrementToken()) {
+                String token = termAttribute.toString().trim().toLowerCase(java.util.Locale.ROOT);
+                if (!token.isBlank()) {
+                    tokens.add(token);
+                }
+            }
+            tokenStream.end();
+        }
+        return List.copyOf(tokens);
+        }
+
+        private static String joinFallbackTokens(List<String> tokens) {
+        if (tokens == null || tokens.isEmpty()) {
+            return "";
+        }
+        boolean hasNonAscii = tokens.stream().flatMapToInt(String::chars).anyMatch(ch -> ch >= 128);
+        return hasNonAscii ? String.join("", tokens) : String.join(" ", tokens);
+        }
+
+        private static String firstFallbackSpan(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        String[] parts = collapseWhitespace(text).split(" ");
+        if (parts.length == 0) {
+            return "";
+        }
+        if (parts[0].codePointCount(0, parts[0].length()) <= 10) {
+            return parts[0];
+        }
+        return sliceLeadingCodePoints(parts[0], 6);
+        }
+
+        private static String collapseWhitespace(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        return String.join(" ", text.trim().split("\\s+"));
+        }
+
+        private static String compactHanWhitespace(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder(text.length());
+        int[] codePoints = text.codePoints().toArray();
+        for (int index = 0; index < codePoints.length; index++) {
+            int codePoint = codePoints[index];
+            if (Character.isWhitespace(codePoint)) {
+                int previous = previousNonWhitespace(codePoints, index - 1);
+                int next = nextNonWhitespace(codePoints, index + 1);
+                if (previous >= 0 && next >= 0 && (isHanCodePoint(previous) || isHanCodePoint(next))) {
+                    continue;
+                }
+                builder.append(' ');
+                continue;
+            }
+            builder.appendCodePoint(codePoint);
+        }
+        return collapseWhitespace(builder.toString());
+        }
+
+        private static int previousNonWhitespace(int[] codePoints, int index) {
+        for (int offset = index; offset >= 0; offset--) {
+            if (!Character.isWhitespace(codePoints[offset])) {
+                return codePoints[offset];
+            }
+        }
+        return -1;
+        }
+
+        private static int nextNonWhitespace(int[] codePoints, int index) {
+        for (int offset = index; offset < codePoints.length; offset++) {
+            if (!Character.isWhitespace(codePoints[offset])) {
+                return codePoints[offset];
+            }
+        }
+        return -1;
+        }
+
+        private static boolean isHanCodePoint(int codePoint) {
+        return codePoint >= 0 && Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN;
+        }
+
+        private static String sliceLeadingCodePoints(String text, int count) {
+        int[] codePoints = text.codePoints().limit(count).toArray();
+        return codePoints.length == 0 ? "" : new String(codePoints, 0, codePoints.length);
+        }
+
+        private static String sliceTrailingCodePoints(String text, int count) {
+        int[] codePoints = text.codePoints().toArray();
+        int start = Math.max(0, codePoints.length - count);
+        return codePoints.length == 0 ? "" : new String(codePoints, start, codePoints.length - start);
         }
 
         private static boolean shouldIncludeAssociateInAuto(String text, boolean usePinyin) {

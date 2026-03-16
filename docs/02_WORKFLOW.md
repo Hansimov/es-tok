@@ -78,8 +78,17 @@ GET /_cat/es_tok/version?v
 - 切换 analyzer 或 tokenizer 配置
 - 增减 suggest / assoc 字段
 - 调整 owner、title、tags 等字段的映射
+- 调整 embedding 字段是否写入或是否建立索引
 
 那么应直接修改该文件，而不是只改插件仓库内的示例文档。
+
+当前 `video_index_settings_v6.py` 还支持一个面向存储优化的开关：
+
+```sh
+ELASTIC_VIDEO_ENABLE_TEXT_EMB=0
+```
+
+它会在建索引时跳过 `text_emb` mapping。注意这只影响 mapping；如果你还要真正省掉 embedding 数据写入，回灌时还需要配合 `workers.elastic_videos.commander --no-embed`。
 
 ## 5. 重建索引
 
@@ -133,6 +142,19 @@ python -m workers.elastic_videos.commander -ei bili_videos_dev6 -ev elastic_dev 
 - 约 1 天数据
 - 约 100 万 docs
 - 预计 5 分钟左右
+
+如果要做“同一批真实数据的 control / compact 空间对比”，建议直接建两个索引：
+
+```sh
+cd /home/asimov/repos/bili-scraper
+ELASTIC_VIDEO_ENABLE_TEXT_EMB=1 python -m workers.elastic_videos.commander -ei bili_videos_dev6_control -ev elastic_dev -r
+ELASTIC_VIDEO_ENABLE_TEXT_EMB=1 python -m workers.elastic_videos.commander -ei bili_videos_dev6_control -ev elastic_dev -f pubdate -s "2026-03-10" -e "2026-03-11"
+
+ELASTIC_VIDEO_ENABLE_TEXT_EMB=0 python -m workers.elastic_videos.commander -ei bili_videos_dev6_compact -ev elastic_dev -r --no-embed
+ELASTIC_VIDEO_ENABLE_TEXT_EMB=0 python -m workers.elastic_videos.commander -ei bili_videos_dev6_compact -ev elastic_dev --no-embed -f pubdate -s "2026-03-10" -e "2026-03-11"
+```
+
+这样可以避免把 7 天大样本直接作为第一轮 mapping/storage 验证对象，先在 1 天数据上确认空间和性能趋势再放大。
 
 ### 成熟阶段压测或效果验证
 
@@ -197,6 +219,71 @@ python debugs/evaluate_related_cases.py \
 脚本除了 JSON 报告外，还会额外输出一个同名的 Markdown 摘要文件，例如 `related_real_case_report_7d.json.summary.md`，用于快速浏览坏例和需要人工复核的 case。
 
 脚本还会自动跳过标题、标签、简介都缺乏有效语义的弱视频 seed，例如只包含数字或空白的内容，避免把这类本就不可评估的样本记成 `no_results` 失败。
+
+Markdown 摘要里除了 `Failures` 和总 `Review Notes` 之外，还会额外给出 `Top Notes By Relation`，按接口分组列出最值得人工复核的 10 个 note case，方便单独优化 `related_videos_by_videos`、`related_owners_by_videos`、`related_videos_by_owners`、`related_owners_by_owners` 的排序行为。
+
+如果这次主要在排查“长文本、组合词、单字 typo”对文本 related 接口的影响，可以运行新增的真实文本评估脚本：
+
+```sh
+cd /home/asimov/repos/es-tok
+python debugs/evaluate_text_related_cases.py \
+	--password "$ELASTIC_PASSWORD" \
+	--fetch-size 24 \
+	--sample-size 8 \
+	--output build/reports/text_related_real_case_report_small.json
+```
+
+成熟后再扩大到更大的真实样本：
+
+```sh
+cd /home/asimov/repos/es-tok
+python debugs/evaluate_text_related_cases.py \
+	--password "$ELASTIC_PASSWORD" \
+	--fetch-size 64 \
+	--sample-size 24 \
+	--output build/reports/text_related_real_case_report_large.json
+```
+
+这个脚本会自动从真实文档生成三类 case：
+
+- `combo`：标题加标签组合词
+- `long`：标题加简介截断的长句
+- `typo`：在长句基础上注入一个常见单字 typo
+
+它会同时请求：
+
+- `related_tokens_by_tokens`
+- `related_owners_by_tokens`
+
+报告会给出：
+
+- `avg_result_count`
+- `avg_latency_ms`
+- `weak_topic_overlap`
+- `seed_owner_missing`
+
+其中 `weak_topic_overlap` 和 `seed_owner_missing` 默认归为 `notes`，用于提示“相关性仍有优化空间”，而不是直接当成硬失败。
+
+如果要做真实存储剖析，推荐对目标索引直接跑：
+
+```http
+POST /{index}/_disk_usage?run_expensive_tasks=true&flush=true
+```
+
+在当前 7 天样本上，实际大头是：
+
+- `text_emb`
+- `title.suggest`
+- `title.words`
+- `tags.suggest`
+- `title.assoc`
+- `desc.words`
+
+因此存储优化时，应优先确认：
+
+1. 该索引是否真的需要向量检索
+2. `desc.words` 是否只承担 related / token 召回职责
+3. `title/tags.suggest|assoc` 是否都确实被当前产品链路使用
 
 建议覆盖：
 
