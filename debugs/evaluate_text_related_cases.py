@@ -7,6 +7,7 @@ import ssl
 import time
 import urllib.parse
 import urllib.request
+from collections import Counter, defaultdict
 from pathlib import Path
 
 
@@ -15,6 +16,7 @@ SOURCE_FIELDS = [
     "title",
     "tags",
     "desc",
+    "tid",
     "owner.mid",
     "owner.name",
     "stat.view",
@@ -62,6 +64,36 @@ def parse_tag_text(doc: dict) -> list[str]:
     return [collapse_text(item) for item in items if collapse_text(item)]
 
 
+def extract_topic_tokens(value) -> list[str]:
+    normalized = normalize_text(value)
+    if not normalized:
+        return []
+
+    parts = []
+    buffer = []
+    for ch in normalized:
+        if ch.isalnum() or ord(ch) > 127:
+            buffer.append(ch)
+            continue
+        if buffer:
+            parts.append("".join(buffer))
+            buffer = []
+    if buffer:
+        parts.append("".join(buffer))
+
+    tokens = []
+    for part in parts:
+        if len(part) < 2:
+            continue
+        tokens.append(part)
+        if any(ord(ch) > 127 for ch in part) and len(part) <= 12:
+            max_width = min(4, len(part))
+            for width in range(2, max_width + 1):
+                for index in range(0, len(part) - width + 1):
+                    tokens.append(part[index : index + width])
+    return tokens
+
+
 def useful_text(doc: dict) -> bool:
     title = collapse_text(doc.get("title", ""))
     desc = collapse_text(doc.get("desc", ""))
@@ -91,7 +123,7 @@ def build_text_variants(doc: dict) -> list[dict]:
 
     long_parts = [title]
     if desc:
-        long_parts.append(desc[:32])
+        long_parts.append(desc[:40])
     elif tags:
         long_parts.extend(tags[:3])
     long_text = collapse_text(" ".join(part for part in long_parts if part))
@@ -140,6 +172,14 @@ def request_json(
     return body, elapsed_ms
 
 
+def percentile(values: list[float], ratio: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    index = min(len(ordered) - 1, max(0, int(round((len(ordered) - 1) * ratio))))
+    return round(ordered[index], 2)
+
+
 def fetch_docs(
     base_url: str,
     auth_header: str | None,
@@ -147,12 +187,13 @@ def fetch_docs(
     index: str,
     size: int,
     sort_clause: list[dict],
+    query: dict | None = None,
 ):
     payload = {
         "size": size,
         "sort": sort_clause,
         "_source": SOURCE_FIELDS,
-        "query": {"bool": {"filter": [{"exists": {"field": "title.words"}}]}},
+        "query": query or {"bool": {"filter": [{"exists": {"field": "title.words"}}]}},
     }
     body, _ = request_json(
         base_url, f"/{index}/_search", auth_header, ssl_context, payload
@@ -160,8 +201,46 @@ def fetch_docs(
     return [hit.get("_source", {}) for hit in body.get("hits", {}).get("hits", [])]
 
 
+def fetch_top_tids(
+    base_url: str,
+    auth_header: str | None,
+    ssl_context,
+    index: str,
+    size: int,
+):
+    payload = {
+        "size": 0,
+        "query": {"bool": {"filter": [{"exists": {"field": "title.words"}}]}},
+        "aggs": {"top_tids": {"terms": {"field": "tid", "size": size}}},
+    }
+    body, _ = request_json(
+        base_url, f"/{index}/_search", auth_header, ssl_context, payload
+    )
+    return [
+        bucket.get("key")
+        for bucket in body.get("aggregations", {})
+        .get("top_tids", {})
+        .get("buckets", [])
+    ]
+
+
+def append_unique_docs(target: list[dict], docs: list[dict], seen: set[str]):
+    for doc in docs:
+        bvid = doc.get("bvid")
+        if not bvid or bvid in seen or not useful_text(doc):
+            continue
+        seen.add(bvid)
+        target.append(doc)
+
+
 def collect_docs(
-    base_url: str, auth_header: str | None, ssl_context, index: str, fetch_size: int
+    base_url: str,
+    auth_header: str | None,
+    ssl_context,
+    index: str,
+    fetch_size: int,
+    tid_count: int,
+    docs_per_tid: int,
 ):
     combined = []
     seen = set()
@@ -183,45 +262,100 @@ def collect_docs(
             [{"stat.view": "desc"}],
         ),
     ):
-        for doc in docs:
-            bvid = doc.get("bvid")
-            if not bvid or bvid in seen or not useful_text(doc):
+        append_unique_docs(combined, docs, seen)
+
+    top_tids = fetch_top_tids(base_url, auth_header, ssl_context, index, tid_count)
+    for tid in top_tids:
+        tid_query = {
+            "bool": {
+                "filter": [
+                    {"exists": {"field": "title.words"}},
+                    {"term": {"tid": tid}},
+                ]
+            }
+        }
+        append_unique_docs(
+            combined,
+            fetch_docs(
+                base_url,
+                auth_header,
+                ssl_context,
+                index,
+                docs_per_tid,
+                [{"insert_at": "desc"}],
+                tid_query,
+            ),
+            seen,
+        )
+        append_unique_docs(
+            combined,
+            fetch_docs(
+                base_url,
+                auth_header,
+                ssl_context,
+                index,
+                docs_per_tid,
+                [{"stat.view": "desc"}],
+                tid_query,
+            ),
+            seen,
+        )
+    return combined, top_tids
+
+
+def round_robin_variant_cases(grouped_docs: dict[int, list[dict]], sample_size: int):
+    selected = []
+    tid_items = sorted(
+        [(tid, docs) for tid, docs in grouped_docs.items() if docs],
+        key=lambda item: (-len(item[1]), item[0]),
+    )
+    while tid_items and len(selected) < sample_size:
+        next_items = []
+        for tid, docs in tid_items:
+            if not docs:
                 continue
-            seen.add(bvid)
-            combined.append(doc)
-    return combined
+            doc = docs.pop(0)
+            variants = build_text_variants(doc)
+            for variant in variants:
+                selected.append(
+                    {
+                        "label": f"{doc.get('bvid')}:{variant['kind']}",
+                        "variant": variant["kind"],
+                        "seed": {
+                            "bvid": doc.get("bvid"),
+                            "title": doc.get("title", ""),
+                            "tid": doc.get("tid"),
+                            "owner": owner_info(doc),
+                            "tags": parse_tag_text(doc),
+                        },
+                        "text": variant["text"],
+                    }
+                )
+                if len(selected) >= sample_size:
+                    break
+            if docs:
+                next_items.append((tid, docs))
+            if len(selected) >= sample_size:
+                break
+        tid_items = next_items
+    return selected
 
 
 def build_cases(docs: list[dict], sample_size: int):
-    cases = []
+    grouped_docs = defaultdict(list)
     for doc in docs:
-        variants = build_text_variants(doc)
-        if not variants:
-            continue
-        for variant in variants:
-            cases.append(
-                {
-                    "label": f"{doc.get('bvid')}:{variant['kind']}",
-                    "variant": variant["kind"],
-                    "seed": {
-                        "bvid": doc.get("bvid"),
-                        "title": doc.get("title", ""),
-                        "owner": owner_info(doc),
-                        "tags": parse_tag_text(doc),
-                    },
-                    "text": variant["text"],
-                }
-            )
-            if len(cases) >= sample_size:
-                return cases
-    return cases
+        tid = int(doc.get("tid") or -1)
+        if tid >= 0:
+            grouped_docs[tid].append(doc)
+    cases = round_robin_variant_cases(grouped_docs, sample_size)
+    tid_counter = Counter(int(case["seed"].get("tid") or -1) for case in cases)
+    return cases, tid_counter.most_common()
 
 
 def seed_topic_tokens(seed: dict) -> set[str]:
     tokens = set()
     for value in [seed.get("title", ""), *seed.get("tags", [])]:
-        normalized = normalize_text(value)
-        for token in normalized.replace(",", " ").split():
+        for token in extract_topic_tokens(value):
             if len(token) >= 2:
                 tokens.add(token)
     return tokens
@@ -347,6 +481,7 @@ def build_summary(cases: list[dict]):
         "flagged_cases": [],
         "noted_cases": [],
     }
+    latency_by_relation = defaultdict(list)
     for case in cases:
         for response in case["responses"]:
             relation = response["relation"]
@@ -357,6 +492,7 @@ def build_summary(cases: list[dict]):
                     "empty": 0,
                     "avg_result_count": 0.0,
                     "avg_latency_ms": 0.0,
+                    "p95_latency_ms": 0.0,
                     "flagged": 0,
                 },
             )
@@ -364,6 +500,7 @@ def build_summary(cases: list[dict]):
             bucket["cases"] += 1
             bucket["avg_result_count"] += result_summary["result_count"]
             bucket["avg_latency_ms"] += result_summary["latency_ms"]
+            latency_by_relation[relation].append(result_summary["latency_ms"])
             if result_summary["result_count"] == 0:
                 bucket["empty"] += 1
             if result_summary["anomalies"]:
@@ -389,7 +526,7 @@ def build_summary(cases: list[dict]):
                 )
             for note in result_summary["notes"]:
                 summary["note_counts"][note] = summary["note_counts"].get(note, 0) + 1
-    for bucket in summary["by_relation"].values():
+    for relation, bucket in summary["by_relation"].items():
         if bucket["cases"]:
             bucket["avg_result_count"] = round(
                 bucket["avg_result_count"] / bucket["cases"], 2
@@ -397,6 +534,7 @@ def build_summary(cases: list[dict]):
             bucket["avg_latency_ms"] = round(
                 bucket["avg_latency_ms"] / bucket["cases"], 2
             )
+            bucket["p95_latency_ms"] = percentile(latency_by_relation[relation], 0.95)
     return summary
 
 
@@ -407,13 +545,17 @@ def build_markdown(report: dict) -> str:
         f"- case_count: {report['case_count']}",
         f"- fetch_size: {report['fetch_size']}",
         f"- sample_size: {report['sample_size']}",
+        f"- tid_count: {report['tid_count']}",
         "",
         "## By Relation",
     ]
     for relation, stats in report["summary"]["by_relation"].items():
         lines.append(
-            f"- {relation}: cases={stats['cases']} empty={stats['empty']} flagged={stats['flagged']} avg_result_count={stats['avg_result_count']} avg_latency_ms={stats['avg_latency_ms']}"
+            f"- {relation}: cases={stats['cases']} empty={stats['empty']} flagged={stats['flagged']} avg_result_count={stats['avg_result_count']} avg_latency_ms={stats['avg_latency_ms']} p95_latency_ms={stats['p95_latency_ms']}"
         )
+    lines.extend(["", "## Sampled Tids"])
+    for tid, count in report.get("sampled_tid_counts", [])[:24]:
+        lines.append(f"- tid={tid}: samples={count}")
     lines.extend(["", "## Failures"])
     flagged = report["summary"].get("flagged_cases", [])
     if not flagged:
@@ -428,10 +570,45 @@ def build_markdown(report: dict) -> str:
     if not noted:
         lines.append("- none")
     else:
-        for case in noted[:40]:
+        for case in noted[:50]:
             lines.append(
                 f"- {case['label']} | {case['relation']} | notes={', '.join(case['notes'])}"
             )
+    lines.extend(["", "## Manual Review Pack"])
+    review_cases = []
+    seen = set()
+    for case in report["cases"]:
+        if any(
+            response["summary"]["anomalies"] or response["summary"]["notes"]
+            for response in case["responses"]
+        ):
+            review_cases.append(case)
+            seen.add(case["label"])
+        if len(review_cases) >= 18:
+            break
+    if len(review_cases) < 24:
+        for case in report["cases"]:
+            if case["label"] in seen:
+                continue
+            review_cases.append(case)
+            if len(review_cases) >= 24:
+                break
+    for case in review_cases:
+        lines.append(f"### {case['label']}")
+        lines.append(
+            f"- seed_tid={case['seed'].get('tid', '')} seed_title={case['seed'].get('title', '')} text={case['text']}"
+        )
+        for response in case["responses"]:
+            lines.append(
+                f"- {response['relation']}: notes={','.join(response['summary']['notes']) or 'none'} anomalies={','.join(response['summary']['anomalies']) or 'none'} latency_ms={response['summary']['latency_ms']}"
+            )
+            summary = response["summary"]
+            if "top_texts" in summary:
+                for text in summary["top_texts"][:3]:
+                    lines.append(f"  - {text}")
+            if "top_mids" in summary:
+                for mid in summary["top_mids"][:3]:
+                    lines.append(f"  - mid={mid}")
     return "\n".join(lines) + "\n"
 
 
@@ -447,8 +624,10 @@ def main():
     parser.add_argument("--user", default="elastic")
     parser.add_argument("--password", default="")
     parser.add_argument("--index", default="bili_videos_dev6")
-    parser.add_argument("--fetch-size", type=int, default=48)
-    parser.add_argument("--sample-size", type=int, default=18)
+    parser.add_argument("--fetch-size", type=int, default=1200)
+    parser.add_argument("--sample-size", type=int, default=216)
+    parser.add_argument("--tid-count", type=int, default=48)
+    parser.add_argument("--docs-per-tid", type=int, default=12)
     parser.add_argument(
         "--ca-cert", default="/media/ssd/elasticsearch-docker-9.2.4-dev/certs/ca/ca.crt"
     )
@@ -462,13 +641,24 @@ def main():
         else ssl.create_default_context()
     )
 
-    docs = collect_docs(base_url, auth_header, ssl_context, args.index, args.fetch_size)
-    cases = build_cases(docs, args.sample_size)
+    docs, top_tids = collect_docs(
+        base_url,
+        auth_header,
+        ssl_context,
+        args.index,
+        args.fetch_size,
+        args.tid_count,
+        args.docs_per_tid,
+    )
+    cases, sampled_tid_counts = build_cases(docs, args.sample_size)
     results = evaluate_cases(base_url, auth_header, ssl_context, args.index, cases)
     report = {
         "index": args.index,
         "fetch_size": args.fetch_size,
         "sample_size": args.sample_size,
+        "tid_count": len(top_tids),
+        "top_tids": top_tids,
+        "sampled_tid_counts": sampled_tid_counts,
         "case_count": len(results),
         "summary": build_summary(results),
         "cases": results,
@@ -486,6 +676,8 @@ def main():
             {
                 "output": str(output_path),
                 "bad_case_output": bad_case_output,
+                "case_count": len(results),
+                "tid_count": len(top_tids),
                 "summary": report["summary"],
             },
             ensure_ascii=False,

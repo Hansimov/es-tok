@@ -23,7 +23,6 @@ import org.elasticsearch.search.lookup.SourceProvider;
 import org.es.tok.suggest.LuceneIndexSuggester.CompletionConfig;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -41,12 +40,6 @@ public class SourceBackedRelatedOwnersService {
     private static final String STAT_SCORE_SOURCE_PATH = "stat_score";
     private static final String STAT_VIEW_SOURCE_PATH = "stat.view";
     private static final String INSERT_AT_SOURCE_PATH = "insert_at";
-    private static final float EXPANSION_TERM_BOOST = 0.32f;
-    private static final int MAX_EXPANSION_TERMS = 3;
-    private static final int MAX_SHORT_QUERY_TERMS = 8;
-    private static final int MAX_MEDIUM_QUERY_TERMS = 6;
-    private static final int MAX_LONG_QUERY_TERMS = 5;
-    private static final int MAX_EXPANSION_SCAN_LIMIT = 48;
 
     private final SourceBackedAssociateSuggester associateSuggester;
 
@@ -82,19 +75,19 @@ public class SourceBackedRelatedOwnersService {
         if (selectedTerms.isEmpty()) {
             return List.of();
         }
-        List<String> expansionTerms = shouldExpandTopicTerms(text, selectedTerms.size())
+        List<String> expansionTerms = RelatedOwnerQueryTuning.shouldExpandTopicTerms(text, selectedTerms.size())
             ? expandTopicTerms(searcher, indexService, fields, text, seedTerms, scanLimit)
             : List.of();
 
         TopDocs topDocs = null;
-        for (QueryPlan plan : buildQueryPlans(text, selectedTerms.size())) {
+        for (RelatedOwnerQueryTuning.QueryPlan plan : RelatedOwnerQueryTuning.buildQueryPlans(text, selectedTerms.size())) {
             Query query = buildTopicQuery(fieldContexts, selectedTerms, expansionTerms, plan.minimumSeedMatches());
             if (query == null) {
                 continue;
             }
             TopDocs candidateTopDocs = searcher.search(
                     query,
-                    candidateDocLimit(size, scanLimit, selectedTerms.size(), plan.minimumSeedMatches()));
+                    RelatedOwnerQueryTuning.candidateDocLimit(size, scanLimit, selectedTerms.size(), plan.minimumSeedMatches()));
             if (candidateTopDocs.scoreDocs.length > 0) {
                 topDocs = candidateTopDocs;
                 break;
@@ -110,7 +103,7 @@ public class SourceBackedRelatedOwnersService {
                 SourceFieldMetrics.NOOP);
         Map<Long, RelatedOwnerAccumulator> owners = new LinkedHashMap<>();
         List<LeafReaderContext> leaves = searcher.getIndexReader().leaves();
-        long nowEpochSeconds = Instant.now().getEpochSecond();
+        long nowEpochSeconds = RelatedOwnerQueryTuning.nowEpochSeconds();
         for (int rank = 0; rank < topDocs.scoreDocs.length; rank++) {
             ScoreDoc scoreDoc = topDocs.scoreDocs[rank];
             int leafIndex = ReaderUtil.subIndex(scoreDoc.doc, leaves);
@@ -147,35 +140,9 @@ public class SourceBackedRelatedOwnersService {
         double statScore = asDouble(source.extractValue(STAT_SCORE_SOURCE_PATH, null));
         long viewCount = asLong(source.extractValue(STAT_VIEW_SOURCE_PATH, null), 0L);
         long insertAt = asLong(source.extractValue(INSERT_AT_SOURCE_PATH, null), 0L);
-        RelatedOwnerDocSignals docSignals = docSignals(nowEpochSeconds, hitScore, rank, statScore, viewCount, insertAt);
+        RelatedOwnerDocSignals docSignals = RelatedOwnerQueryTuning.docSignals(nowEpochSeconds, hitScore, rank, statScore, viewCount, insertAt);
         owners.computeIfAbsent(mid, RelatedOwnerAccumulator::new)
                 .add(docId, ownerName, docSignals);
-    }
-
-    private static RelatedOwnerDocSignals docSignals(
-            long nowEpochSeconds,
-            float hitScore,
-            int rank,
-            double statScore,
-            long viewCount,
-            long insertAt) {
-        double topicWeight = ((Math.log1p(Math.max(1.0f, hitScore)) + 1.0d) * 1.35d) / (1.0d + (rank * 0.05d));
-        double normalizedStatScore = Math.max(0.0d, statScore);
-        double quality = Math.log1p(normalizedStatScore * 2400.0d) * 3.6d;
-        double influence = Math.log1p(Math.max(0L, viewCount)) * 3.1d;
-        double ageDays = ageDays(nowEpochSeconds, insertAt);
-        double recencyFactor = 1.0d / (1.0d + (ageDays / 21.0d));
-        double freshness = recencyFactor * 1.4d;
-        double representativeSignal = topicWeight * ((quality * 1.05d) + (influence * 1.35d) + freshness + 1.0d);
-        double rankingWeight = representativeSignal + (topicWeight * 3.0d) + (quality * 0.25d) + (influence * 0.2d);
-        return new RelatedOwnerDocSignals(topicWeight, rankingWeight, representativeSignal, quality, influence);
-    }
-
-    private static double ageDays(long nowEpochSeconds, long insertAt) {
-        if (insertAt <= 0L || nowEpochSeconds <= 0L) {
-            return 3650.0d;
-        }
-        return Math.max(0.0d, (nowEpochSeconds - insertAt) / 86400.0d);
     }
 
     private List<FieldContext> resolveFieldContexts(IndexService indexService, Collection<String> fields) {
@@ -212,7 +179,7 @@ public class SourceBackedRelatedOwnersService {
                     fieldQuery.add(
                             new BoostQuery(
                                     new PrefixQuery(new Term(fieldContext.indexField(), seedTerm)),
-                                    seedTermBoost(seedTerm, seedClauseCount)),
+                                        RelatedOwnerQueryTuning.seedTermBoost(seedTerm, seedClauseCount)),
                             BooleanClause.Occur.SHOULD);
                     seedClauseCount++;
                 }
@@ -222,7 +189,7 @@ public class SourceBackedRelatedOwnersService {
                     continue;
                 }
                 fieldQuery.add(
-                        new BoostQuery(new PrefixQuery(new Term(fieldContext.indexField(), expansionTerm)), EXPANSION_TERM_BOOST),
+                    new BoostQuery(new PrefixQuery(new Term(fieldContext.indexField(), expansionTerm)), RelatedOwnerQueryTuning.EXPANSION_TERM_BOOST),
                         BooleanClause.Occur.SHOULD);
             }
             if (seedClauseCount > 1 && minimumSeedMatches > 1) {
@@ -250,8 +217,8 @@ public class SourceBackedRelatedOwnersService {
                 fields,
                 text,
             new CompletionConfig(
-                MAX_EXPANSION_TERMS * 2,
-                Math.min(MAX_EXPANSION_SCAN_LIMIT, Math.max(24, scanLimit)),
+                RelatedOwnerQueryTuning.MAX_EXPANSION_TERMS * 2,
+                Math.min(RelatedOwnerQueryTuning.MAX_EXPANSION_SCAN_LIMIT, Math.max(24, scanLimit)),
                 1,
                 1,
                 true,
@@ -263,7 +230,7 @@ public class SourceBackedRelatedOwnersService {
                 continue;
             }
             expansions.add(candidate);
-            if (expansions.size() >= MAX_EXPANSION_TERMS) {
+            if (expansions.size() >= RelatedOwnerQueryTuning.MAX_EXPANSION_TERMS) {
                 break;
             }
         }
@@ -305,7 +272,7 @@ public class SourceBackedRelatedOwnersService {
         List<String> orderedTerms = new ArrayList<>(seedTerms);
         orderedTerms.sort(Comparator.comparingInt(String::length).reversed().thenComparing(String::compareTo));
         List<String> selected = new ArrayList<>();
-        int maxQueryTerms = maxQueryTerms(text, orderedTerms.size());
+        int maxQueryTerms = RelatedOwnerQueryTuning.maxQueryTerms(text, orderedTerms.size());
         for (String term : orderedTerms) {
             if (term == null || term.isBlank()) {
                 continue;
@@ -325,78 +292,6 @@ public class SourceBackedRelatedOwnersService {
             }
         }
         return selected;
-    }
-
-    private static List<QueryPlan> buildQueryPlans(String text, int selectedTermCount) {
-        int primaryMinimumMatches = minimumSeedMatches(text, selectedTermCount);
-        List<QueryPlan> plans = new ArrayList<>();
-        plans.add(new QueryPlan(primaryMinimumMatches));
-        if (primaryMinimumMatches > 1) {
-            plans.add(new QueryPlan(Math.max(1, primaryMinimumMatches - 1)));
-        }
-        return plans;
-    }
-
-    private static int minimumSeedMatches(String text, int selectedTermCount) {
-        if (selectedTermCount <= 1) {
-            return 1;
-        }
-
-        int codePointLength = text == null ? 0 : text.codePointCount(0, text.length());
-        boolean hasWhitespace = text != null && text.chars().anyMatch(Character::isWhitespace);
-        if (selectedTermCount == 2) {
-            return hasWhitespace || codePointLength >= 8 ? 1 : 2;
-        }
-        if (selectedTermCount <= 4) {
-            return hasWhitespace || codePointLength >= 12 ? 2 : 3;
-        }
-        if (hasWhitespace || codePointLength >= 18) {
-            return Math.min(3, selectedTermCount);
-        }
-        return Math.min(4, Math.max(2, (int) Math.ceil(selectedTermCount * 0.6d)));
-    }
-
-    private static int maxQueryTerms(String text, int availableTermCount) {
-        if (availableTermCount <= 0) {
-            return 0;
-        }
-        int codePointLength = text == null ? 0 : text.codePointCount(0, text.length());
-        boolean hasWhitespace = text != null && text.chars().anyMatch(Character::isWhitespace);
-        if (hasWhitespace || codePointLength >= 18) {
-            return Math.min(MAX_LONG_QUERY_TERMS, availableTermCount);
-        }
-        if (codePointLength >= 10) {
-            return Math.min(MAX_MEDIUM_QUERY_TERMS, availableTermCount);
-        }
-        return Math.min(MAX_SHORT_QUERY_TERMS, availableTermCount);
-    }
-
-    private static boolean shouldExpandTopicTerms(String text, int selectedTermCount) {
-        if (selectedTermCount <= 0) {
-            return false;
-        }
-        if (selectedTermCount >= 4) {
-            return false;
-        }
-        int codePointLength = text == null ? 0 : text.codePointCount(0, text.length());
-        boolean hasWhitespace = text != null && text.chars().anyMatch(Character::isWhitespace);
-        return !hasWhitespace && codePointLength < 18;
-    }
-
-    private static int candidateDocLimit(int size, int scanLimit, int selectedTermCount, int minimumSeedMatches) {
-        int floor = minimumSeedMatches <= 1 ? 64 : 40;
-        if (selectedTermCount >= 5) {
-            floor = Math.max(floor, 56);
-        }
-        int target = Math.max(size * 10, floor);
-        return Math.min(Math.max(size, scanLimit), target);
-    }
-
-    private static float seedTermBoost(String seedTerm, int rank) {
-        int codePointLength = seedTerm.codePointCount(0, seedTerm.length());
-        double lengthBoost = 1.0d + (Math.min(5, codePointLength) * 0.12d);
-        double rankDecay = Math.max(0.72d, 1.0d - (rank * 0.06d));
-        return (float) (lengthBoost * rankDecay);
     }
 
     private static boolean isUsefulExpansionTerm(String candidate, LinkedHashSet<String> seedTerms) {
@@ -509,10 +404,7 @@ public class SourceBackedRelatedOwnersService {
     private record FieldContext(String indexField, String sourcePath, Analyzer analyzer) {
     }
 
-    private record QueryPlan(int minimumSeedMatches) {
-    }
-
-    private record RelatedOwnerDocSignals(
+    record RelatedOwnerDocSignals(
             double topicWeight,
             double rankingWeight,
             double representativeSignal,

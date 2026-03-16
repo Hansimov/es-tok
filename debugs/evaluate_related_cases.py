@@ -4,8 +4,10 @@ import argparse
 import base64
 import json
 import ssl
+import time
 import urllib.parse
 import urllib.request
+from collections import Counter, defaultdict
 from pathlib import Path
 
 
@@ -16,6 +18,7 @@ DEFAULT_SOURCE_FIELDS = [
     "owner.name",
     "tags",
     "desc",
+    "tid",
     "stat_score",
     "stat.view",
     "insert_at",
@@ -82,10 +85,7 @@ def seed_has_useful_signal(seed: dict, include_owner_name: bool = True) -> bool:
     if include_owner_name:
         candidates.append(owner.get("name", ""))
     for value in candidates:
-        normalized = normalize_seed_text(value)
-        if not normalized:
-            continue
-        for token in normalized.replace(",", " ").split():
+        for token in extract_topic_tokens(value):
             if looks_like_useful_token(token):
                 return True
     return False
@@ -99,10 +99,21 @@ def top_items(response: dict):
     return []
 
 
-def summarize_relation(seed: dict, relation: str, request: dict, response: dict):
+def percentile(values: list[float], ratio: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    index = min(len(ordered) - 1, max(0, int(round((len(ordered) - 1) * ratio))))
+    return round(ordered[index], 2)
+
+
+def summarize_relation(
+    seed: dict, relation: str, request: dict, response: dict, latency_ms: float
+):
     items = top_items(response)
     summary = {
         "result_count": len(items),
+        "latency_ms": latency_ms,
         "top_score": items[0].get("score", 0.0) if items else 0.0,
         "top_doc_freq": items[0].get("doc_freq", 0) if items else 0,
         "anomalies": [],
@@ -168,16 +179,26 @@ def build_report_summary(cases):
         "flagged_cases": [],
         "noted_cases": [],
     }
+    latency_by_relation = defaultdict(list)
     for case in cases:
         for response_entry in case["responses"]:
             relation = response_entry["relation"]
             relation_summary = response_entry["summary"]
             bucket = summary["by_relation"].setdefault(
                 relation,
-                {"cases": 0, "empty": 0, "flagged": 0, "avg_result_count": 0.0},
+                {
+                    "cases": 0,
+                    "empty": 0,
+                    "flagged": 0,
+                    "avg_result_count": 0.0,
+                    "avg_latency_ms": 0.0,
+                    "p95_latency_ms": 0.0,
+                },
             )
             bucket["cases"] += 1
             bucket["avg_result_count"] += relation_summary["result_count"]
+            bucket["avg_latency_ms"] += relation_summary["latency_ms"]
+            latency_by_relation[relation].append(relation_summary["latency_ms"])
             if relation_summary["result_count"] == 0:
                 bucket["empty"] += 1
             if relation_summary["anomalies"]:
@@ -204,12 +225,35 @@ def build_report_summary(cases):
             for note in relation_summary["notes"]:
                 summary["note_counts"][note] = summary["note_counts"].get(note, 0) + 1
 
-    for bucket in summary["by_relation"].values():
+    for relation, bucket in summary["by_relation"].items():
         if bucket["cases"]:
             bucket["avg_result_count"] = round(
                 bucket["avg_result_count"] / bucket["cases"], 2
             )
+            bucket["avg_latency_ms"] = round(
+                bucket["avg_latency_ms"] / bucket["cases"], 2
+            )
+            bucket["p95_latency_ms"] = percentile(latency_by_relation[relation], 0.95)
     return summary
+
+
+def format_top_items(case: dict, relation: str) -> list[str]:
+    for response in case["responses"]:
+        if response["relation"] != relation:
+            continue
+        items = top_items(response["response"])[:3]
+        lines = []
+        for item in items:
+            if relation.startswith("related_videos_"):
+                lines.append(
+                    f"{item.get('bvid', '')} | {item.get('title', '')} | owner={item.get('owner_name', '')} | score={item.get('score', 0.0)}"
+                )
+            else:
+                lines.append(
+                    f"{item.get('mid', '')} | {item.get('name', '')} | score={item.get('score', 0.0)} | doc_freq={item.get('doc_freq', 0)}"
+                )
+        return lines
+    return []
 
 
 def build_bad_case_lines(report: dict):
@@ -220,13 +264,18 @@ def build_bad_case_lines(report: dict):
         f"- recent_fetch_size: {report['recent_fetch_size']}",
         f"- video_sample_size: {report['video_sample_size']}",
         f"- owner_sample_size: {report['owner_sample_size']}",
+        f"- tid_count: {report['tid_count']}",
         "",
         "## By Relation",
     ]
     for relation, stats in report["summary"]["by_relation"].items():
         lines.append(
-            f"- {relation}: cases={stats['cases']} empty={stats['empty']} flagged={stats['flagged']} avg_result_count={stats['avg_result_count']}"
+            f"- {relation}: cases={stats['cases']} empty={stats['empty']} flagged={stats['flagged']} avg_result_count={stats['avg_result_count']} avg_latency_ms={stats['avg_latency_ms']} p95_latency_ms={stats['p95_latency_ms']}"
         )
+
+    lines.extend(["", "## Sampled Tids"])
+    for tid, count in report.get("sampled_tid_counts", [])[:24]:
+        lines.append(f"- tid={tid}: samples={count}")
 
     lines.extend(["", "## Failures"])
     flagged_cases = report["summary"].get("flagged_cases", [])
@@ -243,24 +292,48 @@ def build_bad_case_lines(report: dict):
     if not noted_cases:
         lines.append("- none")
     else:
-        for case in noted_cases[:30]:
+        for case in noted_cases[:40]:
             lines.append(
                 f"- {case['label']} | {case['relation']} | notes={', '.join(case['notes'])}"
             )
 
-    lines.extend(["", "## Top Notes By Relation"])
-    notes_by_relation = {}
-    for case in noted_cases:
-        bucket = notes_by_relation.setdefault(case["relation"], [])
-        bucket.append(case)
-    if not notes_by_relation:
-        lines.append("- none")
-    else:
-        for relation in sorted(notes_by_relation):
-            lines.append(f"### {relation}")
-            for case in notes_by_relation[relation][:10]:
-                lines.append(f"- {case['label']} | notes={', '.join(case['notes'])}")
-
+    lines.extend(["", "## Manual Review Pack"])
+    review_cases = []
+    seen = set()
+    for case in report["cases"]:
+        if any(
+            response["summary"]["anomalies"] or response["summary"]["notes"]
+            for response in case["responses"]
+        ):
+            review_cases.append(case)
+            seen.add(case["label"])
+        if len(review_cases) >= 16:
+            break
+    if len(review_cases) < 24:
+        for case in report["cases"]:
+            if case["label"] in seen:
+                continue
+            review_cases.append(case)
+            if len(review_cases) >= 24:
+                break
+    for case in review_cases:
+        seed = case["seed"]
+        lines.append(f"### {case['label']}")
+        lines.append(
+            f"- seed_tid={seed.get('tid', '')} seed_title={seed.get('title', seed.get('sample_title', ''))} seed_owner={(seed.get('owner') or {}).get('name', seed.get('name', ''))}"
+        )
+        for relation in [
+            "related_videos_by_videos",
+            "related_owners_by_videos",
+            "related_videos_by_owners",
+            "related_owners_by_owners",
+        ]:
+            top_lines = format_top_items(case, relation)
+            if not top_lines:
+                continue
+            lines.append(f"- {relation}:")
+            for top_line in top_lines:
+                lines.append(f"  - {top_line}")
     return lines
 
 
@@ -284,39 +357,214 @@ def request_json(
     request.add_header("Content-Type", "application/json")
     if auth_header:
         request.add_header("Authorization", auth_header)
+    started = time.perf_counter()
     with urllib.request.urlopen(request, context=ssl_context, timeout=60) as response:
-        return json.loads(response.read().decode("utf-8"))
+        body = json.loads(response.read().decode("utf-8"))
+    elapsed_ms = round((time.perf_counter() - started) * 1000.0, 2)
+    return body, elapsed_ms
 
 
-def fetch_recent_docs(
-    base_url: str, auth_header: str | None, ssl_context, index_name: str, size: int
+def default_doc_query():
+    return {"bool": {"filter": [{"exists": {"field": "title.words"}}]}}
+
+
+def fetch_docs(
+    base_url: str,
+    auth_header: str | None,
+    ssl_context,
+    index_name: str,
+    size: int,
+    sort_clause: list[dict],
+    query: dict | None = None,
 ):
     payload = {
         "size": size,
-        "sort": [{"insert_at": "desc"}],
+        "sort": sort_clause,
         "_source": DEFAULT_SOURCE_FIELDS,
-        "query": {"match_all": {}},
+        "query": query or default_doc_query(),
     }
-    response = request_json(
+    response, _ = request_json(
         base_url, f"/{index_name}/_search", auth_header, ssl_context, payload
     )
     return [hit.get("_source", {}) for hit in response.get("hits", {}).get("hits", [])]
 
 
-def build_cases(recent_docs, video_sample_size: int, owner_sample_size: int):
-    cases = []
-    skipped_video_seeds = 0
-    for doc in recent_docs[:video_sample_size]:
+def fetch_top_tids(
+    base_url: str,
+    auth_header: str | None,
+    ssl_context,
+    index_name: str,
+    size: int,
+):
+    payload = {
+        "size": 0,
+        "query": default_doc_query(),
+        "aggs": {"top_tids": {"terms": {"field": "tid", "size": size}}},
+    }
+    response, _ = request_json(
+        base_url, f"/{index_name}/_search", auth_header, ssl_context, payload
+    )
+    return [
+        bucket.get("key")
+        for bucket in response.get("aggregations", {})
+        .get("top_tids", {})
+        .get("buckets", [])
+    ]
+
+
+def append_unique_docs(target: list[dict], docs: list[dict], seen_bvids: set[str]):
+    for doc in docs:
         bvid = doc.get("bvid")
-        if not bvid:
+        if not bvid or bvid in seen_bvids:
             continue
-        if not seed_has_useful_signal(doc, include_owner_name=False):
+        seen_bvids.add(bvid)
+        target.append(doc)
+
+
+def collect_docs(
+    base_url: str,
+    auth_header: str | None,
+    ssl_context,
+    index_name: str,
+    fetch_size: int,
+    tid_count: int,
+    docs_per_tid: int,
+):
+    combined = []
+    seen_bvids = set()
+    append_unique_docs(
+        combined,
+        fetch_docs(
+            base_url,
+            auth_header,
+            ssl_context,
+            index_name,
+            fetch_size,
+            [{"insert_at": "desc"}],
+        ),
+        seen_bvids,
+    )
+    append_unique_docs(
+        combined,
+        fetch_docs(
+            base_url,
+            auth_header,
+            ssl_context,
+            index_name,
+            fetch_size,
+            [{"stat.view": "desc"}],
+        ),
+        seen_bvids,
+    )
+    top_tids = fetch_top_tids(base_url, auth_header, ssl_context, index_name, tid_count)
+    for tid in top_tids:
+        tid_query = {
+            "bool": {
+                "filter": [
+                    {"exists": {"field": "title.words"}},
+                    {"term": {"tid": tid}},
+                ]
+            }
+        }
+        append_unique_docs(
+            combined,
+            fetch_docs(
+                base_url,
+                auth_header,
+                ssl_context,
+                index_name,
+                docs_per_tid,
+                [{"insert_at": "desc"}],
+                tid_query,
+            ),
+            seen_bvids,
+        )
+        append_unique_docs(
+            combined,
+            fetch_docs(
+                base_url,
+                auth_header,
+                ssl_context,
+                index_name,
+                docs_per_tid,
+                [{"stat.view": "desc"}],
+                tid_query,
+            ),
+            seen_bvids,
+        )
+    return combined, top_tids
+
+
+def round_robin_select(
+    grouped_docs: dict[int, list[dict]], target_size: int, key_field: str
+):
+    selected = []
+    seen_keys = set()
+    tid_items = sorted(
+        [(tid, docs) for tid, docs in grouped_docs.items() if docs],
+        key=lambda item: (-len(item[1]), item[0]),
+    )
+    while tid_items and len(selected) < target_size:
+        next_items = []
+        for tid, docs in tid_items:
+            picked = None
+            while docs:
+                candidate = docs.pop(0)
+                key = candidate.get(key_field)
+                if key and key not in seen_keys:
+                    picked = candidate
+                    seen_keys.add(key)
+                    break
+            if picked is not None:
+                selected.append(picked)
+                if len(selected) >= target_size:
+                    break
+            if docs:
+                next_items.append((tid, docs))
+        tid_items = next_items
+    return selected
+
+
+def build_cases(recent_docs, video_sample_size: int, owner_sample_size: int):
+    video_groups = defaultdict(list)
+    owner_groups = defaultdict(list)
+    skipped_video_seeds = 0
+    skipped_owner_seeds = 0
+    seen_owner_mids = set()
+
+    for doc in recent_docs:
+        tid = int(doc.get("tid") or -1)
+        if tid < 0:
+            continue
+        bvid = doc.get("bvid")
+        if bvid and seed_has_useful_signal(doc, include_owner_name=False):
+            video_groups[tid].append(doc)
+        elif bvid:
             skipped_video_seeds += 1
+
+        owner = doc.get("owner") or {}
+        mid = owner.get("mid")
+        if not mid or mid in seen_owner_mids:
             continue
+        seen_owner_mids.add(mid)
+        if seed_has_useful_signal(doc, include_owner_name=True):
+            owner_groups[tid].append(doc)
+        else:
+            skipped_owner_seeds += 1
+
+    video_docs = round_robin_select(video_groups, video_sample_size, "bvid")
+    owner_docs = round_robin_select(owner_groups, owner_sample_size, "bvid")
+
+    cases = []
+    sampled_tid_counter = Counter()
+    for doc in video_docs:
+        sampled_tid_counter[int(doc.get("tid") or -1)] += 1
+        bvid = doc.get("bvid")
         cases.append(
             {
                 "label": f"video:{bvid}",
                 "seed": doc,
+                "responses": [],
                 "requests": [
                     {
                         "relation": "related_videos_by_videos",
@@ -330,19 +578,11 @@ def build_cases(recent_docs, video_sample_size: int, owner_sample_size: int):
             }
         )
 
-    owner_cases = []
-    skipped_owner_seeds = 0
-    seen_mids = set()
-    for doc in recent_docs:
+    for doc in owner_docs:
         owner = doc.get("owner") or {}
         mid = owner.get("mid")
-        if not mid or mid in seen_mids:
-            continue
-        seen_mids.add(mid)
-        if not seed_has_useful_signal(doc, include_owner_name=True):
-            skipped_owner_seeds += 1
-            continue
-        owner_cases.append(
+        sampled_tid_counter[int(doc.get("tid") or -1)] += 1
+        cases.append(
             {
                 "label": f"owner:{mid}",
                 "seed": {
@@ -350,7 +590,9 @@ def build_cases(recent_docs, video_sample_size: int, owner_sample_size: int):
                     "name": owner.get("name", ""),
                     "sample_bvid": doc.get("bvid", ""),
                     "sample_title": doc.get("title", ""),
+                    "tid": doc.get("tid"),
                 },
+                "responses": [],
                 "requests": [
                     {
                         "relation": "related_videos_by_owners",
@@ -363,12 +605,11 @@ def build_cases(recent_docs, video_sample_size: int, owner_sample_size: int):
                 ],
             }
         )
-        if len(owner_cases) >= owner_sample_size:
-            break
 
-    return cases + owner_cases, {
+    return cases, {
         "skipped_video_seeds": skipped_video_seeds,
         "skipped_owner_seeds": skipped_owner_seeds,
+        "sampled_tid_counts": sampled_tid_counter.most_common(),
     }
 
 
@@ -383,7 +624,7 @@ def evaluate_cases(
             "responses": [],
         }
         for query in case["requests"]:
-            response = request_json(
+            response, latency_ms = request_json(
                 base_url,
                 f"/{index_name}/_es_tok/{query['relation']}",
                 auth_header,
@@ -391,7 +632,7 @@ def evaluate_cases(
                 query["body"],
             )
             summary = summarize_relation(
-                case["seed"], query["relation"], query["body"], response
+                case["seed"], query["relation"], query["body"], response, latency_ms
             )
             case_result["responses"].append(
                 {
@@ -417,9 +658,11 @@ def main():
     parser.add_argument("--user", default="elastic")
     parser.add_argument("--password", default="")
     parser.add_argument("--index", default="bili_videos_dev6")
-    parser.add_argument("--video-sample-size", type=int, default=6)
-    parser.add_argument("--owner-sample-size", type=int, default=6)
-    parser.add_argument("--recent-fetch-size", type=int, default=24)
+    parser.add_argument("--video-sample-size", type=int, default=100)
+    parser.add_argument("--owner-sample-size", type=int, default=100)
+    parser.add_argument("--recent-fetch-size", type=int, default=1200)
+    parser.add_argument("--tid-count", type=int, default=48)
+    parser.add_argument("--docs-per-tid", type=int, default=12)
     parser.add_argument(
         "--ca-cert", default="/media/ssd/elasticsearch-docker-9.2.4-dev/certs/ca/ca.crt"
     )
@@ -432,10 +675,16 @@ def main():
         if args.ca_cert
         else ssl.create_default_context()
     )
-    recent_docs = fetch_recent_docs(
-        base_url, auth_header, ssl_context, args.index, args.recent_fetch_size
+    recent_docs, top_tids = collect_docs(
+        base_url,
+        auth_header,
+        ssl_context,
+        args.index,
+        args.recent_fetch_size,
+        args.tid_count,
+        args.docs_per_tid,
     )
-    cases, skipped = build_cases(
+    cases, sampling = build_cases(
         recent_docs, args.video_sample_size, args.owner_sample_size
     )
     results = evaluate_cases(base_url, auth_header, ssl_context, args.index, cases)
@@ -445,7 +694,13 @@ def main():
         "recent_fetch_size": args.recent_fetch_size,
         "video_sample_size": args.video_sample_size,
         "owner_sample_size": args.owner_sample_size,
-        "skipped": skipped,
+        "tid_count": len(top_tids),
+        "top_tids": top_tids,
+        "sampled_tid_counts": sampling["sampled_tid_counts"],
+        "skipped": {
+            "skipped_video_seeds": sampling["skipped_video_seeds"],
+            "skipped_owner_seeds": sampling["skipped_owner_seeds"],
+        },
         "case_count": len(results),
         "summary": build_report_summary(results),
         "cases": results,
@@ -466,6 +721,7 @@ def main():
                 "output": str(output_path),
                 "bad_case_output": bad_case_output,
                 "case_count": len(results),
+                "tid_count": len(top_tids),
                 "summary": report["summary"],
             },
             ensure_ascii=False,
