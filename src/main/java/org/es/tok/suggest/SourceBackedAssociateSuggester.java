@@ -214,6 +214,9 @@ public class SourceBackedAssociateSuggester {
         if (field.endsWith(".suggest")) {
             return field.substring(0, field.length() - ".suggest".length());
         }
+        if (field.endsWith(".assoc")) {
+            return field.substring(0, field.length() - ".assoc".length());
+        }
         return field;
     }
 

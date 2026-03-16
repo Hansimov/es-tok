@@ -205,6 +205,11 @@ GET|POST /{index}/_es_tok/related_tokens_by_tokens
 - `correction`
 - `auto`
 
+语义约定：
+
+- `associate` 会从请求字段对应的 source 文本中回扫主题关联词，不再是 `next_token` 结果的重标记。
+- `auto` 会先合并 direct completion 分支；当主文本不是典型前缀输入时，还会追加一次 `associate` 兜底，因此更适合完整标题或较长文本。
+
 ### Prefix 示例
 
 ```json

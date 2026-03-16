@@ -366,6 +366,26 @@ public class SuggestRestTest {
     }
 
     @Test
+    public void testAutoSuggestUsesAssociateFallbackForFullTitleText() throws Exception {
+        String query = """
+                {
+                  "text": "github copilot chat",
+                  "mode": "auto",
+                  "fields": ["content"],
+                  "size": 5,
+                  "scan_limit": 32,
+                  "correction_min_length": 2,
+                  "cache": true
+                }
+                """;
+
+        String result = performSuggest(query);
+        assertFalse(result, result.contains("\"options\":[]"));
+        assertTrue(result, result.contains("actions") || result.contains("color") || result.contains("colon"));
+        assertTrue(result, result.contains("\"type\":\"associate\""));
+    }
+
+    @Test
     public void testOwnerAutoSuggestUsesOwnerTypeAndRanking() throws Exception {
         String query = """
                 {

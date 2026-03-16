@@ -29,6 +29,7 @@ import org.es.tok.suggest.LuceneIndexSuggester;
 import org.es.tok.suggest.OwnerBackedSuggestService;
 import org.es.tok.suggest.PinyinSupport;
 import org.es.tok.suggest.AutoSuggestTextVariants;
+import org.es.tok.suggest.SourceBackedAssociateSuggester;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -50,6 +51,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
     private final ProjectResolver projectResolver;
     private final CachedShardSuggestService suggestService;
     private final OwnerBackedSuggestService ownerSuggestService;
+    private final SourceBackedAssociateSuggester associateSuggester;
 
     @Inject
     public TransportEsTokSuggestAction(
@@ -67,7 +69,8 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
                 indexNameExpressionResolver,
                 indicesService,
                 new CachedShardSuggestService(),
-                new OwnerBackedSuggestService());
+                new OwnerBackedSuggestService(),
+                new SourceBackedAssociateSuggester());
     }
 
     TransportEsTokSuggestAction(
@@ -78,7 +81,8 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             IndexNameExpressionResolver indexNameExpressionResolver,
             IndicesService indicesService,
             CachedShardSuggestService suggestService,
-            OwnerBackedSuggestService ownerSuggestService) {
+            OwnerBackedSuggestService ownerSuggestService,
+            SourceBackedAssociateSuggester associateSuggester) {
         super(
                 EsTokSuggestAction.NAME,
                 clusterService,
@@ -92,6 +96,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         this.projectResolver = projectResolver;
         this.suggestService = suggestService;
         this.ownerSuggestService = ownerSuggestService;
+        this.associateSuggester = associateSuggester;
     }
 
     @Override
@@ -259,20 +264,18 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
                 false);
         }
         if ("associate".equals(mode)) {
-            CachedShardSuggestService.SuggestResult result = suggestService.suggest(
-                reader,
-                "next_token",
-                associateFields,
-                request.text(),
-                completionConfig,
-                correctionConfig,
-                request.useCache());
             return new ShardSuggestExecution(
-                retagSuggestions(result.options(), "associate"),
-                result.cacheHit());
+                associateSuggester.suggestAssociate(
+                    searcher,
+                    indexService,
+                    associateFields,
+                    request.text(),
+                    completionConfig),
+                false);
         }
         if ("auto".equals(mode)) {
             return executeAutoSuggest(
+                searcher,
                 reader,
                 indexService,
                 request,
@@ -294,6 +297,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         }
 
         private ShardSuggestExecution executeAutoSuggest(
+            Engine.Searcher searcher,
             IndexReader reader,
             IndexService indexService,
             ShardEsTokSuggestRequest request,
@@ -302,6 +306,8 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             LuceneIndexSuggester.CompletionConfig completionConfig,
             LuceneIndexSuggester.CorrectionConfig correctionConfig) throws IOException {
         ShardSuggestExecution primary = executeAutoSuggestForText(
+            searcher,
+            indexService,
             reader,
             request,
             request.text(),
@@ -321,6 +327,8 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         for (int index = 0; index < fallbackTexts.size(); index++) {
             String fallbackText = fallbackTexts.get(index);
             ShardSuggestExecution fallback = executeAutoSuggestForText(
+                searcher,
+                indexService,
                 reader,
                 request,
                 fallbackText,
@@ -343,6 +351,8 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         }
 
         private ShardSuggestExecution executeAutoSuggestForText(
+            Engine.Searcher searcher,
+            IndexService indexService,
             IndexReader reader,
             ShardEsTokSuggestRequest request,
             String text,
@@ -369,21 +379,24 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
                 correctionConfig,
                 request.useCache())
             : new CachedShardSuggestService.SuggestResult(List.of(), false);
-        List<LuceneIndexSuggester.SuggestionOption> associateOptions = shouldRunAssociateInAuto(
+        LuceneIndexSuggester.CompletionConfig autoAssociateConfig = new LuceneIndexSuggester.CompletionConfig(
+            completionConfig.size(),
+            Math.min(completionConfig.scanLimit(), 32),
+            completionConfig.minPrefixLength(),
+            completionConfig.minCandidateLength(),
+            completionConfig.allowCompactBigrams(),
+            completionConfig.usePinyin());
+        List<LuceneIndexSuggester.SuggestionOption> associateOptions = includeCorrection && shouldRunAssociateInAuto(
             text,
             request.usePinyin(),
             prefixResult.options(),
             correctionResult.options())
-            ? retagSuggestions(
-                suggestService.suggest(
-                    reader,
-                    "next_token",
-                    associateFields,
-                    text,
-                    completionConfig,
-                    correctionConfig,
-                    request.useCache()).options(),
-                "associate")
+            ? associateSuggester.suggestAssociate(
+                searcher,
+                indexService,
+                associateFields,
+                text,
+                autoAssociateConfig)
             : List.of();
         return new ShardSuggestExecution(
             mergeAuto(prefixResult.options(), correctionResult.options(), associateOptions, request.size(), text, request.usePinyin()),
@@ -499,18 +512,6 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         return text != null
             && text.isBlank() == false
             && text.chars().allMatch(ch -> ch < 128 && Character.isLetterOrDigit(ch));
-        }
-
-        private static List<LuceneIndexSuggester.SuggestionOption> retagSuggestions(
-            List<LuceneIndexSuggester.SuggestionOption> options,
-            String type) {
-        return options.stream()
-            .map(option -> new LuceneIndexSuggester.SuggestionOption(
-                option.text(),
-                option.docFreq(),
-                option.score(),
-                type))
-            .toList();
         }
 
         private static List<String> mergeWarmupFields(List<String> suggestFields, List<String> associateFields) {

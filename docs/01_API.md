@@ -190,6 +190,11 @@ GET|POST /{index}/_es_tok/related_tokens_by_tokens
 | `correction_max_edits` | integer | `2` | 允许的编辑距离，支持 `1` 或 `2` |
 | `correction_prefix_length` | integer | `1` | correction 前缀保护长度 |
 
+`mode` 语义补充：
+
+- `associate` 使用 source-backed topic association，从命中的 source 文本里回收主题相关 token。
+- `auto` 先聚合 `prefix` / `next_token` / `correction` 等 direct completion 分支，再只对主文本追加一次 `associate` 兜底，避免在 fallback 文本上重复做高成本关联扫描。
+
 ### 响应字段
 
 ```json
