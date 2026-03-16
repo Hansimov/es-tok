@@ -158,10 +158,10 @@ public class SourceBackedEntityRelationsService {
                 if (seedContext.containsBvid(bvid)) {
                     continue;
                 }
-                videos.computeIfAbsent(bvid, ignored -> new VideoAccumulator(bvid))
+                videos.computeIfAbsent(bvid, ignored -> new VideoAccumulator(bvid, relationProfile))
                         .add(title, ownerMid, ownerName, signals.score());
             } else {
-                owners.computeIfAbsent(ownerMid, OwnerAccumulator::new)
+                owners.computeIfAbsent(ownerMid, ignored -> new OwnerAccumulator(ownerMid, relationProfile))
                         .add(ownerName, signals.score());
             }
         }
@@ -277,6 +277,7 @@ public class SourceBackedEntityRelationsService {
             boolean relaxedMode,
             AnalysisCache analysisCache) throws IOException {
         Set<String> candidateTokens = extractTopicTokens(topicFields, source, analysisCache);
+        Set<String> candidateSurfaceTokens = extractSurfaceTokens(topicFields, source, analysisCache);
         double overlapWeight = 0.0d;
         int overlapCount = 0;
         int strongOverlapCount = 0;
@@ -289,6 +290,12 @@ public class SourceBackedEntityRelationsService {
             overlapCount++;
             if (tokenWeight.strongSignal()) {
                 strongOverlapCount++;
+            }
+        }
+        int surfaceOverlapCount = 0;
+        for (String token : candidateSurfaceTokens) {
+            if (seedContext.queryWeight(token) != null) {
+                surfaceOverlapCount++;
             }
         }
 
@@ -310,6 +317,9 @@ public class SourceBackedEntityRelationsService {
         if (!sameOwner && overlapCount < relationProfile.minimumOverlapCount(relaxedMode)) {
             return DocSignals.zero();
         }
+        if (!sameOwner && strongOverlapCount == 0 && surfaceOverlapCount < relationProfile.minimumSurfaceOverlapCount(relaxedMode)) {
+            return DocSignals.zero();
+        }
         if (!sameOwner && overlapCount < (relaxedMode ? 1 : 2) && coverage < (relaxedMode ? 0.14d : 0.22d)) {
             return DocSignals.zero();
         }
@@ -324,6 +334,7 @@ public class SourceBackedEntityRelationsService {
                 coverage,
                 strongOverlapCount,
                 overlapCount,
+                surfaceOverlapCount,
                 hitWeight,
                 recency,
                 quality,
@@ -390,6 +401,25 @@ public class SourceBackedEntityRelationsService {
 
     private Set<String> extractTopicTokens(List<FieldContext> fieldContexts, Source source, AnalysisCache analysisCache) throws IOException {
         return extractTopicTokenWeights(fieldContexts, source, analysisCache).keySet();
+    }
+
+    private Set<String> extractSurfaceTokens(List<FieldContext> fieldContexts, Source source, AnalysisCache analysisCache) throws IOException {
+        LinkedHashSet<String> tokens = new LinkedHashSet<>();
+        for (FieldContext fieldContext : fieldContexts) {
+            String sourcePath = fieldContext.sourcePath();
+            if (!TITLE_SOURCE_PATH.equals(sourcePath) && !"tags".equals(sourcePath)) {
+                continue;
+            }
+            Object rawValue = source.extractValue(sourcePath, null);
+            for (String value : flattenSourceValues(rawValue)) {
+                for (String token : analysisCache.analyze(fieldContext, value)) {
+                    if (!token.isBlank()) {
+                        tokens.add(token);
+                    }
+                }
+            }
+        }
+        return tokens;
     }
 
     private static List<String> analyze(Analyzer analyzer, String field, String text) throws IOException {
@@ -821,6 +851,7 @@ public class SourceBackedEntityRelationsService {
                 .thenComparing(VideoAccumulator::bvid);
 
         private final String bvid;
+        private final RelationTuning.RelationProfile relationProfile;
         private String title = "";
         private long ownerMid = -1L;
         private String ownerName = "";
@@ -828,8 +859,9 @@ public class SourceBackedEntityRelationsService {
         private double score;
         private double bestScore;
 
-        private VideoAccumulator(String bvid) {
+        private VideoAccumulator(String bvid, RelationTuning.RelationProfile relationProfile) {
             this.bvid = bvid;
+            this.relationProfile = relationProfile;
         }
 
         private void add(String title, long ownerMid, String ownerName, double contribution) {
@@ -848,8 +880,7 @@ public class SourceBackedEntityRelationsService {
         }
 
         private double score() {
-            return RelationTuning.profile(EsTokEntityRelationRequest.RELATED_VIDEOS_BY_VIDEOS)
-                    .videoAccumulatorScore(bestScore, score, docFreq);
+            return relationProfile.videoAccumulatorScore(bestScore, score, docFreq);
         }
 
         private long ownerMid() {
@@ -872,12 +903,14 @@ public class SourceBackedEntityRelationsService {
                 .thenComparing(OwnerAccumulator::displayName);
 
         private final long mid;
+        private final RelationTuning.RelationProfile relationProfile;
         private final Map<String, Double> aliasScores = new HashMap<>();
         private final List<Double> contributions = new ArrayList<>();
         private int docFreq;
 
-        private OwnerAccumulator(long mid) {
+        private OwnerAccumulator(long mid, RelationTuning.RelationProfile relationProfile) {
             this.mid = mid;
+            this.relationProfile = relationProfile;
         }
 
         private void add(String ownerName, double contribution) {
@@ -889,8 +922,7 @@ public class SourceBackedEntityRelationsService {
         private double score() {
             List<Double> ranked = new ArrayList<>(contributions);
             ranked.sort(Comparator.reverseOrder());
-            return RelationTuning.profile(EsTokEntityRelationRequest.RELATED_OWNERS_BY_OWNERS)
-                    .ownerAccumulatorScore(ranked, docFreq);
+            return relationProfile.ownerAccumulatorScore(ranked, docFreq);
         }
 
         private int docFreq() {

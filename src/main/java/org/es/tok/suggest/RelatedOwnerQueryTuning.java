@@ -2,6 +2,7 @@ package org.es.tok.suggest;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Locale;
 import java.util.List;
 
 final class RelatedOwnerQueryTuning {
@@ -16,6 +17,64 @@ final class RelatedOwnerQueryTuning {
     private static final double INFLUENCE_MULTIPLIER = 3.1d;
     private static final double RECENCY_HALFLIFE_DAYS = 21.0d;
     private static final double FRESHNESS_MULTIPLIER = 1.4d;
+    private static final List<String> NOISY_ASCII_TERMS = List.of(
+            "http",
+            "https",
+            "www",
+            "com",
+            "html",
+            "htm",
+            "bilibi",
+            "bilibili");
+
+    static String sanitizeQueryText(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        String sanitized = text
+                .replaceAll("https?://\\S+", " ")
+                .replaceAll("www\\.\\S+", " ")
+                .replaceAll("[\\r\\n\\t]+", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        return sanitized;
+    }
+
+    static boolean isUsefulSeedTerm(String term) {
+        if (term == null || term.isBlank()) {
+            return false;
+        }
+        String normalized = term.trim().toLowerCase(Locale.ROOT);
+        if (normalized.isBlank()) {
+            return false;
+        }
+        if (normalized.contains("://") || normalized.startsWith("www.")) {
+            return false;
+        }
+        if (NOISY_ASCII_TERMS.contains(normalized)) {
+            return false;
+        }
+        int codePointLength = normalized.codePointCount(0, normalized.length());
+        if (codePointLength < 2) {
+            return false;
+        }
+        if (normalized.chars().allMatch(Character::isDigit)) {
+            return false;
+        }
+        boolean containsHan = normalized.codePoints().anyMatch(RelatedOwnerQueryTuning::isHanCodePoint);
+        if (containsHan) {
+            return codePointLength >= 2;
+        }
+        boolean asciiAlphaNumeric = normalized.chars().allMatch(ch -> ch < 128 && Character.isLetterOrDigit(ch));
+        if (!asciiAlphaNumeric) {
+            return false;
+        }
+        boolean hasLetter = normalized.chars().anyMatch(Character::isLetter);
+        if (!hasLetter) {
+            return false;
+        }
+        return codePointLength >= 3 && codePointLength <= 24;
+    }
 
     static int maxQueryTerms(String text, int availableTermCount) {
         if (availableTermCount <= 0) {
@@ -123,6 +182,10 @@ final class RelatedOwnerQueryTuning {
             return 3650.0d;
         }
         return Math.max(0.0d, (nowEpochSeconds - insertAt) / 86400.0d);
+    }
+
+    private static boolean isHanCodePoint(int codePoint) {
+        return Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN;
     }
 
     record QueryPlan(int minimumSeedMatches) {

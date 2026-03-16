@@ -13,9 +13,11 @@ final class RelationTuning {
             0.08d,
             2,
             1,
+            0,
+            0,
             true,
             new SupportProfile(1, 0.12d, 0.45d, 1.0d),
-            new ScoreWeights(12.0d, 78.0d, 14.0d, 2.5d, 2.4d, 12.0d, 8.0d, 3.2d),
+            new ScoreWeights(12.0d, 78.0d, 14.0d, 2.5d, 0.0d, 2.4d, 12.0d, 8.0d, 3.2d),
             new CoveragePenaltyProfile(0.18d, 0.12d, 0.62d, 0.78d),
             new OwnerCandidateProfile(false, 0.0d),
             new VideoRankingProfile(0.45d, 0.28d, 3.0d),
@@ -29,9 +31,11 @@ final class RelationTuning {
             0.05d,
             1,
             1,
+            0,
+            0,
             false,
             new SupportProfile(1, 0.12d, 0.45d, 1.0d),
-            new ScoreWeights(12.0d, 78.0d, 14.0d, 2.5d, 2.4d, 12.0d, 8.0d, 3.2d),
+            new ScoreWeights(12.0d, 78.0d, 14.0d, 2.5d, 0.0d, 2.4d, 12.0d, 8.0d, 3.2d),
             new CoveragePenaltyProfile(0.18d, 0.12d, 0.62d, 0.78d),
             new OwnerCandidateProfile(false, 0.0d),
             new VideoRankingProfile(0.45d, 0.28d, 3.0d),
@@ -41,16 +45,18 @@ final class RelationTuning {
             2.2f,
             24.0d,
             true,
-            0.08d,
-            0.05d,
+            0.10d,
+            0.06d,
+            2,
             1,
             1,
+            0,
             true,
-            new SupportProfile(3, 0.32d, 1.10d, 0.52d),
-            new ScoreWeights(12.0d, 78.0d, 14.0d, 2.5d, 2.4d, 12.0d, 8.0d, 3.2d),
-            new CoveragePenaltyProfile(0.18d, 0.12d, 0.62d, 0.78d),
-            new OwnerCandidateProfile(true, 0.08d),
-            new VideoRankingProfile(0.45d, 0.28d, 3.0d),
+            new SupportProfile(3, 0.36d, 1.20d, 0.38d),
+            new ScoreWeights(12.0d, 78.0d, 14.0d, 2.5d, 6.0d, 2.4d, 12.0d, 8.0d, 3.2d),
+            new CoveragePenaltyProfile(0.22d, 0.14d, 0.48d, 0.70d),
+            new OwnerCandidateProfile(true, 0.12d),
+            new VideoRankingProfile(0.68d, 0.16d, 2.2d),
             new OwnerRankingProfile(0.68d, 4.0d, 320.0d, 240.0d));
 
     private static final RelationProfile RELATED_OWNERS_BY_OWNERS = new RelationProfile(
@@ -61,9 +67,11 @@ final class RelationTuning {
             0.12d,
             2,
             1,
+            1,
+            0,
             true,
             new SupportProfile(3, 0.32d, 1.10d, 0.52d),
-            new ScoreWeights(12.0d, 78.0d, 14.0d, 2.5d, 2.4d, 12.0d, 8.0d, 3.2d),
+            new ScoreWeights(12.0d, 78.0d, 14.0d, 2.5d, 4.0d, 2.4d, 12.0d, 8.0d, 3.2d),
             new CoveragePenaltyProfile(0.18d, 0.12d, 0.62d, 0.78d),
             new OwnerCandidateProfile(false, 0.0d),
             new VideoRankingProfile(0.45d, 0.28d, 3.0d),
@@ -87,6 +95,8 @@ final class RelationTuning {
             double minimumCoverageRelaxed,
             int minimumOverlapStrict,
             int minimumOverlapRelaxed,
+            int minimumSurfaceOverlapStrict,
+            int minimumSurfaceOverlapRelaxed,
             boolean supportsRelaxedFallback,
             SupportProfile supportProfile,
             ScoreWeights scoreWeights,
@@ -117,6 +127,10 @@ final class RelationTuning {
             return relaxedMode ? minimumOverlapRelaxed : minimumOverlapStrict;
         }
 
+        int minimumSurfaceOverlapCount(boolean relaxedMode) {
+            return relaxedMode ? minimumSurfaceOverlapRelaxed : minimumSurfaceOverlapStrict;
+        }
+
         boolean requiresStrongMatch(boolean relaxedMode) {
             return !relaxedMode && this == RELATED_VIDEOS_BY_VIDEOS || !relaxedMode && this == RELATED_OWNERS_BY_OWNERS;
         }
@@ -145,6 +159,7 @@ final class RelationTuning {
                 double coverage,
                 int strongOverlapCount,
                 int overlapCount,
+                int surfaceOverlapCount,
                 double hitWeight,
                 double recency,
                 double quality,
@@ -155,6 +170,7 @@ final class RelationTuning {
                     + (coverage * scoreWeights.coverageWeight())
                     + (strongOverlapCount * scoreWeights.strongOverlapWeight())
                     + (overlapCount * scoreWeights.overlapCountWeight())
+                    + (surfaceOverlapCount * scoreWeights.surfaceOverlapWeight())
                     + (sameOwner ? ownerScoreBoost : 0.0d)
                     + (hitWeight * scoreWeights.hitWeight())
                     + (recency * scoreWeights.recencyWeight())
@@ -205,6 +221,7 @@ final class RelationTuning {
             double coverageWeight,
             double strongOverlapWeight,
             double overlapCountWeight,
+            double surfaceOverlapWeight,
             double hitWeight,
             double recencyWeight,
             double qualityWeight,

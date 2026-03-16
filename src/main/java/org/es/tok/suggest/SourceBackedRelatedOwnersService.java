@@ -58,7 +58,8 @@ public class SourceBackedRelatedOwnersService {
             String text,
             int size,
             int scanLimit) throws IOException {
-        if (text == null || text.isBlank()) {
+        String sanitizedText = RelatedOwnerQueryTuning.sanitizeQueryText(text);
+        if (sanitizedText.isBlank()) {
             return List.of();
         }
 
@@ -67,20 +68,23 @@ public class SourceBackedRelatedOwnersService {
             return List.of();
         }
 
-        LinkedHashSet<String> seedTerms = analyzeSeedTerms(fieldContexts, text);
+        LinkedHashSet<String> seedTerms = analyzeSeedTerms(fieldContexts, sanitizedText);
         if (seedTerms.isEmpty()) {
-            seedTerms.add(normalize(text));
+            String normalized = normalize(sanitizedText);
+            if (RelatedOwnerQueryTuning.isUsefulSeedTerm(normalized)) {
+                seedTerms.add(normalized);
+            }
         }
-        List<String> selectedTerms = selectQueryTerms(seedTerms, text);
+        List<String> selectedTerms = selectQueryTerms(seedTerms, sanitizedText);
         if (selectedTerms.isEmpty()) {
             return List.of();
         }
-        List<String> expansionTerms = RelatedOwnerQueryTuning.shouldExpandTopicTerms(text, selectedTerms.size())
-            ? expandTopicTerms(searcher, indexService, fields, text, seedTerms, scanLimit)
+        List<String> expansionTerms = RelatedOwnerQueryTuning.shouldExpandTopicTerms(sanitizedText, selectedTerms.size())
+            ? expandTopicTerms(searcher, indexService, fields, sanitizedText, seedTerms, scanLimit)
             : List.of();
 
         TopDocs topDocs = null;
-        for (RelatedOwnerQueryTuning.QueryPlan plan : RelatedOwnerQueryTuning.buildQueryPlans(text, selectedTerms.size())) {
+        for (RelatedOwnerQueryTuning.QueryPlan plan : RelatedOwnerQueryTuning.buildQueryPlans(sanitizedText, selectedTerms.size())) {
             Query query = buildTopicQuery(fieldContexts, selectedTerms, expansionTerms, plan.minimumSeedMatches());
             if (query == null) {
                 continue;
@@ -259,7 +263,7 @@ public class SourceBackedRelatedOwnersService {
             tokenStream.reset();
             while (tokenStream.incrementToken()) {
                 String normalized = normalize(termAttribute.toString());
-                if (!normalized.isBlank()) {
+                if (RelatedOwnerQueryTuning.isUsefulSeedTerm(normalized)) {
                     tokens.add(normalized);
                 }
             }
@@ -274,7 +278,7 @@ public class SourceBackedRelatedOwnersService {
         List<String> selected = new ArrayList<>();
         int maxQueryTerms = RelatedOwnerQueryTuning.maxQueryTerms(text, orderedTerms.size());
         for (String term : orderedTerms) {
-            if (term == null || term.isBlank()) {
+            if (!RelatedOwnerQueryTuning.isUsefulSeedTerm(term)) {
                 continue;
             }
             boolean covered = false;
@@ -306,12 +310,7 @@ public class SourceBackedRelatedOwnersService {
                 return false;
             }
         }
-        boolean asciiAlphaNum = candidate.chars().allMatch(ch -> ch < 128 && Character.isLetterOrDigit(ch));
-        if (asciiAlphaNum) {
-            return candidate.codePointCount(0, candidate.length()) >= 3;
-        }
-        return PinyinSupport.containsChinese(candidate)
-                && candidate.codePointCount(0, candidate.length()) >= 2;
+        return RelatedOwnerQueryTuning.isUsefulSeedTerm(candidate);
     }
 
     private static String sourcePath(String field) {
