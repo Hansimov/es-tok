@@ -10,7 +10,7 @@
 |---|---|---|
 | Tokenizer | `es_tok` | 由 `EsTokTokenizerFactory` 注册 |
 | Analyzer | `es_tok` | 由 `EsTokAnalyzerProvider` 注册 |
-| Query DSL | `es_tok_query_string` | 扩展 query string，支持 constraints、max freq 和 spell correction |
+| Query DSL | `es_tok_query_string` | 最小化文本 DSL，支持普通片段、`+token` / `-token` / `"token"`、constraints、max freq 和 spell correction |
 | Query DSL | `es_tok_constraints` | 独立 token 约束过滤器 |
 | REST | `/_cat/es_tok` | warmup 状态与版本诊断 |
 | REST | `/_cat/es_tok/version` | 插件版本与哈希诊断 |
@@ -342,13 +342,27 @@ owner 候选项字段：
 
 ### `es_tok_query_string`
 
-扩展标准 query string，额外支持：
+最小化文本查询 DSL，支持：
 
+- 普通自然语言片段
+- `+token` / `-token`
+- `"token"`
 - `constraints`
 - `max_freq`
 - `spell_correct`
 - `spell_correct_min_length`
 - `spell_correct_size`
+
+说明：这是一次破坏性变更。`es_tok_query_string` 不再继承 Lucene `query_string` 的通配符和操作符语义，也不再接受对应的大量历史参数。
+
+推荐迁移方式：
+
+- 精确包含：`+token`
+- 精确排除：`-token`
+- 精确但不强制 MUST：`"token"`
+- 复杂字段、范围、布尔过滤：放到外层 bool / range / filter DSL，而不是继续内联到 `es_tok_query_string.query`
+
+不再支持的常见参数包括：`type`、`lenient`、`analyze_wildcard`、`quote_field_suffix`、`time_zone`、`rewrite` 以及 Lucene `query_string` 的 wildcard / regexp / fuzziness 相关参数。
 
 ### `es_tok_constraints`
 

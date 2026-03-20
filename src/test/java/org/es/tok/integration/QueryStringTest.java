@@ -100,6 +100,8 @@ public class QueryStringTest {
     indexDocument("4", "第四个文档，测试更多内容和词汇");
     indexDocument("5", "最后一个文档，包含特殊的内容");
     indexDocument("6", "github copilot 提供代码补全和纠错能力");
+    indexDocument("7", "github issue 讨论搜索插件");
+    indexDocument("8", "影视飓风 做了一个测试视频");
 
     // Refresh index
     Request refreshRequest = new Request("POST", "/" + TEST_INDEX + "/_refresh");
@@ -247,7 +249,6 @@ public class QueryStringTest {
 
   @Test
   public void testCombinedFiltering() throws Exception {
-    // Test with both constraints and max_freq
     String query = """
         {
           "query": {
@@ -271,29 +272,26 @@ public class QueryStringTest {
   }
 
   @Test
-  public void testBooleanQuery() throws Exception {
-    // Test boolean operators with constraints
+  public void testRequiredAndExcludedExactTokenSyntax() throws Exception {
     String query = """
         {
           "query": {
             "es_tok_query_string": {
-              "query": "测试 AND 文档",
+              "query": "github +copilot -issue",
               "default_field": "content",
-              "constraints": [
-                { "NOT": { "have_token": ["一个"] } }
-              ]
+              "default_operator": "or"
             }
           }
         }
         """;
 
     String result = performSearch(query);
-    assertTrue("Should support boolean operators", result.contains("\"total\""));
+    assertTrue("Should find github copilot document", result.contains("github copilot"));
+    assertFalse("Excluded exact token should filter github issue document", result.contains("github issue"));
   }
 
   @Test
   public void testMultipleFields() throws Exception {
-    // Test query across multiple fields
     String query = """
         {
           "query": {
@@ -313,24 +311,38 @@ public class QueryStringTest {
   }
 
   @Test
-  public void testPhraseQuery() throws Exception {
-    // Test phrase queries with constraint filtering
+  public void testQuotedExactPhraseQuery() throws Exception {
     String query = """
         {
           "query": {
             "es_tok_query_string": {
-              "query": "\\\"测试 文档\\\"",
-              "default_field": "content",
-              "constraints": [
-                { "NOT": { "have_token": ["一个"] } }
-              ]
+              "query": "\"github copilot\"",
+              "default_field": "content"
             }
           }
         }
         """;
 
     String result = performSearch(query);
-    assertTrue("Should support phrase queries", result.contains("\"total\""));
+    assertTrue("Quoted exact phrase should match github copilot", result.contains("github copilot"));
+    assertFalse("Quoted exact phrase should not match github issue", result.contains("github issue"));
+  }
+
+  @Test
+  public void testQuotedChineseExactSegment() throws Exception {
+    String query = """
+        {
+          "query": {
+            "es_tok_query_string": {
+              "query": "\"影视飓风\"",
+              "default_field": "content"
+            }
+          }
+        }
+        """;
+
+    String result = performSearch(query);
+    assertTrue("Quoted Chinese exact segment should remain searchable", result.contains("影视飓风"));
   }
 
   @Test

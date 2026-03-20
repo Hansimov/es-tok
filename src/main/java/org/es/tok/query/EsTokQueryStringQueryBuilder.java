@@ -3,51 +3,36 @@ package org.es.tok.query;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.Query;
 import org.elasticsearch.TransportVersion;
-
 import org.elasticsearch.common.ParsingException;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
-import org.elasticsearch.common.unit.Fuzziness;
 import org.elasticsearch.index.query.AbstractQueryBuilder;
-import org.elasticsearch.index.query.MultiMatchQueryBuilder;
-import org.elasticsearch.index.query.SearchExecutionContext;
 import org.elasticsearch.index.query.Operator;
+import org.elasticsearch.index.query.SearchExecutionContext;
 import org.elasticsearch.xcontent.ParseField;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentParser;
 import org.es.tok.suggest.LuceneIndexSuggester;
 
 import java.io.IOException;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
 /**
- * Extended QueryString query with constraint-based document filtering and
- * frequency-based token filtering.
+ * Query builder for a minimal analyzer-driven query syntax.
  * <p>
- * Supports:
- * <ul>
- * <li>{@code constraints} — boolean constraint conditions (AND/OR/NOT) on
- * indexed tokens</li>
- * <li>{@code max_freq} — filter tokens by document frequency (dynamic
- * stopwords)</li>
- * </ul>
- * <p>
- * Constraints allow precise control over which documents match based on their
- * indexed tokens, using match conditions: {@code have_token},
- * {@code with_prefixes},
- * {@code with_suffixes}, {@code with_contains}, {@code with_patterns}.
+ * Supported syntax intentionally excludes Lucene query-string operators and
+ * only keeps natural-language segments plus {@code +token}, {@code -token},
+ * and quoted exact segments.
  */
 public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQueryStringQueryBuilder> {
 
     public static final String NAME = "es_tok_query_string";
 
-    // Standard query_string fields
     public static final ParseField QUERY_FIELD = new ParseField("query");
     public static final ParseField FIELDS_FIELD = new ParseField("fields");
     public static final ParseField DEFAULT_FIELD_FIELD = new ParseField("default_field");
@@ -55,25 +40,9 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
     public static final ParseField ANALYZER_FIELD = new ParseField("analyzer");
     public static final ParseField QUOTE_ANALYZER_FIELD = new ParseField("quote_analyzer");
     public static final ParseField PHRASE_SLOP_FIELD = new ParseField("phrase_slop");
-    public static final ParseField FUZZINESS_FIELD = new ParseField("fuzziness");
-    public static final ParseField FUZZY_PREFIX_LENGTH_FIELD = new ParseField("fuzzy_prefix_length");
-    public static final ParseField FUZZY_MAX_EXPANSIONS_FIELD = new ParseField("fuzzy_max_expansions");
-    public static final ParseField FUZZY_TRANSPOSITIONS_FIELD = new ParseField("fuzzy_transpositions");
-    public static final ParseField FUZZY_REWRITE_FIELD = new ParseField("fuzzy_rewrite");
-    public static final ParseField LENIENT_FIELD = new ParseField("lenient");
-    public static final ParseField ANALYZE_WILDCARD_FIELD = new ParseField("analyze_wildcard");
-    public static final ParseField QUOTE_FIELD_SUFFIX_FIELD = new ParseField("quote_field_suffix");
-    public static final ParseField TIME_ZONE_FIELD = new ParseField("time_zone");
-    public static final ParseField TYPE_FIELD = new ParseField("type");
     public static final ParseField TIE_BREAKER_FIELD = new ParseField("tie_breaker");
-    public static final ParseField REWRITE_FIELD = new ParseField("rewrite");
     public static final ParseField MINIMUM_SHOULD_MATCH_FIELD = new ParseField("minimum_should_match");
-    public static final ParseField ENABLE_POSITION_INCREMENTS_FIELD = new ParseField("enable_position_increments");
-    public static final ParseField MAX_DETERMINIZED_STATES_FIELD = new ParseField("max_determinized_states");
-    public static final ParseField AUTO_GENERATE_SYNONYMS_PHRASE_QUERY_FIELD = new ParseField(
-            "auto_generate_synonyms_phrase_query");
 
-    // ES-TOK extension fields
     public static final ParseField CONSTRAINTS_FIELD = new ParseField("constraints");
     public static final ParseField MAX_FREQ_FIELD = new ParseField("max_freq");
     public static final ParseField SPELL_CORRECT_FIELD = new ParseField("spell_correct");
@@ -83,33 +52,17 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
     public static final ParseField SPELL_CORRECT_PREFIX_LENGTH_FIELD = new ParseField("spell_correct_prefix_length");
     public static final ParseField SPELL_CORRECT_SIZE_FIELD = new ParseField("spell_correct_size");
 
-    // ===== Instance fields =====
-
     private final String queryString;
-    private final Map<String, Float> fieldsAndWeights = new HashMap<>();
+    private final Map<String, Float> fieldsAndWeights = new LinkedHashMap<>();
+
     private String defaultField;
     private Operator defaultOperator = Operator.OR;
     private String analyzer;
     private String quoteAnalyzer;
-    private String quoteFieldSuffix;
     private int phraseSlop = 0;
-    private Fuzziness fuzziness = Fuzziness.AUTO;
-    private int fuzzyPrefixLength = 1;
-    private int fuzzyMaxExpansions = 50;
-    private boolean fuzzyTranspositions = true;
-    private String fuzzyRewrite;
-    private Boolean lenient;
-    private Boolean analyzeWildcard;
-    private ZoneId timeZone;
-    private MultiMatchQueryBuilder.Type type = MultiMatchQueryBuilder.Type.BEST_FIELDS;
     private Float tieBreaker;
-    private String rewrite;
     private String minimumShouldMatch;
-    private boolean enablePositionIncrements = true;
-    private int maxDeterminizedStates = 10000;
-    private boolean autoGenerateSynonymsPhraseQuery = true;
 
-    // ES-TOK extension: constraints and max_freq
     private List<SearchConstraint> constraints = Collections.emptyList();
     private int maxFreq = 0;
     private boolean spellCorrect = false;
@@ -118,8 +71,6 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
     private int spellCorrectMaxEdits = 2;
     private int spellCorrectPrefixLength = 1;
     private int spellCorrectSize = 3;
-
-    // ===== Constructors =====
 
     public EsTokQueryStringQueryBuilder(String queryString) {
         if (queryString == null) {
@@ -131,45 +82,30 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
     public EsTokQueryStringQueryBuilder(StreamInput in) throws IOException {
         super(in);
         this.queryString = in.readString();
-        int size = in.readVInt();
-        for (int i = 0; i < size; i++) {
+
+        int fieldCount = in.readVInt();
+        for (int index = 0; index < fieldCount; index++) {
             fieldsAndWeights.put(in.readString(), in.readFloat());
         }
+
         this.defaultField = in.readOptionalString();
         this.defaultOperator = Operator.readFromStream(in);
         this.analyzer = in.readOptionalString();
         this.quoteAnalyzer = in.readOptionalString();
-        this.quoteFieldSuffix = in.readOptionalString();
         this.phraseSlop = in.readVInt();
-        this.fuzziness = new Fuzziness(in);
-        this.fuzzyPrefixLength = in.readVInt();
-        this.fuzzyMaxExpansions = in.readVInt();
-        this.fuzzyTranspositions = in.readBoolean();
-        this.fuzzyRewrite = in.readOptionalString();
-        this.lenient = in.readOptionalBoolean();
-        this.analyzeWildcard = in.readOptionalBoolean();
-        this.timeZone = in.readOptionalZoneId();
-        this.type = MultiMatchQueryBuilder.Type.readFromStream(in);
         this.tieBreaker = in.readOptionalFloat();
-        this.rewrite = in.readOptionalString();
         this.minimumShouldMatch = in.readOptionalString();
-        this.enablePositionIncrements = in.readBoolean();
-        this.maxDeterminizedStates = in.readVInt();
-        this.autoGenerateSynonymsPhraseQuery = in.readBoolean();
 
-        // Read constraints
         int constraintCount = in.readVInt();
         if (constraintCount > 0) {
             List<SearchConstraint> readConstraints = new ArrayList<>(constraintCount);
-            for (int i = 0; i < constraintCount; i++) {
+            for (int index = 0; index < constraintCount; index++) {
                 SearchConstraint.BoolType boolType = SearchConstraint.BoolType.values()[in.readVInt()];
-
-                // Read per-constraint fields
                 List<String> constraintFields = in.readStringCollectionAsList();
 
-                int condCount = in.readVInt();
-                List<MatchCondition> conditions = new ArrayList<>(condCount);
-                for (int j = 0; j < condCount; j++) {
+                int conditionCount = in.readVInt();
+                List<MatchCondition> conditions = new ArrayList<>(conditionCount);
+                for (int conditionIndex = 0; conditionIndex < conditionCount; conditionIndex++) {
                     conditions.add(new MatchCondition(
                             in.readStringCollectionAsList(),
                             in.readStringCollectionAsList(),
@@ -195,49 +131,34 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
     @Override
     protected void doWriteTo(StreamOutput out) throws IOException {
         out.writeString(queryString);
+
         out.writeVInt(fieldsAndWeights.size());
         for (Map.Entry<String, Float> entry : fieldsAndWeights.entrySet()) {
             out.writeString(entry.getKey());
             out.writeFloat(entry.getValue());
         }
+
         out.writeOptionalString(defaultField);
         defaultOperator.writeTo(out);
         out.writeOptionalString(analyzer);
         out.writeOptionalString(quoteAnalyzer);
-        out.writeOptionalString(quoteFieldSuffix);
         out.writeVInt(phraseSlop);
-        fuzziness.writeTo(out);
-        out.writeVInt(fuzzyPrefixLength);
-        out.writeVInt(fuzzyMaxExpansions);
-        out.writeBoolean(fuzzyTranspositions);
-        out.writeOptionalString(fuzzyRewrite);
-        out.writeOptionalBoolean(lenient);
-        out.writeOptionalBoolean(analyzeWildcard);
-        out.writeOptionalZoneId(timeZone);
-        type.writeTo(out);
         out.writeOptionalFloat(tieBreaker);
-        out.writeOptionalString(rewrite);
         out.writeOptionalString(minimumShouldMatch);
-        out.writeBoolean(enablePositionIncrements);
-        out.writeVInt(maxDeterminizedStates);
-        out.writeBoolean(autoGenerateSynonymsPhraseQuery);
 
-        // Write constraints
         out.writeVInt(constraints.size());
         for (SearchConstraint constraint : constraints) {
             out.writeVInt(constraint.getBoolType().ordinal());
-
-            // Write per-constraint fields
             out.writeStringCollection(constraint.getFields());
 
-            List<MatchCondition> conds = constraint.getConditions();
-            out.writeVInt(conds.size());
-            for (MatchCondition cond : conds) {
-                out.writeStringCollection(cond.getHaveToken());
-                out.writeStringCollection(cond.getWithPrefixes());
-                out.writeStringCollection(cond.getWithSuffixes());
-                out.writeStringCollection(cond.getWithContains());
-                out.writeStringCollection(cond.getWithPatterns());
+            List<MatchCondition> conditionList = constraint.getConditions();
+            out.writeVInt(conditionList.size());
+            for (MatchCondition condition : conditionList) {
+                out.writeStringCollection(condition.getHaveToken());
+                out.writeStringCollection(condition.getWithPrefixes());
+                out.writeStringCollection(condition.getWithSuffixes());
+                out.writeStringCollection(condition.getWithContains());
+                out.writeStringCollection(condition.getWithPatterns());
             }
         }
 
@@ -249,8 +170,6 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         out.writeVInt(spellCorrectPrefixLength);
         out.writeVInt(spellCorrectSize);
     }
-
-    // ===== Getters and setters (fluent API) =====
 
     public String queryString() {
         return queryString;
@@ -264,7 +183,7 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         if (field == null) {
             throw new IllegalArgumentException("[field] cannot be null");
         }
-        this.fieldsAndWeights.put(field, boost);
+        fieldsAndWeights.put(field, boost);
         return this;
     }
 
@@ -272,12 +191,12 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         if (fields == null) {
             throw new IllegalArgumentException("[fields] cannot be null");
         }
-        this.fieldsAndWeights.putAll(fields);
+        fieldsAndWeights.putAll(fields);
         return this;
     }
 
     public Map<String, Float> fields() {
-        return fieldsAndWeights;
+        return Collections.unmodifiableMap(fieldsAndWeights);
     }
 
     public EsTokQueryStringQueryBuilder defaultField(String defaultField) {
@@ -316,15 +235,6 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         return quoteAnalyzer;
     }
 
-    public EsTokQueryStringQueryBuilder quoteFieldSuffix(String quoteFieldSuffix) {
-        this.quoteFieldSuffix = quoteFieldSuffix;
-        return this;
-    }
-
-    public String quoteFieldSuffix() {
-        return quoteFieldSuffix;
-    }
-
     public EsTokQueryStringQueryBuilder phraseSlop(int phraseSlop) {
         if (phraseSlop < 0) {
             throw new IllegalArgumentException("[phrase_slop] cannot be negative");
@@ -337,93 +247,6 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         return phraseSlop;
     }
 
-    public EsTokQueryStringQueryBuilder fuzziness(Fuzziness fuzziness) {
-        this.fuzziness = fuzziness != null ? fuzziness : Fuzziness.AUTO;
-        return this;
-    }
-
-    public Fuzziness fuzziness() {
-        return fuzziness;
-    }
-
-    public EsTokQueryStringQueryBuilder fuzzyPrefixLength(int fuzzyPrefixLength) {
-        if (fuzzyPrefixLength < 0) {
-            throw new IllegalArgumentException("[fuzzy_prefix_length] cannot be negative");
-        }
-        this.fuzzyPrefixLength = fuzzyPrefixLength;
-        return this;
-    }
-
-    public int fuzzyPrefixLength() {
-        return fuzzyPrefixLength;
-    }
-
-    public EsTokQueryStringQueryBuilder fuzzyMaxExpansions(int fuzzyMaxExpansions) {
-        if (fuzzyMaxExpansions <= 0) {
-            throw new IllegalArgumentException("[fuzzy_max_expansions] must be positive");
-        }
-        this.fuzzyMaxExpansions = fuzzyMaxExpansions;
-        return this;
-    }
-
-    public int fuzzyMaxExpansions() {
-        return fuzzyMaxExpansions;
-    }
-
-    public EsTokQueryStringQueryBuilder fuzzyTranspositions(boolean fuzzyTranspositions) {
-        this.fuzzyTranspositions = fuzzyTranspositions;
-        return this;
-    }
-
-    public boolean fuzzyTranspositions() {
-        return fuzzyTranspositions;
-    }
-
-    public EsTokQueryStringQueryBuilder fuzzyRewrite(String fuzzyRewrite) {
-        this.fuzzyRewrite = fuzzyRewrite;
-        return this;
-    }
-
-    public String fuzzyRewrite() {
-        return fuzzyRewrite;
-    }
-
-    public EsTokQueryStringQueryBuilder lenient(boolean lenient) {
-        this.lenient = lenient;
-        return this;
-    }
-
-    public Boolean lenient() {
-        return lenient;
-    }
-
-    public EsTokQueryStringQueryBuilder analyzeWildcard(boolean analyzeWildcard) {
-        this.analyzeWildcard = analyzeWildcard;
-        return this;
-    }
-
-    public Boolean analyzeWildcard() {
-        return analyzeWildcard;
-    }
-
-    public EsTokQueryStringQueryBuilder timeZone(ZoneId timeZone) {
-        this.timeZone = timeZone;
-        return this;
-    }
-
-    public ZoneId timeZone() {
-        return timeZone;
-    }
-
-    public EsTokQueryStringQueryBuilder type(MultiMatchQueryBuilder.Type type) {
-        this.type = type != null ? type : MultiMatchQueryBuilder.Type.BEST_FIELDS;
-        return this;
-    }
-
-    public MultiMatchQueryBuilder.Type type() {
-        return type;
-    }
-
     public EsTokQueryStringQueryBuilder tieBreaker(float tieBreaker) {
         this.tieBreaker = tieBreaker;
         return this;
@@ -431,15 +254,6 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
 
     public Float tieBreaker() {
         return tieBreaker;
-    }
-
-    public EsTokQueryStringQueryBuilder rewrite(String rewrite) {
-        this.rewrite = rewrite;
-        return this;
-    }
-
-    public String rewrite() {
-        return rewrite;
     }
 
     public EsTokQueryStringQueryBuilder minimumShouldMatch(String minimumShouldMatch) {
@@ -451,47 +265,11 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         return minimumShouldMatch;
     }
 
-    public EsTokQueryStringQueryBuilder enablePositionIncrements(boolean enablePositionIncrements) {
-        this.enablePositionIncrements = enablePositionIncrements;
-        return this;
-    }
-
-    public boolean enablePositionIncrements() {
-        return enablePositionIncrements;
-    }
-
-    public EsTokQueryStringQueryBuilder maxDeterminizedStates(int maxDeterminizedStates) {
-        if (maxDeterminizedStates <= 0) {
-            throw new IllegalArgumentException("[max_determinized_states] must be positive");
-        }
-        this.maxDeterminizedStates = maxDeterminizedStates;
-        return this;
-    }
-
-    public int maxDeterminizedStates() {
-        return maxDeterminizedStates;
-    }
-
-    public EsTokQueryStringQueryBuilder autoGenerateSynonymsPhraseQuery(boolean autoGenerateSynonymsPhraseQuery) {
-        this.autoGenerateSynonymsPhraseQuery = autoGenerateSynonymsPhraseQuery;
-        return this;
-    }
-
-    public boolean autoGenerateSynonymsPhraseQuery() {
-        return autoGenerateSynonymsPhraseQuery;
-    }
-
-    /**
-     * Set search constraints for document-level filtering.
-     */
     public EsTokQueryStringQueryBuilder constraints(List<SearchConstraint> constraints) {
         this.constraints = constraints != null ? constraints : Collections.emptyList();
         return this;
     }
 
-    /**
-     * Get the search constraints.
-     */
     public List<SearchConstraint> constraints() {
         return constraints;
     }
@@ -577,18 +355,25 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         return spellCorrectSize;
     }
 
-    // ===== Query building =====
-
     @Override
     protected Query doToQuery(SearchExecutionContext context) throws IOException {
         EsTokQueryStringQueryParser parser = new EsTokQueryStringQueryParser(
                 context,
-                fieldsAndWeights.isEmpty() ? (defaultField != null ? defaultField : "*") : null,
-                fieldsAndWeights,
-                lenient != null ? lenient : false);
+                defaultField,
+                fieldsAndWeights);
 
+        parser.setDefaultOperator(defaultOperator);
+        parser.setPhraseSlop(phraseSlop);
+        parser.setTieBreaker(tieBreaker);
         parser.setMaxFreq(maxFreq);
         parser.setSuggestionFields(resolveQueryFields());
+
+        if (analyzer != null) {
+            parser.setForceAnalyzer(context.getIndexAnalyzers().get(analyzer));
+        }
+        if (quoteAnalyzer != null) {
+            parser.setForceQuoteAnalyzer(context.getIndexAnalyzers().get(quoteAnalyzer));
+        }
         if (spellCorrect) {
             parser.setCorrectionConfig(new LuceneIndexSuggester.CorrectionConfig(
                     spellCorrectRareDocFreq,
@@ -600,80 +385,33 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
                     0.5f));
         }
 
-        parser.setDefaultOperator(
-                defaultOperator == Operator.AND ? org.apache.lucene.queryparser.classic.QueryParser.Operator.AND
-                        : org.apache.lucene.queryparser.classic.QueryParser.Operator.OR);
-        parser.setEnablePositionIncrements(enablePositionIncrements);
-        parser.setPhraseSlop(phraseSlop);
-        parser.setFuzziness(fuzziness);
-        parser.setFuzzyMaxExpansions(fuzzyMaxExpansions);
-        parser.setFuzzyPrefixLength(fuzzyPrefixLength);
-        parser.setFuzzyTranspositions(fuzzyTranspositions);
-
-        if (analyzer != null) {
-            parser.setForceAnalyzer(context.getIndexAnalyzers().get(analyzer));
+        Query query = parser.parse(queryString);
+        if (minimumShouldMatch != null && query instanceof BooleanQuery booleanQuery) {
+            query = org.elasticsearch.common.lucene.search.Queries.applyMinimumShouldMatch(
+                    booleanQuery,
+                    minimumShouldMatch);
         }
-        if (quoteAnalyzer != null) {
-            parser.setForceQuoteAnalyzer(context.getIndexAnalyzers().get(quoteAnalyzer));
+        if (constraints != null && constraints.isEmpty() == false) {
+            query = ConstraintBuilder.buildConstrainedQuery(query, constraints, resolveQueryFields());
         }
-        if (quoteFieldSuffix != null) {
-            parser.setQuoteFieldSuffix(quoteFieldSuffix);
-        }
-        if (type != null) {
-            parser.setType(type);
-        }
-        if (tieBreaker != null) {
-            parser.setGroupTieBreaker(tieBreaker);
-        }
-        if (analyzeWildcard != null) {
-            parser.setAnalyzeWildcard(analyzeWildcard);
-        }
-        if (timeZone != null) {
-            parser.setTimeZone(timeZone);
-        }
-
-        parser.setAutoGenerateMultiTermSynonymsPhraseQuery(autoGenerateSynonymsPhraseQuery);
-
-        try {
-            Query query = parser.parse(queryString);
-            if (minimumShouldMatch != null && query instanceof BooleanQuery) {
-                query = org.elasticsearch.common.lucene.search.Queries.applyMinimumShouldMatch(
-                        (BooleanQuery) query,
-                        minimumShouldMatch);
-            }
-
-            // Apply constraints as additional boolean clauses
-            if (constraints != null && !constraints.isEmpty()) {
-                List<String> queryFields = resolveQueryFields();
-                query = ConstraintBuilder.buildConstrainedQuery(query, constraints, queryFields);
-            }
-
-            return query;
-        } catch (org.apache.lucene.queryparser.classic.ParseException e) {
-            throw new IOException("Failed to parse query [" + queryString + "]", e);
-        }
+        return query;
     }
 
-    /**
-     * Resolve the list of fields to use for constraint queries.
-     */
     private List<String> resolveQueryFields() {
-        if (!fieldsAndWeights.isEmpty()) {
+        if (fieldsAndWeights.isEmpty() == false) {
             return new ArrayList<>(fieldsAndWeights.keySet());
         }
-        if (defaultField != null) {
+        if (defaultField != null && defaultField.isBlank() == false) {
             return List.of(defaultField);
         }
         return List.of("*");
     }
 
-    // ===== XContent serialization =====
-
     @Override
     protected void doXContent(XContentBuilder builder, Params params) throws IOException {
         builder.field(QUERY_FIELD.getPreferredName(), queryString);
 
-        if (!fieldsAndWeights.isEmpty()) {
+        if (fieldsAndWeights.isEmpty() == false) {
             builder.startArray(FIELDS_FIELD.getPreferredName());
             for (Map.Entry<String, Float> entry : fieldsAndWeights.entrySet()) {
                 if (entry.getValue() == 1.0f) {
@@ -684,77 +422,29 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
             }
             builder.endArray();
         }
-
         if (defaultField != null) {
             builder.field(DEFAULT_FIELD_FIELD.getPreferredName(), defaultField);
         }
         builder.field(DEFAULT_OPERATOR_FIELD.getPreferredName(), defaultOperator.name().toLowerCase());
-
         if (analyzer != null) {
             builder.field(ANALYZER_FIELD.getPreferredName(), analyzer);
         }
         if (quoteAnalyzer != null) {
             builder.field(QUOTE_ANALYZER_FIELD.getPreferredName(), quoteAnalyzer);
         }
-        if (quoteFieldSuffix != null) {
-            builder.field(QUOTE_FIELD_SUFFIX_FIELD.getPreferredName(), quoteFieldSuffix);
-        }
         if (phraseSlop != 0) {
             builder.field(PHRASE_SLOP_FIELD.getPreferredName(), phraseSlop);
-        }
-        if (!fuzziness.equals(Fuzziness.AUTO)) {
-            fuzziness.toXContent(builder, params);
-        }
-        if (fuzzyPrefixLength != 1) {
-            builder.field(FUZZY_PREFIX_LENGTH_FIELD.getPreferredName(), fuzzyPrefixLength);
-        }
-        if (fuzzyMaxExpansions != 50) {
-            builder.field(FUZZY_MAX_EXPANSIONS_FIELD.getPreferredName(), fuzzyMaxExpansions);
-        }
-        if (!fuzzyTranspositions) {
-            builder.field(FUZZY_TRANSPOSITIONS_FIELD.getPreferredName(), fuzzyTranspositions);
-        }
-        if (fuzzyRewrite != null) {
-            builder.field(FUZZY_REWRITE_FIELD.getPreferredName(), fuzzyRewrite);
-        }
-        if (lenient != null) {
-            builder.field(LENIENT_FIELD.getPreferredName(), lenient);
-        }
-        if (analyzeWildcard != null) {
-            builder.field(ANALYZE_WILDCARD_FIELD.getPreferredName(), analyzeWildcard);
-        }
-        if (timeZone != null) {
-            builder.field(TIME_ZONE_FIELD.getPreferredName(), timeZone.getId());
-        }
-        if (type != MultiMatchQueryBuilder.Type.BEST_FIELDS) {
-            builder.field(TYPE_FIELD.getPreferredName(), type.toString().toLowerCase());
         }
         if (tieBreaker != null) {
             builder.field(TIE_BREAKER_FIELD.getPreferredName(), tieBreaker);
         }
-        if (rewrite != null) {
-            builder.field(REWRITE_FIELD.getPreferredName(), rewrite);
-        }
         if (minimumShouldMatch != null) {
             builder.field(MINIMUM_SHOULD_MATCH_FIELD.getPreferredName(), minimumShouldMatch);
         }
-        if (!enablePositionIncrements) {
-            builder.field(ENABLE_POSITION_INCREMENTS_FIELD.getPreferredName(), enablePositionIncrements);
-        }
-        if (maxDeterminizedStates != 10000) {
-            builder.field(MAX_DETERMINIZED_STATES_FIELD.getPreferredName(), maxDeterminizedStates);
-        }
-        if (!autoGenerateSynonymsPhraseQuery) {
-            builder.field(AUTO_GENERATE_SYNONYMS_PHRASE_QUERY_FIELD.getPreferredName(),
-                    autoGenerateSynonymsPhraseQuery);
-        }
 
-        // Serialize constraints
-        if (constraints != null && !constraints.isEmpty()) {
-            builder.field(CONSTRAINTS_FIELD.getPreferredName(),
-                    ConstraintBuilder.constraintsToMaps(constraints));
+        if (constraints != null && constraints.isEmpty() == false) {
+            builder.field(CONSTRAINTS_FIELD.getPreferredName(), ConstraintBuilder.constraintsToMaps(constraints));
         }
-
         if (maxFreq > 0) {
             builder.field(MAX_FREQ_FIELD.getPreferredName(), maxFreq);
         }
@@ -785,32 +475,17 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         }
     }
 
-    // ===== XContent parsing =====
-
     public static EsTokQueryStringQueryBuilder fromXContent(XContentParser parser) throws IOException {
         String queryString = null;
-        Map<String, Float> fieldsAndWeights = new HashMap<>();
+        Map<String, Float> fieldsAndWeights = new LinkedHashMap<>();
         String defaultField = null;
         Operator defaultOperator = Operator.OR;
         String analyzer = null;
         String quoteAnalyzer = null;
-        String quoteFieldSuffix = null;
         int phraseSlop = 0;
-        Fuzziness fuzziness = Fuzziness.AUTO;
-        int fuzzyPrefixLength = 1;
-        int fuzzyMaxExpansions = 50;
-        boolean fuzzyTranspositions = true;
-        String fuzzyRewrite = null;
-        Boolean lenient = null;
-        Boolean analyzeWildcard = null;
-        ZoneId timeZone = null;
-        MultiMatchQueryBuilder.Type type = MultiMatchQueryBuilder.Type.BEST_FIELDS;
         Float tieBreaker = null;
-        String rewrite = null;
         String minimumShouldMatch = null;
-        boolean enablePositionIncrements = true;
-        int maxDeterminizedStates = 10000;
-        boolean autoGenerateSynonymsPhraseQuery = true;
+
         List<SearchConstraint> constraints = Collections.emptyList();
         int maxFreq = 0;
         boolean spellCorrect = false;
@@ -824,7 +499,6 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
 
         String currentFieldName = null;
         XContentParser.Token token;
-
         while ((token = parser.nextToken()) != XContentParser.Token.END_OBJECT) {
             if (token == XContentParser.Token.FIELD_NAME) {
                 currentFieldName = parser.currentName();
@@ -857,66 +531,29 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
                     analyzer = parser.text();
                 } else if (QUOTE_ANALYZER_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     quoteAnalyzer = parser.text();
-                } else if (QUOTE_FIELD_SUFFIX_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    quoteFieldSuffix = parser.text();
                 } else if (PHRASE_SLOP_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     phraseSlop = parser.intValue();
-                } else if (FUZZINESS_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    fuzziness = Fuzziness.parse(parser);
-                } else if (FUZZY_PREFIX_LENGTH_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    fuzzyPrefixLength = parser.intValue();
-                } else if (FUZZY_MAX_EXPANSIONS_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    fuzzyMaxExpansions = parser.intValue();
-                } else if (FUZZY_TRANSPOSITIONS_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    fuzzyTranspositions = parser.booleanValue();
-                } else if (FUZZY_REWRITE_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    fuzzyRewrite = parser.text();
-                } else if (LENIENT_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    lenient = parser.booleanValue();
-                } else if (ANALYZE_WILDCARD_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    analyzeWildcard = parser.booleanValue();
-                } else if (TIME_ZONE_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    timeZone = ZoneId.of(parser.text());
-                } else if (TYPE_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    type = MultiMatchQueryBuilder.Type.parse(parser.text(), parser.getDeprecationHandler());
                 } else if (TIE_BREAKER_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     tieBreaker = parser.floatValue();
-                } else if (REWRITE_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    rewrite = parser.text();
                 } else if (MINIMUM_SHOULD_MATCH_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     minimumShouldMatch = parser.text();
-                } else if (ENABLE_POSITION_INCREMENTS_FIELD.match(currentFieldName,
-                        parser.getDeprecationHandler())) {
-                    enablePositionIncrements = parser.booleanValue();
-                } else if (MAX_DETERMINIZED_STATES_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
-                    maxDeterminizedStates = parser.intValue();
-                } else if (AUTO_GENERATE_SYNONYMS_PHRASE_QUERY_FIELD.match(currentFieldName,
-                        parser.getDeprecationHandler())) {
-                    autoGenerateSynonymsPhraseQuery = parser.booleanValue();
                 } else if (MAX_FREQ_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     maxFreq = parser.intValue();
                 } else if (SPELL_CORRECT_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     spellCorrect = parser.booleanValue();
-                } else if (SPELL_CORRECT_RARE_DOC_FREQ_FIELD.match(currentFieldName,
-                        parser.getDeprecationHandler())) {
+                } else if (SPELL_CORRECT_RARE_DOC_FREQ_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     spellCorrectRareDocFreq = parser.intValue();
-                } else if (SPELL_CORRECT_MIN_LENGTH_FIELD.match(currentFieldName,
-                        parser.getDeprecationHandler())) {
+                } else if (SPELL_CORRECT_MIN_LENGTH_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     spellCorrectMinLength = parser.intValue();
-                } else if (SPELL_CORRECT_MAX_EDITS_FIELD.match(currentFieldName,
-                        parser.getDeprecationHandler())) {
+                } else if (SPELL_CORRECT_MAX_EDITS_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     spellCorrectMaxEdits = parser.intValue();
-                } else if (SPELL_CORRECT_PREFIX_LENGTH_FIELD.match(currentFieldName,
-                        parser.getDeprecationHandler())) {
+                } else if (SPELL_CORRECT_PREFIX_LENGTH_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     spellCorrectPrefixLength = parser.intValue();
-                } else if (SPELL_CORRECT_SIZE_FIELD.match(currentFieldName,
-                        parser.getDeprecationHandler())) {
+                } else if (SPELL_CORRECT_SIZE_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     spellCorrectSize = parser.intValue();
-                } else if (AbstractQueryBuilder.BOOST_FIELD.match(currentFieldName,
-                        parser.getDeprecationHandler())) {
+                } else if (AbstractQueryBuilder.BOOST_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     boost = parser.floatValue();
-                } else if (AbstractQueryBuilder.NAME_FIELD.match(currentFieldName,
-                        parser.getDeprecationHandler())) {
+                } else if (AbstractQueryBuilder.NAME_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     queryName = parser.text();
                 } else {
                     throw new ParsingException(parser.getTokenLocation(),
@@ -938,37 +575,13 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         queryBuilder.defaultOperator(defaultOperator);
         queryBuilder.analyzer(analyzer);
         queryBuilder.quoteAnalyzer(quoteAnalyzer);
-        queryBuilder.quoteFieldSuffix(quoteFieldSuffix);
         queryBuilder.phraseSlop(phraseSlop);
-        queryBuilder.fuzziness(fuzziness);
-        queryBuilder.fuzzyPrefixLength(fuzzyPrefixLength);
-        queryBuilder.fuzzyMaxExpansions(fuzzyMaxExpansions);
-        queryBuilder.fuzzyTranspositions(fuzzyTranspositions);
-        queryBuilder.fuzzyRewrite(fuzzyRewrite);
-        if (lenient != null) {
-            queryBuilder.lenient(lenient);
-        }
-        if (analyzeWildcard != null) {
-            queryBuilder.analyzeWildcard(analyzeWildcard);
-        }
-        if (timeZone != null) {
-            queryBuilder.timeZone(timeZone);
-        }
-        if (type != null) {
-            queryBuilder.type(type);
-        }
         if (tieBreaker != null) {
             queryBuilder.tieBreaker(tieBreaker);
-        }
-        if (rewrite != null) {
-            queryBuilder.rewrite(rewrite);
         }
         if (minimumShouldMatch != null) {
             queryBuilder.minimumShouldMatch(minimumShouldMatch);
         }
-        queryBuilder.enablePositionIncrements(enablePositionIncrements);
-        queryBuilder.maxDeterminizedStates(maxDeterminizedStates);
-        queryBuilder.autoGenerateSynonymsPhraseQuery(autoGenerateSynonymsPhraseQuery);
         queryBuilder.constraints(constraints);
         queryBuilder.maxFreq(maxFreq);
         queryBuilder.spellCorrect(spellCorrect);
@@ -979,11 +592,8 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         queryBuilder.spellCorrectSize(spellCorrectSize);
         queryBuilder.boost(boost);
         queryBuilder.queryName(queryName);
-
         return queryBuilder;
     }
-
-    // ===== Standard overrides =====
 
     @Override
     public String getWriteableName() {
@@ -1000,26 +610,12 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
         return Objects.equals(queryString, other.queryString)
                 && Objects.equals(fieldsAndWeights, other.fieldsAndWeights)
                 && Objects.equals(defaultField, other.defaultField)
-                && Objects.equals(defaultOperator, other.defaultOperator)
+                && defaultOperator == other.defaultOperator
                 && Objects.equals(analyzer, other.analyzer)
                 && Objects.equals(quoteAnalyzer, other.quoteAnalyzer)
-                && Objects.equals(quoteFieldSuffix, other.quoteFieldSuffix)
                 && phraseSlop == other.phraseSlop
-                && Objects.equals(fuzziness, other.fuzziness)
-                && fuzzyPrefixLength == other.fuzzyPrefixLength
-                && fuzzyMaxExpansions == other.fuzzyMaxExpansions
-                && fuzzyTranspositions == other.fuzzyTranspositions
-                && Objects.equals(fuzzyRewrite, other.fuzzyRewrite)
-                && Objects.equals(lenient, other.lenient)
-                && Objects.equals(analyzeWildcard, other.analyzeWildcard)
-                && Objects.equals(timeZone, other.timeZone)
-                && Objects.equals(type, other.type)
                 && Objects.equals(tieBreaker, other.tieBreaker)
-                && Objects.equals(rewrite, other.rewrite)
                 && Objects.equals(minimumShouldMatch, other.minimumShouldMatch)
-                && enablePositionIncrements == other.enablePositionIncrements
-                && maxDeterminizedStates == other.maxDeterminizedStates
-                && autoGenerateSynonymsPhraseQuery == other.autoGenerateSynonymsPhraseQuery
                 && Objects.equals(constraints, other.constraints)
                 && maxFreq == other.maxFreq
                 && spellCorrect == other.spellCorrect
@@ -1032,13 +628,23 @@ public class EsTokQueryStringQueryBuilder extends AbstractQueryBuilder<EsTokQuer
 
     @Override
     protected int doHashCode() {
-        return Objects.hash(queryString, fieldsAndWeights, defaultField, defaultOperator,
-                analyzer, quoteAnalyzer, quoteFieldSuffix, phraseSlop, fuzziness,
-                fuzzyPrefixLength, fuzzyMaxExpansions, fuzzyTranspositions, fuzzyRewrite,
-                lenient, analyzeWildcard, timeZone, type, tieBreaker, rewrite,
-                minimumShouldMatch, enablePositionIncrements, maxDeterminizedStates,
-                autoGenerateSynonymsPhraseQuery, constraints, maxFreq,
-                spellCorrect, spellCorrectRareDocFreq, spellCorrectMinLength,
-                spellCorrectMaxEdits, spellCorrectPrefixLength, spellCorrectSize);
+        return Objects.hash(
+                queryString,
+                fieldsAndWeights,
+                defaultField,
+                defaultOperator,
+                analyzer,
+                quoteAnalyzer,
+                phraseSlop,
+                tieBreaker,
+                minimumShouldMatch,
+                constraints,
+                maxFreq,
+                spellCorrect,
+                spellCorrectRareDocFreq,
+                spellCorrectMinLength,
+                spellCorrectMaxEdits,
+                spellCorrectPrefixLength,
+                spellCorrectSize);
     }
 }

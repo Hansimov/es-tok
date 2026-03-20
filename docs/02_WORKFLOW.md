@@ -88,19 +88,19 @@ python -m workers.elastic_videos.commander -ei bili_videos_dev6 -ev elastic_dev 
 
 ```sh
 cd /home/asimov/repos/bili-scraper
-python -m workers.elastic_videos.commander -ei bili_videos_dev6 -ev elastic_dev -f pubdate -s "2026-03-10 12:00:00" -e "2026-03-10 18:00:00"
+python -m workers.elastic_videos.commander -ei bili_videos_dev6 -ev elastic_dev -f pubdate -s "2026-03-19 12:00:00" -e "2026-03-19 18:00:00"
 ```
 
 1 天样本：
 
 ```sh
-python -m workers.elastic_videos.commander -ei bili_videos_dev6 -ev elastic_dev -f pubdate -s "2026-03-10" -e "2026-03-11"
+python -m workers.elastic_videos.commander -ei bili_videos_dev6 -ev elastic_dev -f pubdate -s "2026-03-19" -e "2026-03-20"
 ```
 
 7 天样本：
 
 ```sh
-python -m workers.elastic_videos.commander -ei bili_videos_dev6 -ev elastic_dev -f pubdate -s "2026-03-09" -e "2026-03-16"
+python -m workers.elastic_videos.commander -ei bili_videos_dev6 -ev elastic_dev -f pubdate -s "2026-03-14" -e "2026-03-20"
 ```
 
 建议按小样本到大样本逐步扩大，不要一开始就直接灌满量级数据。

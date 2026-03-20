@@ -126,7 +126,7 @@ POST /test/_search
 {
   "query": {
     "es_tok_query_string": {
-      "query": "搜索引擎实现原理",
+      "query": "搜索引擎 +实现 -广告 \"影视飓风\"",
       "fields": ["title^3", "content"],
       "default_operator": "and",
       "constraints": [
@@ -147,9 +147,38 @@ POST /test/_search
 
 适合场景：
 
-- 需要 query string 语法，同时叠加 token 级业务约束。
+- 需要轻量自然语言检索，同时叠加 token 级业务约束。
 - 需要按高频词阈值过滤 query token。
 - 需要 query-side typo correction。
+
+这是一次破坏性变更：`es_tok_query_string` 已经不再是 Lucene `query_string` 的兼容包装层，而是项目自定义的最小文本 DSL。
+
+支持的 query 语法只有三类：
+
+- 空白分隔的普通片段：走 analyzer 分词后的常规检索。
+- `+片段` / `-片段`：把该片段当作“不可拆分的精确单元”处理。若 analyzer 保留了完整 token，则优先按完整 token 精确匹配；若 analyzer 只切出了多个子 token，则退化为按这些 token 的短语顺序匹配，从而避免退化成松散的 token AND/OR。
+- `"片段"`：与 `+片段` 相同的精确单元语义，但不强制 MUST / MUST_NOT，由 `default_operator` 决定它和其他普通片段之间如何组合。
+
+不再支持的语法：
+
+- Lucene `query_string` 的通配符、字段内联、布尔关键字、范围查询、正则、转义运算符。
+- 依赖 `AND` / `OR` / `NOT` 这些关键字本身的 query string 语义；它们现在只会被当作普通文本片段。
+
+不再支持的常见请求参数：
+
+- `type`
+- `lenient`
+- `analyze_wildcard`
+- `quote_field_suffix`
+- `time_zone`
+- `rewrite`
+- 其他 Lucene `query_string` 专属的 fuzziness / wildcard / regexp 相关参数
+
+迁移建议：
+
+- 以前写成 `foo AND bar` 的查询，改成 `foo bar`，并通过 `default_operator` 控制普通片段之间的组合方式。
+- 以前依赖 `field:term`、`term*`、`[a TO b]` 的调用，需要迁移到外层 DSL 或 bool/range/filter 结构，不再由 `es_tok_query_string` 内联表达。
+- 以前把 `+/-` 从查询文本里抽成 `es_tok_constraints.have_token` 的调用方，需要改回保留原始 `+/-` 文本，让 `es_tok_query_string` 自己执行 analyzer-aware exact 语义。
 
 ### `es_tok_constraints`
 

@@ -1,5 +1,6 @@
 package org.es.tok.query;
 
+import org.apache.lucene.search.BooleanClause;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -163,7 +164,7 @@ public class QueryStringBuilderTest {
                 .maxFreq(50)
                 .spellCorrect(true)
                 .spellCorrectRareDocFreq(1)
-                .lenient(true)
+                .phraseSlop(1)
                 .boost(2.0f);
 
         assertEquals("测试 查询 文档", builder.queryString());
@@ -171,7 +172,7 @@ public class QueryStringBuilderTest {
         assertEquals(50, builder.maxFreq());
         assertTrue(builder.spellCorrect());
         assertEquals(1, builder.spellCorrectRareDocFreq());
-        assertTrue(builder.lenient());
+        assertEquals(1, builder.phraseSlop());
         assertEquals(2.0f, builder.boost(), 0.001f);
     }
 
@@ -196,24 +197,59 @@ public class QueryStringBuilderTest {
                 .spellCorrectMinLength(3)
                 .spellCorrectMaxEdits(1)
                 .phraseSlop(2)
-                .lenient(true)
-                .analyzeWildcard(true)
+                .tieBreaker(0.2f)
                 .boost(1.5f);
 
         assertEquals("test", builder.queryString());
         assertTrue(builder.fields().containsKey("field1"));
         assertTrue(builder.fields().containsKey("field2"));
         assertEquals(100, builder.maxFreq());
-                assertTrue(builder.spellCorrect());
-                assertEquals(3, builder.spellCorrectMinLength());
-                assertEquals(1, builder.spellCorrectMaxEdits());
+        assertTrue(builder.spellCorrect());
+        assertEquals(3, builder.spellCorrectMinLength());
+        assertEquals(1, builder.spellCorrectMaxEdits());
+        assertEquals(0.2f, builder.tieBreaker(), 0.001f);
         assertFalse(builder.constraints().isEmpty());
     }
 
-        @Test(expected = IllegalArgumentException.class)
-        public void testInvalidSpellCorrectMaxEdits() {
-                new EsTokQueryStringQueryBuilder("test").spellCorrectMaxEdits(3);
-        }
+    @Test(expected = IllegalArgumentException.class)
+    public void testInvalidSpellCorrectMaxEdits() {
+        new EsTokQueryStringQueryBuilder("test").spellCorrectMaxEdits(3);
+    }
+
+    @Test
+    public void testSyntaxParserUnderstandsExactSegments() {
+        List<EsTokQueryStringQueryParser.ParsedClause> clauses =
+                EsTokQueryStringQueryParser.parseClauses("普通词 +必含 -排除 \"完整 片段\"");
+
+        assertEquals(4, clauses.size());
+        assertEquals("普通词", clauses.get(0).text());
+        assertNull(clauses.get(0).occur());
+        assertFalse(clauses.get(0).exact());
+
+        assertEquals("必含", clauses.get(1).text());
+        assertEquals(BooleanClause.Occur.MUST, clauses.get(1).occur());
+        assertTrue(clauses.get(1).exact());
+
+        assertEquals("排除", clauses.get(2).text());
+        assertEquals(BooleanClause.Occur.MUST_NOT, clauses.get(2).occur());
+        assertTrue(clauses.get(2).exact());
+
+        assertEquals("完整 片段", clauses.get(3).text());
+        assertNull(clauses.get(3).occur());
+        assertTrue(clauses.get(3).exact());
+    }
+
+    @Test
+    public void testSyntaxParserSupportsEscapedCharacters() {
+        List<EsTokQueryStringQueryParser.ParsedClause> clauses =
+                EsTokQueryStringQueryParser.parseClauses("\\+literal \"a \\\"quoted\\\" chunk\"");
+
+        assertEquals(2, clauses.size());
+        assertEquals("+literal", clauses.get(0).text());
+        assertFalse(clauses.get(0).exact());
+        assertEquals("a \"quoted\" chunk", clauses.get(1).text());
+        assertTrue(clauses.get(1).exact());
+    }
 
     // ===== Equality tests =====
 

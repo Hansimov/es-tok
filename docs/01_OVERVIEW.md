@@ -44,8 +44,10 @@ ES-TOK 统一处理以下分析配置：
 
 插件注册两类 Query DSL：
 
-- `es_tok_query_string`：在 query string 解析上叠加 token 约束、高频词过滤和 query-side correction。
+- `es_tok_query_string`：最小化文本查询 DSL，支持普通片段、`+token` / `-token` / `"token"`、token 约束、高频词过滤和 query-side correction。
 - `es_tok_constraints`：独立 token 约束过滤器，可直接作为 bool filter 或 KNN filter 使用。
+
+其中 `es_tok_query_string` 已经完成破坏性收口：它不再兼容 Lucene `query_string` 的语法族，而是只保留项目需要的最小文本表达能力。调用方如果还在传 `type`、`lenient`、wildcard/regexp/fuzziness 相关参数，或者在 query 文本里继续依赖 `field:term`、`foo*`、`[a TO b]` 之类写法，都需要迁移。
 
 ### 文本相关接口
 
