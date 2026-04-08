@@ -24,7 +24,7 @@ public class PinyinWarmupIndexListenerTest {
                         "owner.name.keyword"));
 
         assertEquals(
-                List.of("owner.name.suggest", "title.assoc", "title.suggest", "tags.suggest"),
+            List.of("owner.name.suggest", "title.suggest", "tags.suggest"),
                 warmupFields);
     }
 

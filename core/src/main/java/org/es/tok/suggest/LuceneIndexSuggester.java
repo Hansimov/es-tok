@@ -40,7 +40,11 @@ public class LuceneIndexSuggester {
     private static final int EXACT_FULL_PINYIN_PREFIX_MIN_LENGTH = 4;
     private static final int EXACT_INITIALS_PINYIN_PREFIX_MIN_LENGTH = 3;
     private static final int EXACT_PREFIX_COARSE_FALLBACK_THRESHOLD = 24;
-    private static final int COARSE_PINYIN_BUCKET_LIMIT = 2048;
+    private static final int COARSE_PINYIN_BUCKET_LIMIT = 512;
+    private static final int LITERAL_PREFIX_BUCKET_LIMIT = 512;
+    private static final int MAX_LITERAL_TERMS = 50_000;
+    private static final int MAX_PRECOMPUTED_PINYIN_TERMS = 50_000;
+    private static final int MAX_DIRECT_PINYIN_TERMS = 50_000;
 
     private final IndexReader reader;
 
@@ -938,7 +942,6 @@ public class LuceneIndexSuggester {
             return LiteralFieldIndex.EMPTY;
         }
 
-        final int maxLiteralTerms = 250_000;
         PriorityQueue<LiteralIndexedTerm> retained = new PriorityQueue<>(Comparator
                 .comparingInt(LiteralIndexedTerm::docFreq)
                 .thenComparing(LiteralIndexedTerm::text));
@@ -952,7 +955,7 @@ public class LuceneIndexSuggester {
             }
 
             LiteralIndexedTerm indexedTerm = new LiteralIndexedTerm(normalized, termsEnum.docFreq(), literalKey);
-            if (retained.size() < maxLiteralTerms) {
+            if (retained.size() < MAX_LITERAL_TERMS) {
                 retained.add(indexedTerm);
                 continue;
             }
@@ -985,7 +988,7 @@ public class LuceneIndexSuggester {
             }
             String bucketKey = key.substring(0, Math.min(5, key.length()));
             List<LiteralIndexedTerm> bucket = buckets.computeIfAbsent(bucketKey, ignored -> new ArrayList<>());
-            if (bucket.size() < 2048) {
+            if (bucket.size() < LITERAL_PREFIX_BUCKET_LIMIT) {
                 bucket.add(term);
             }
         }
@@ -1015,7 +1018,6 @@ public class LuceneIndexSuggester {
             return PinyinFieldIndex.EMPTY;
         }
 
-        final int maxPinyinTerms = 300_000;
         PriorityQueue<PinyinIndexedTerm> retained = new PriorityQueue<>(Comparator
                 .comparingInt(PinyinIndexedTerm::docFreq)
                 .thenComparing(PinyinIndexedTerm::text));
@@ -1043,7 +1045,7 @@ public class LuceneIndexSuggester {
             if (indexedTerm.pinyinKey().isEmpty()) {
                 continue;
             }
-            if (retained.size() < maxPinyinTerms) {
+            if (retained.size() < MAX_PRECOMPUTED_PINYIN_TERMS) {
                 retained.add(indexedTerm);
                 continue;
             }
@@ -1070,7 +1072,6 @@ public class LuceneIndexSuggester {
             return PinyinFieldIndex.EMPTY;
         }
 
-        final int maxPinyinTerms = 200_000;
         PriorityQueue<PinyinIndexedTerm> retained = new PriorityQueue<>(Comparator
                 .comparingInt(PinyinIndexedTerm::docFreq)
                 .thenComparing(PinyinIndexedTerm::text));
@@ -1085,7 +1086,7 @@ public class LuceneIndexSuggester {
             if (indexedTerm.pinyinKey().isEmpty()) {
                 continue;
             }
-            if (retained.size() < maxPinyinTerms) {
+            if (retained.size() < MAX_DIRECT_PINYIN_TERMS) {
                 retained.add(indexedTerm);
                 continue;
             }
@@ -1806,7 +1807,7 @@ public class LuceneIndexSuggester {
     }
 
     private static final class PinyinIndexCache {
-        private static final int MAX_READERS = 128;
+        private static final int MAX_READERS = 16;
         private static final Map<Object, Map<String, PinyinFieldIndex>> CACHE = new LinkedHashMap<>(16, 0.75f, true) {
             @Override
             protected boolean removeEldestEntry(Map.Entry<Object, Map<String, PinyinFieldIndex>> eldest) {
@@ -1838,7 +1839,7 @@ public class LuceneIndexSuggester {
     }
 
     private static final class LiteralPrefixIndexCache {
-        private static final int MAX_READERS = 128;
+        private static final int MAX_READERS = 16;
         private static final Map<Object, Map<String, LiteralFieldIndex>> CACHE = new LinkedHashMap<>(16, 0.75f, true) {
             @Override
             protected boolean removeEldestEntry(Map.Entry<Object, Map<String, LiteralFieldIndex>> eldest) {

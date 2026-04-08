@@ -34,12 +34,8 @@ public final class PinyinWarmupIndexListener implements IndexEventListener, Clos
     private static final Logger LOGGER = LogManager.getLogger(PinyinWarmupIndexListener.class);
     private static final List<String> PREFERRED_WARMUP_FIELDS = List.of(
             "owner.name.suggest",
-            "title.assoc",
             "title.suggest",
-            "tags.assoc",
-            "tags.suggest",
-            "title.words",
-            "tags.words");
+            "tags.suggest");
 
     private final Map<String, List<String>> warmupFieldsByIndex = new ConcurrentHashMap<>();
     private final Set<String> queuedWarmups = ConcurrentHashMap.newKeySet();
