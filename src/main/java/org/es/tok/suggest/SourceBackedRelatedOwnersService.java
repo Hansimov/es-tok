@@ -39,6 +39,10 @@ import java.util.Map;
 import java.util.Set;
 
 public class SourceBackedRelatedOwnersService {
+    private static final float OWNER_INTENT_ANCHOR_BASE_SCORE = 3200.0f;
+    private static final float OWNER_INTENT_ANCHOR_STEP_SCORE = 48.0f;
+    private static final float OWNER_INTENT_TOP_PROMOTION_MARGIN = 12000.0f;
+    private static final int OWNER_INTENT_ANCHOR_LIMIT = 4;
 
     private static final String OWNER_NAME_SOURCE_PATH = "owner.name";
     private static final String OWNER_MID_SOURCE_PATH = "owner.mid";
@@ -47,13 +51,17 @@ public class SourceBackedRelatedOwnersService {
     private static final String INSERT_AT_SOURCE_PATH = "insert_at";
 
     private final SourceBackedAssociateSuggester associateSuggester;
+    private final OwnerBackedSuggestService ownerSuggestService;
 
     public SourceBackedRelatedOwnersService() {
-        this(new SourceBackedAssociateSuggester());
+        this(new SourceBackedAssociateSuggester(), new OwnerBackedSuggestService());
     }
 
-    SourceBackedRelatedOwnersService(SourceBackedAssociateSuggester associateSuggester) {
+    SourceBackedRelatedOwnersService(
+            SourceBackedAssociateSuggester associateSuggester,
+            OwnerBackedSuggestService ownerSuggestService) {
         this.associateSuggester = associateSuggester;
+        this.ownerSuggestService = ownerSuggestService;
     }
 
     public List<RelatedOwnerResult> searchRelatedOwners(
@@ -88,6 +96,11 @@ public class SourceBackedRelatedOwnersService {
         List<String> expansionTerms = RelatedOwnerQueryTuning.shouldExpandTopicTerms(sanitizedText, selectedTerms.size())
             ? expandTopicTerms(searcher, indexService, fields, sanitizedText, seedTerms, scanLimit)
             : List.of();
+        List<OwnerBackedSuggestService.OwnerIntentAnchor> ownerIntentAnchors = searchOwnerIntentAnchors(
+            searcher,
+            indexService,
+            sanitizedText,
+            size);
 
         TopDocs topDocs = null;
         for (RelatedOwnerQueryTuning.QueryPlan plan : RelatedOwnerQueryTuning.buildQueryPlans(sanitizedText, selectedTerms.size())) {
@@ -104,7 +117,7 @@ public class SourceBackedRelatedOwnersService {
             }
         }
         if (topDocs == null || topDocs.scoreDocs.length == 0) {
-            return List.of();
+            return mergeOwnerIntentAnchors(List.of(), ownerIntentAnchors, sanitizedText, size);
         }
 
         SourceProvider sourceProvider = SourceProvider.fromLookup(
@@ -123,10 +136,119 @@ public class SourceBackedRelatedOwnersService {
             collectOwnerHit(owners, scoreDoc.doc, source, fieldContexts, seedTermProfiles, nowEpochSeconds, scoreDoc.score, rank);
         }
 
-        return owners.values().stream()
+        List<RelatedOwnerResult> rankedOwners = owners.values().stream()
                 .sorted(RelatedOwnerAccumulator.ORDER)
-                .limit(size)
                 .map(RelatedOwnerAccumulator::toResult)
+                .toList();
+        return mergeOwnerIntentAnchors(rankedOwners, ownerIntentAnchors, sanitizedText, size);
+    }
+
+    private List<OwnerBackedSuggestService.OwnerIntentAnchor> searchOwnerIntentAnchors(
+            Engine.Searcher searcher,
+            IndexService indexService,
+            String text,
+            int size) throws IOException {
+        if (!isOwnerIntentLikeQuery(text)) {
+            return List.of();
+        }
+        List<String> ownerFields = resolveOwnerIntentFields(indexService);
+        if (ownerFields.isEmpty()) {
+            return List.of();
+        }
+        return ownerSuggestService.searchOwnerAnchors(
+                searcher,
+                indexService,
+                ownerFields,
+                text,
+                Math.max(size, OWNER_INTENT_ANCHOR_LIMIT),
+                "prefix");
+    }
+
+    private List<String> resolveOwnerIntentFields(IndexService indexService) {
+        List<String> fields = new ArrayList<>();
+        addOwnerIntentField(indexService, fields, "owner.name.words");
+        addOwnerIntentField(indexService, fields, "owner.name.suggest");
+        addOwnerIntentField(indexService, fields, OWNER_NAME_SOURCE_PATH);
+        return List.copyOf(fields);
+    }
+
+    private void addOwnerIntentField(IndexService indexService, List<String> fields, String field) {
+        if (field == null || field.isBlank()) {
+            return;
+        }
+        if (indexService.mapperService().fieldType(field) == null) {
+            return;
+        }
+        if (!fields.contains(field)) {
+            fields.add(field);
+        }
+    }
+
+    private static boolean isOwnerIntentLikeQuery(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        if (text.chars().anyMatch(Character::isWhitespace)) {
+            return false;
+        }
+        int codePointLength = text.codePointCount(0, text.length());
+        if (codePointLength < 2 || codePointLength > 24) {
+            return false;
+        }
+        boolean hasChinese = PinyinSupport.containsChinese(text);
+        boolean hasDigit = text.chars().anyMatch(Character::isDigit);
+        boolean hasAsciiLetter = text.chars().anyMatch(ch -> ch < 128 && Character.isLetter(ch));
+        return hasDigit
+                || (hasChinese && hasAsciiLetter)
+                || PinyinSupport.isStrictFullPinyinQuery(text);
+    }
+
+    private static List<RelatedOwnerResult> mergeOwnerIntentAnchors(
+            List<RelatedOwnerResult> rankedOwners,
+            List<OwnerBackedSuggestService.OwnerIntentAnchor> ownerIntentAnchors,
+            String text,
+            int size) {
+        if (ownerIntentAnchors == null || ownerIntentAnchors.isEmpty()) {
+            return rankedOwners.stream().limit(size).toList();
+        }
+
+        float topRankedScore = rankedOwners.isEmpty() ? 0.0f : rankedOwners.get(0).score();
+        Map<Long, RelatedOwnerResult> merged = new LinkedHashMap<>();
+        for (RelatedOwnerResult owner : rankedOwners) {
+            merged.put(owner.mid(), owner);
+        }
+        for (int index = 0; index < ownerIntentAnchors.size(); index++) {
+            OwnerBackedSuggestService.OwnerIntentAnchor anchor = ownerIntentAnchors.get(index);
+            float anchorScore = OWNER_INTENT_ANCHOR_BASE_SCORE
+                    - (index * OWNER_INTENT_ANCHOR_STEP_SCORE)
+                    + Math.min(anchor.score() * 0.18f, 180.0f);
+            RelatedOwnerResult existing = merged.get(anchor.mid());
+            boolean promoteTopAnchor = index == 0
+                    && isOwnerIntentLikeQuery(text)
+                    && topRankedScore > 0.0f;
+            float mergedScore = existing == null ? anchorScore : existing.score() + anchorScore;
+            if (promoteTopAnchor) {
+                mergedScore = Math.max(mergedScore, topRankedScore + OWNER_INTENT_TOP_PROMOTION_MARGIN);
+            }
+            if (existing == null) {
+                merged.put(anchor.mid(), new RelatedOwnerResult(anchor.mid(), anchor.name(), anchor.docFreq(), mergedScore));
+                continue;
+            }
+            merged.put(
+                    anchor.mid(),
+                    new RelatedOwnerResult(
+                            anchor.mid(),
+                            existing.name() == null || existing.name().isBlank() ? anchor.name() : existing.name(),
+                            Math.max(existing.docFreq(), anchor.docFreq()),
+                            mergedScore));
+        }
+
+        return merged.values().stream()
+                .sorted(Comparator
+                        .comparingDouble(RelatedOwnerResult::score).reversed()
+                        .thenComparing(Comparator.comparingInt(RelatedOwnerResult::docFreq).reversed())
+                        .thenComparing(RelatedOwnerResult::name))
+                .limit(size)
                 .toList();
     }
 

@@ -64,6 +64,18 @@ public class OwnerBackedSuggestService {
             String text,
             int size,
             String type) throws IOException {
+        return searchOwnerAnchors(searcher, indexService, fields, text, size, type).stream()
+            .map(OwnerIntentAnchor::toSuggestion)
+            .toList();
+        }
+
+        public List<OwnerIntentAnchor> searchOwnerAnchors(
+            Engine.Searcher searcher,
+            IndexService indexService,
+            Collection<String> fields,
+            String text,
+            int size,
+            String type) throws IOException {
         if (text == null || text.isBlank()) {
             return List.of();
         }
@@ -122,7 +134,7 @@ public class OwnerBackedSuggestService {
         return owners.values().stream()
                 .sorted(OwnerAccumulator.ORDER)
                 .limit(size)
-                .map(OwnerAccumulator::toSuggestion)
+                .map(OwnerAccumulator::toAnchor)
                 .toList();
     }
 
@@ -786,6 +798,16 @@ public class OwnerBackedSuggestService {
 
         private SuggestionOption toSuggestion() {
             return new SuggestionOption(displayName(), docCount(), (float) score(), type);
+        }
+
+        private OwnerIntentAnchor toAnchor() {
+            return new OwnerIntentAnchor(mid, displayName(), docCount(), (float) score(), type);
+        }
+    }
+
+    public record OwnerIntentAnchor(long mid, String name, int docFreq, float score, String type) {
+        private SuggestionOption toSuggestion() {
+            return new SuggestionOption(name, docFreq, score, type);
         }
     }
 

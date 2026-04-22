@@ -127,7 +127,22 @@ public class RelatedOwnersRestTest {
                           },
                           "name": {
                             "type": "text",
-                            "analyzer": "standard"
+                            "analyzer": "standard",
+                            "fields": {
+                              "keyword": {
+                                "type": "keyword"
+                              },
+                              "words": {
+                                "type": "text",
+                                "analyzer": "es_tok_analyzer"
+                              },
+                              "suggest": {
+                                "type": "text",
+                                "analyzer": "es_tok_analyzer",
+                                "index_options": "docs",
+                                "norms": false
+                              }
+                            }
                           }
                         }
                       },
@@ -248,6 +263,29 @@ public class RelatedOwnersRestTest {
         assertTrue(result, singleExplosiveOwner >= 0);
         assertTrue(result, coverageOwner < singleExplosiveOwner);
     }
+
+      @Test
+      public void testRelatedOwnersUsesOwnerIntentAnchorForAliasLikeQuery() throws Exception {
+        String result = performRelatedOwners("""
+          {
+            "text": "红警08",
+            "fields": ["title.words", "tags.words"],
+            "size": 6,
+            "scan_limit": 64,
+            "use_pinyin": true
+          }
+          """);
+
+        int owner1001 = result.indexOf("\"mid\":1001");
+        int owner1004 = result.indexOf("\"mid\":1004");
+        int owner1005 = result.indexOf("\"mid\":1005");
+
+        assertTrue(result, owner1001 >= 0);
+        assertTrue(result, owner1004 >= 0);
+        assertTrue(result, owner1005 >= 0);
+        assertTrue(result, owner1001 < owner1004);
+        assertTrue(result, owner1001 < owner1005);
+      }
 
     @Test
     public void testRelatedOwnersUsesDescAndTokenExpansion() throws Exception {

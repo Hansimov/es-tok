@@ -21,7 +21,9 @@ import org.elasticsearch.injection.guice.Inject;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportService;
+import org.es.tok.suggest.PinyinSupport;
 import org.es.tok.suggest.SourceBackedRelatedOwnersService;
+import org.es.tok.text.TextNormalization;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -32,12 +34,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReferenceArray;
+import java.util.regex.Pattern;
 
 public class TransportEsTokRelatedOwnersAction extends TransportBroadcastAction<
         EsTokRelatedOwnersRequest,
         EsTokRelatedOwnersResponse,
         ShardEsTokRelatedOwnersRequest,
         ShardEsTokRelatedOwnersResponse> {
+    private static final float OWNER_INTENT_TOP_PROMOTION_MARGIN = 12000.0f;
+    private static final double OWNER_INTENT_MIN_MATCH_SCORE = 4.5d;
+    private static final double OWNER_INTENT_MIN_GAP_SCORE = 1.0d;
+    private static final Pattern OWNER_INTENT_PART_PATTERN = Pattern.compile("[\\p{IsHan}]+|[A-Za-z]+|\\d+");
 
     private final ClusterService clusterService;
     private final IndicesService indicesService;
@@ -121,13 +128,8 @@ public class TransportEsTokRelatedOwnersAction extends TransportBroadcastAction<
 
         List<EsTokRelatedOwnerOption> merged = aggregatedOwners.values().stream()
                 .map(AggregatedOwner::toOption)
-                .sorted(Comparator
-                        .comparingDouble(EsTokRelatedOwnerOption::score).reversed()
-                        .thenComparing(Comparator.comparingInt(EsTokRelatedOwnerOption::docFreq).reversed())
-                        .thenComparing(Comparator.comparingInt(EsTokRelatedOwnerOption::shardCount).reversed())
-                        .thenComparing(EsTokRelatedOwnerOption::name))
-                .limit(request.size())
                 .toList();
+        merged = selectMergedOwners(request.text(), merged, request.size());
 
         return new EsTokRelatedOwnersResponse(
                 request.text(),
@@ -246,6 +248,144 @@ public class TransportEsTokRelatedOwnersAction extends TransportBroadcastAction<
     @Override
     protected ClusterBlockException checkRequestBlock(ClusterState state, EsTokRelatedOwnersRequest request, String[] concreteIndices) {
         return state.blocks().indicesBlockedException(projectResolver.getProjectId(), ClusterBlockLevel.READ, concreteIndices);
+    }
+
+    static List<EsTokRelatedOwnerOption> selectMergedOwners(String text, List<EsTokRelatedOwnerOption> options, int size) {
+        if (options == null || options.isEmpty()) {
+            return List.of();
+        }
+
+        List<EsTokRelatedOwnerOption> adjusted = maybePromoteOwnerIntentCandidate(text, options);
+        return adjusted.stream()
+                .sorted(Comparator
+                        .comparingDouble(EsTokRelatedOwnerOption::score).reversed()
+                        .thenComparing(Comparator.comparingInt(EsTokRelatedOwnerOption::docFreq).reversed())
+                        .thenComparing(Comparator.comparingInt(EsTokRelatedOwnerOption::shardCount).reversed())
+                        .thenComparing(EsTokRelatedOwnerOption::name))
+                .limit(size)
+                .toList();
+    }
+
+    private static List<EsTokRelatedOwnerOption> maybePromoteOwnerIntentCandidate(
+            String text,
+            List<EsTokRelatedOwnerOption> options) {
+        if (!isOwnerIntentLikeQuery(text) || options.isEmpty()) {
+            return List.copyOf(options);
+        }
+
+        double bestMatchScore = Double.NEGATIVE_INFINITY;
+        double secondBestMatchScore = Double.NEGATIVE_INFINITY;
+        EsTokRelatedOwnerOption bestOption = null;
+        for (EsTokRelatedOwnerOption option : options) {
+            double matchScore = ownerIntentMatchScore(text, option.name());
+            if (matchScore > bestMatchScore) {
+                secondBestMatchScore = bestMatchScore;
+                bestMatchScore = matchScore;
+                bestOption = option;
+            } else if (matchScore > secondBestMatchScore) {
+                secondBestMatchScore = matchScore;
+            }
+        }
+
+        if (bestOption == null
+                || bestMatchScore < OWNER_INTENT_MIN_MATCH_SCORE
+                || (secondBestMatchScore > Double.NEGATIVE_INFINITY
+                    && (bestMatchScore - secondBestMatchScore) < OWNER_INTENT_MIN_GAP_SCORE)) {
+            return List.copyOf(options);
+        }
+
+        float topScore = options.stream().map(EsTokRelatedOwnerOption::score).max(Float::compare).orElse(0.0f);
+        float promotedScore = Math.max(bestOption.score(), topScore + OWNER_INTENT_TOP_PROMOTION_MARGIN);
+        List<EsTokRelatedOwnerOption> adjusted = new ArrayList<>(options.size());
+        for (EsTokRelatedOwnerOption option : options) {
+            if (option.mid() == bestOption.mid()) {
+                adjusted.add(new EsTokRelatedOwnerOption(
+                        option.mid(),
+                        option.name(),
+                        option.docFreq(),
+                        promotedScore,
+                        option.shardCount()));
+            } else {
+                adjusted.add(option);
+            }
+        }
+        return List.copyOf(adjusted);
+    }
+
+    private static boolean isOwnerIntentLikeQuery(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        if (text.chars().anyMatch(Character::isWhitespace)) {
+            return false;
+        }
+        int codePointLength = text.codePointCount(0, text.length());
+        if (codePointLength < 2 || codePointLength > 24) {
+            return false;
+        }
+        boolean hasChinese = PinyinSupport.containsChinese(text);
+        boolean hasDigit = text.chars().anyMatch(Character::isDigit);
+        boolean hasAsciiLetter = text.chars().anyMatch(ch -> ch < 128 && Character.isLetter(ch));
+        return hasDigit
+                || (hasChinese && hasAsciiLetter)
+                || PinyinSupport.isStrictFullPinyinQuery(text);
+    }
+
+    private static double ownerIntentMatchScore(String text, String ownerName) {
+        String normalizedQuery = TextNormalization.normalizeOwnerLookupName(text);
+        String normalizedOwner = TextNormalization.normalizeOwnerLookupName(ownerName);
+        if (normalizedQuery.isBlank() || normalizedOwner.isBlank()) {
+            return 0.0d;
+        }
+
+        double score = 0.0d;
+        if (normalizedOwner.equals(normalizedQuery)) {
+            score += 8.0d;
+        }
+        if (normalizedOwner.startsWith(normalizedQuery)) {
+            score += 5.0d;
+        }
+        List<String> queryParts = OWNER_INTENT_PART_PATTERN.matcher(normalizedQuery)
+                .results()
+                .map(match -> match.group())
+                .filter(part -> !part.isBlank())
+                .toList();
+        if (queryParts.isEmpty()) {
+            return score;
+        }
+
+        int searchFrom = 0;
+        int matchedParts = 0;
+        boolean matchedChinese = false;
+        boolean matchedDigits = false;
+        for (String part : queryParts) {
+            int index = normalizedOwner.indexOf(part, searchFrom);
+            if (index < 0) {
+                continue;
+            }
+            matchedParts++;
+            searchFrom = index + part.length();
+            if (part.chars().allMatch(Character::isDigit)) {
+                matchedDigits = true;
+                score += 2.2d;
+            } else if (PinyinSupport.containsChinese(part)) {
+                matchedChinese = true;
+                score += index == 0 ? 2.6d : 1.8d;
+            } else {
+                score += 1.1d;
+            }
+        }
+
+        if (matchedParts == queryParts.size()) {
+            score += 3.5d;
+        }
+        if (matchedChinese && matchedDigits) {
+            score += 2.4d;
+        }
+        if (PinyinSupport.isStrictFullPinyinQuery(normalizedQuery) && PinyinSupport.fullPinyinPrefixMatch(normalizedQuery, ownerName)) {
+            score += 4.0d;
+        }
+        return score;
     }
 
     private static final class AggregatedOwner {
