@@ -406,6 +406,12 @@ POST /bili_videos_dev6/_es_tok/related_owners_by_owners
 - `bvids` 或 `mids`
 - `videos[]` 或 `owners[]`
 
+当前 graph relation 的使用约定：
+
+- `related_videos_by_videos` 会先回显 seed 视频自身，然后再补充同作者和 token overlap 更强的候选。
+- `related_owners_by_videos` 会把 seed 视频作者锚在结果顶部，避免被纯 topic overlap 的其他作者盖住。
+- `related_owners_by_owners` 会先返回 seed owner 自身，再扩展其他相关 owner。
+
 其中视频候选项包含：
 
 - `bvid`

@@ -40,6 +40,8 @@ import java.util.Map;
 import java.util.Set;
 
 public class SourceBackedEntityRelationsService {
+    private static final float SEED_VIDEO_ANCHOR_SCORE = 10_000.0f;
+    private static final float SEED_OWNER_ANCHOR_SCORE = 10_000.0f;
     private static final String BVID_SOURCE_PATH = "bvid";
     private static final String TITLE_SOURCE_PATH = "title";
     private static final String OWNER_NAME_SOURCE_PATH = "owner.name";
@@ -155,19 +157,21 @@ public class SourceBackedEntityRelationsService {
                 continue;
             }
 
-            if (EsTokEntityRelationRequest.RELATED_OWNERS_BY_OWNERS.equals(relation)
+                if ((EsTokEntityRelationRequest.RELATED_OWNERS_BY_OWNERS.equals(relation)
+                    || EsTokEntityRelationRequest.RELATED_OWNERS_BY_VIDEOS.equals(relation))
                     && seedContext.containsOwnerMid(ownerMid)) {
                 continue;
             }
 
-            DocSignals signals = computeSignals(relationProfile, seedContext, topicFields, source, scoreDoc.score, rank, nowEpochSeconds, relaxedMode, analysisCache);
+            DocSignals signals = computeSignals(relationProfile, relation, seedContext, topicFields, source, scoreDoc.score, rank, nowEpochSeconds, relaxedMode, analysisCache);
             if (signals.score() <= 0.0d) {
                 continue;
             }
 
             if (EsTokEntityRelationRequest.RELATED_VIDEOS_BY_VIDEOS.equals(relation)
                     || EsTokEntityRelationRequest.RELATED_VIDEOS_BY_OWNERS.equals(relation)) {
-                if (seedContext.containsBvid(bvid)) {
+                if (EsTokEntityRelationRequest.RELATED_VIDEOS_BY_VIDEOS.equals(relation)
+                        && seedContext.containsBvid(bvid)) {
                     continue;
                 }
                 videos.computeIfAbsent(bvid, ignored -> new VideoAccumulator(bvid, relationProfile))
@@ -193,6 +197,17 @@ public class SourceBackedEntityRelationsService {
         List<ScoreDoc> merged = new ArrayList<>();
         LinkedHashSet<Integer> seenDocIds = new LinkedHashSet<>();
         if (EsTokEntityRelationRequest.RELATED_VIDEOS_BY_OWNERS.equals(relation)) {
+            Query sameOwnerCandidateQuery = buildSameOwnerCandidateQuery(seedContext, topicFields);
+            if (sameOwnerCandidateQuery != null) {
+                TopDocs sameOwnerTopDocs = searcher.search(sameOwnerCandidateQuery, Math.max(32, Math.min(64, primaryLimit)));
+                for (ScoreDoc scoreDoc : sameOwnerTopDocs.scoreDocs) {
+                    if (seenDocIds.add(scoreDoc.doc)) {
+                        merged.add(scoreDoc);
+                    }
+                }
+            }
+        }
+        if (EsTokEntityRelationRequest.RELATED_VIDEOS_BY_VIDEOS.equals(relation)) {
             Query sameOwnerCandidateQuery = buildSameOwnerCandidateQuery(seedContext, topicFields);
             if (sameOwnerCandidateQuery != null) {
                 TopDocs sameOwnerTopDocs = searcher.search(sameOwnerCandidateQuery, Math.max(32, Math.min(64, primaryLimit)));
@@ -245,8 +260,14 @@ public class SourceBackedEntityRelationsService {
             LeafReaderContext leaf = leaves.get(leafIndex);
             int leafDocId = scoreDoc.doc - leaf.docBase;
             Source source = sourceProvider.getSource(leaf, leafDocId);
-            seedContext.addBvid(normalizeIdentifier(source.extractValue(BVID_SOURCE_PATH, null)));
-            seedContext.addOwnerMid(asLong(source.extractValue(OWNER_MID_SOURCE_PATH, null), -1L));
+            String bvid = normalizeIdentifier(source.extractValue(BVID_SOURCE_PATH, null));
+            long ownerMid = asLong(source.extractValue(OWNER_MID_SOURCE_PATH, null), -1L);
+            String ownerName = normalizeDisplay(source.extractValue(OWNER_NAME_SOURCE_PATH, null));
+            String title = normalizeDisplay(source.extractValue(TITLE_SOURCE_PATH, null));
+            seedContext.addBvid(bvid);
+            seedContext.addOwnerMid(ownerMid);
+            seedContext.addSeedOwner(ownerMid, ownerName);
+            seedContext.addSeedVideo(bvid, title, ownerMid, ownerName);
             seedContext.addInsertAt(asLong(source.extractValue(INSERT_AT_SOURCE_PATH, null), 0L));
             seedContext.addTokens(extractTopicTokenWeights(topicFields, source, analysisCache));
         }
@@ -341,8 +362,9 @@ public class SourceBackedEntityRelationsService {
         return query.clauses().isEmpty() ? null : query;
     }
 
-    private DocSignals computeSignals(
+        private DocSignals computeSignals(
             RelationTuning.RelationProfile relationProfile,
+            String relation,
             SeedContext seedContext,
             List<FieldContext> topicFields,
             Source source,
@@ -378,6 +400,9 @@ public class SourceBackedEntityRelationsService {
         boolean sameOwner = seedContext.containsOwnerMid(ownerMid);
         double coverage = seedContext.totalQueryWeight() <= 0.0d ? 0.0d : overlapWeight / seedContext.totalQueryWeight();
         if (sameOwner && !relationProfile.acceptSameOwnerCandidate(overlapWeight, overlapCount, strongOverlapCount, coverage)) {
+            if (EsTokEntityRelationRequest.RELATED_VIDEOS_BY_OWNERS.equals(relation)) {
+                return new DocSignals(sameOwnerVideoFallbackScore(seedContext, source, hitScore, nowEpochSeconds, rank));
+            }
             return DocSignals.zero();
         }
         if (overlapWeight <= 0.0d && !sameOwner) {
@@ -417,6 +442,19 @@ public class SourceBackedEntityRelationsService {
                 sameOwner,
                 relaxedMode);
         return new DocSignals(score);
+    }
+
+    private double sameOwnerVideoFallbackScore(
+            SeedContext seedContext,
+            Source source,
+            float hitScore,
+            long nowEpochSeconds,
+            int rank) {
+        double hitWeight = Math.log1p(Math.max(0.0d, hitScore)) / (1.0d + (rank * 0.045d));
+        double recency = recencyScore(nowEpochSeconds, seedContext.seedInsertAt, asLong(source.extractValue(INSERT_AT_SOURCE_PATH, null), 0L));
+        double quality = Math.log1p(Math.max(0.0d, asDouble(source.extractValue(STAT_SCORE_SOURCE_PATH, null))) * 2400.0d);
+        double influence = Math.log1p(Math.max(0L, asLong(source.extractValue(STAT_VIEW_SOURCE_PATH, null), 0L)));
+        return 12.0d + (hitWeight * 1.5d) + (recency * 14.0d) + (quality * 4.0d) + (influence * 1.2d);
     }
 
     private double recencyScore(long nowEpochSeconds, List<Long> seedInsertAt, long candidateInsertAt) {
@@ -538,6 +576,31 @@ public class SourceBackedEntityRelationsService {
         List<RelatedVideoResult> selected = new ArrayList<>();
         Map<Long, Integer> ownerCounts = new HashMap<>();
         List<VideoAccumulator> remaining = new ArrayList<>(ordered);
+        if (EsTokEntityRelationRequest.RELATED_VIDEOS_BY_VIDEOS.equals(relation)) {
+            int anchorIndex = 0;
+            for (SeedVideo seedVideo : seedContext.seedVideos()) {
+                if (selected.size() >= size) {
+                    break;
+                }
+                selected.add(seedVideo.toResult(SEED_VIDEO_ANCHOR_SCORE - anchorIndex));
+                ownerCounts.merge(seedVideo.ownerMid(), 1, Integer::sum);
+                anchorIndex++;
+            }
+            int reservedSameOwnerSlots = Math.min(
+                    size - selected.size(),
+                    Math.min(
+                            (int) remaining.stream().filter(candidate -> seedContext.containsOwnerMid(candidate.ownerMid())).count(),
+                            Math.max(1, Math.min(seedContext.seedOwnerMids().size() * 2, Math.max(1, (size - selected.size()) / 2)))));
+            selectBestVideos(
+                    relationProfile,
+                    remaining,
+                    selected,
+                    ownerCounts,
+                    reservedSameOwnerSlots,
+                    candidate -> seedContext.containsOwnerMid(candidate.ownerMid()));
+            selectBestVideos(relationProfile, remaining, selected, ownerCounts, size - selected.size(), candidate -> true);
+            return selected;
+        }
         if (EsTokEntityRelationRequest.RELATED_VIDEOS_BY_OWNERS.equals(relation)) {
             int reservedSameOwnerSlots = Math.min(
                     size,
@@ -597,23 +660,29 @@ public class SourceBackedEntityRelationsService {
                 .filter(accumulator -> relationProfile.acceptOwnerCandidate(accumulator.docFreq(), accumulator.score(), relaxedMode))
                 .sorted(OwnerAccumulator.ORDER)
                 .toList();
-        if (!EsTokEntityRelationRequest.RELATED_OWNERS_BY_VIDEOS.equals(relation)) {
+        if (!EsTokEntityRelationRequest.RELATED_OWNERS_BY_VIDEOS.equals(relation)
+                && !EsTokEntityRelationRequest.RELATED_OWNERS_BY_OWNERS.equals(relation)) {
             return ordered.stream().limit(size).map(OwnerAccumulator::toResult).toList();
         }
 
         List<RelatedOwnerResult> results = new ArrayList<>();
-        List<OwnerAccumulator> sameOwner = new ArrayList<>();
+        Set<Long> seenOwnerMids = new LinkedHashSet<>();
+        int anchorIndex = 0;
+        for (SeedOwner seedOwner : seedContext.seedOwners()) {
+            if (results.size() >= size) {
+                break;
+            }
+            results.add(seedOwner.toResult(SEED_OWNER_ANCHOR_SCORE - anchorIndex));
+            seenOwnerMids.add(seedOwner.mid());
+            anchorIndex++;
+        }
         for (OwnerAccumulator accumulator : ordered) {
-            if (seedContext.containsOwnerMid(accumulator.mid())) {
-                sameOwner.add(accumulator);
+            if (seenOwnerMids.contains(accumulator.mid())) {
                 continue;
             }
             if (results.size() < size) {
                 results.add(accumulator.toResult());
             }
-        }
-        if (results.isEmpty()) {
-            return sameOwner.stream().limit(size).map(OwnerAccumulator::toResult).toList();
         }
         return results;
     }
@@ -800,6 +869,8 @@ public class SourceBackedEntityRelationsService {
         private final LinkedHashSet<String> seedBvids = new LinkedHashSet<>();
         private final LinkedHashSet<String> seedBvidKeys = new LinkedHashSet<>();
         private final LinkedHashSet<Long> seedOwnerMids = new LinkedHashSet<>();
+        private final LinkedHashMap<String, SeedVideo> seedVideosByKey = new LinkedHashMap<>();
+        private final LinkedHashMap<Long, SeedOwner> seedOwnersByMid = new LinkedHashMap<>();
         private final LinkedHashMap<String, Double> tokenSeedWeights = new LinkedHashMap<>();
         private final LinkedHashMap<String, Integer> tokenDocSupport = new LinkedHashMap<>();
         private final List<Long> seedInsertAt = new ArrayList<>();
@@ -817,6 +888,29 @@ public class SourceBackedEntityRelationsService {
         private void addOwnerMid(long mid) {
             if (mid > 0L) {
                 seedOwnerMids.add(mid);
+            }
+        }
+
+        private void addSeedVideo(String bvid, String title, long ownerMid, String ownerName) {
+            String bvidKey = normalizeString(bvid);
+            if (bvid.isBlank() || bvidKey.isBlank() || title.isBlank() || ownerMid <= 0L) {
+                return;
+            }
+            seedVideosByKey.putIfAbsent(bvidKey, new SeedVideo(bvid, title, ownerMid, ownerName));
+        }
+
+        private void addSeedOwner(long ownerMid, String ownerName) {
+            if (ownerMid <= 0L) {
+                return;
+            }
+            SeedOwner existing = seedOwnersByMid.get(ownerMid);
+            String normalizedName = ownerName == null ? "" : ownerName.trim();
+            if (existing == null) {
+                seedOwnersByMid.put(ownerMid, new SeedOwner(ownerMid, normalizedName));
+                return;
+            }
+            if (existing.name().isBlank() && !normalizedName.isBlank()) {
+                seedOwnersByMid.put(ownerMid, new SeedOwner(ownerMid, normalizedName));
             }
         }
 
@@ -873,12 +967,33 @@ public class SourceBackedEntityRelationsService {
             return seedOwnerMids;
         }
 
+        private Collection<SeedVideo> seedVideos() {
+            return seedVideosByKey.values();
+        }
+
+        private Collection<SeedOwner> seedOwners() {
+            return seedOwnersByMid.values();
+        }
+
         private boolean isEmpty() {
             return seedBvids.isEmpty() && seedOwnerMids.isEmpty();
         }
 
         private static SeedContext empty() {
             return new SeedContext();
+        }
+    }
+
+    private record SeedVideo(String bvid, String title, long ownerMid, String ownerName) {
+        private RelatedVideoResult toResult(float score) {
+            return new RelatedVideoResult(bvid, title, ownerMid, ownerName, 1, score);
+        }
+    }
+
+    private record SeedOwner(long mid, String name) {
+        private RelatedOwnerResult toResult(float score) {
+            String displayName = name == null || name.isBlank() ? Long.toString(mid) : name;
+            return new RelatedOwnerResult(mid, displayName, 1, score);
         }
     }
 

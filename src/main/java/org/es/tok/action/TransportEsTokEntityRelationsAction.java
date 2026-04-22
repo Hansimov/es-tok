@@ -27,8 +27,10 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
 public class TransportEsTokEntityRelationsAction extends TransportBroadcastAction<
@@ -128,8 +130,10 @@ public class TransportEsTokEntityRelationsAction extends TransportBroadcastActio
                         .comparingDouble(EsTokRelatedVideoOption::score).reversed()
                         .thenComparing(Comparator.comparingInt(EsTokRelatedVideoOption::docFreq).reversed())
                         .thenComparing(EsTokRelatedVideoOption::bvid))
-                .limit(request.size())
                 .toList();
+        videos = promoteSeedOwnerVideo(request, videos).stream()
+            .limit(request.size())
+            .toList();
         List<EsTokRelatedOwnerOption> owners = aggregatedOwners.values().stream()
                 .map(AggregatedOwner::toOption)
                 .sorted(Comparator
@@ -149,6 +153,39 @@ public class TransportEsTokEntityRelationsAction extends TransportBroadcastActio
                 successfulShards,
                 failedShards,
                 shardFailures);
+    }
+
+    private static List<EsTokRelatedVideoOption> promoteSeedOwnerVideo(
+            EsTokEntityRelationRequest request,
+            List<EsTokRelatedVideoOption> videos) {
+        if (!EsTokEntityRelationRequest.RELATED_VIDEOS_BY_OWNERS.equals(request.relation())
+                || videos.isEmpty()
+                || request.mids() == null
+                || request.mids().isEmpty()) {
+            return videos;
+        }
+
+        Set<Long> seedOwnerMids = new HashSet<>(request.mids());
+        int sameOwnerIndex = -1;
+        for (int index = 0; index < videos.size(); index++) {
+            if (seedOwnerMids.contains(videos.get(index).ownerMid())) {
+                sameOwnerIndex = index;
+                break;
+            }
+        }
+        if (sameOwnerIndex <= 0) {
+            return videos;
+        }
+
+        List<EsTokRelatedVideoOption> reordered = new ArrayList<>(videos.size());
+        reordered.add(videos.get(sameOwnerIndex));
+        for (int index = 0; index < videos.size(); index++) {
+            if (index == sameOwnerIndex) {
+                continue;
+            }
+            reordered.add(videos.get(index));
+        }
+        return reordered;
     }
 
     @Override

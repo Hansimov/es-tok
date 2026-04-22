@@ -16,15 +16,20 @@ import org.junit.Test;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.time.Instant;
+import java.util.Map;
 import java.util.List;
 import java.util.Locale;
 import java.util.stream.Collectors;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 public class RelatedEntitiesRestTest {
     private static final String TEST_INDEX = "test_es_tok_entity_relations";
+  private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private RestClient client;
 
@@ -89,9 +94,11 @@ public class RelatedEntitiesRestTest {
             }
             """);
 
-        assertTrue(result, result.contains("\"bvid\":\"AV2\""));
-        assertTrue(result, result.contains("\"bvid\":\"BV1\""));
-        assertFalse(result, result.contains("\"bvid\":\"AV1\""));
+          List<Map<String, Object>> videos = parseItems(result, "videos");
+
+          assertEquals(result, "AV1", videos.get(0).get("bvid"));
+          assertTrue(result, result.contains("\"bvid\":\"AV2\""));
+          assertTrue(result, result.contains("\"bvid\":\"BV1\""));
         assertFalse(result, result.contains("\"bvid\":\"av2\""));
     }
 
@@ -105,6 +112,9 @@ public class RelatedEntitiesRestTest {
             }
             """);
 
+          List<Map<String, Object>> owners = parseItems(result, "owners");
+
+          assertEquals(result, 3001, ((Number) owners.get(0).get("mid")).intValue());
         assertTrue(result, result.contains("\"mid\":3001"));
         assertTrue(result, result.contains("\"mid\":3002"));
     }
@@ -119,6 +129,9 @@ public class RelatedEntitiesRestTest {
             }
             """);
 
+          List<Map<String, Object>> videos = parseItems(result, "videos");
+
+          assertEquals(result, 3001, ((Number) videos.get(0).get("ownerMid")).intValue());
         assertTrue(result, result.contains("\"bvid\":\"AV1\""));
         assertTrue(result, result.contains("\"bvid\":\"AV2\""));
         assertTrue(result, result.contains("\"bvid\":\"AV4\""));
@@ -135,7 +148,9 @@ public class RelatedEntitiesRestTest {
           }
           """);
 
-        assertTrue(result, result.contains("\"ownerMid\":3001"));
+        List<Map<String, Object>> videos = parseItems(result, "videos");
+
+        assertEquals(result, 3001, ((Number) videos.get(0).get("ownerMid")).intValue());
         assertFalse(result, result.contains("\"bvid\":\"AV3\""));
       }
 
@@ -149,10 +164,32 @@ public class RelatedEntitiesRestTest {
             }
             """);
 
+          List<Map<String, Object>> owners = parseItems(result, "owners");
+
+          assertEquals(result, 3001, ((Number) owners.get(0).get("mid")).intValue());
         assertTrue(result, result.contains("\"mid\":3002"));
-        assertFalse(result, result.contains("\"mid\":3001"));
         assertFalse(result, result.contains("\"mid\":4001"));
     }
+
+        @Test
+        public void testRelatedVideosByVideosPromotesSameOwnerCandidates() throws Exception {
+          String result = performRelation("related_videos_by_videos", """
+            {
+              "bvids": ["AV1"],
+              "size": 3,
+              "scan_limit": 64
+            }
+            """);
+
+          List<Map<String, Object>> videos = parseItems(result, "videos");
+          List<String> topBvids = videos.stream()
+              .limit(3)
+              .map(video -> String.valueOf(video.get("bvid")))
+              .toList();
+
+          assertTrue(result, topBvids.contains("AV1"));
+          assertTrue(result, topBvids.contains("AV2") || topBvids.contains("AV4"));
+        }
 
     private String performRelation(String relation, String jsonBody) throws Exception {
         Request request = new Request("POST", "/" + TEST_INDEX + "/_es_tok/" + relation);
@@ -161,6 +198,12 @@ public class RelatedEntitiesRestTest {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent()))) {
             return reader.lines().collect(Collectors.joining("\n"));
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> parseItems(String json, String key) throws Exception {
+      Map<String, Object> payload = OBJECT_MAPPER.readValue(json, Map.class);
+      return (List<Map<String, Object>>) payload.get(key);
     }
 
     private void indexDocument(

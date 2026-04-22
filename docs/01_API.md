@@ -320,6 +320,12 @@ GET|POST /{index}/_es_tok/...
 - `bvids` 或 `mids`
 - `videos[]` 或 `owners[]`
 
+当前 graph relation 的结果约定额外包括：
+
+- `related_videos_by_videos` 会把 seed 视频自身作为首个 anchor 返回，同时尽量把同作者视频纳入候选。
+- `related_owners_by_videos` 会把 seed 视频的作者作为首个 anchor 返回。
+- `related_owners_by_owners` 会把 seed owner 自身作为首个 anchor 返回，再补充其他相关 owner。
+
 视频候选项字段：
 
 - `bvid`
