@@ -2,6 +2,7 @@ package org.es.tok.suggest;
 
 import com.github.houbb.pinyin.constant.enums.PinyinStyleEnum;
 import com.github.houbb.pinyin.util.PinyinHelper;
+import org.es.tok.text.TextNormalization;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -165,6 +166,10 @@ public final class PinyinSupport {
             baseScore = applyLiteralChinesePrefixBias(baseScore, pureChineseInput, literalChinesePrefix);
             return applyChineseAnchor(baseScore, chineseAnchoredInput, chineseAnchorScore);
         }
+        float chineseDigitAliasScore = chineseDigitAliasMatchScore(input, candidate);
+        if (chineseDigitAliasScore > 0.0f) {
+            return applyChineseAnchor(chineseDigitAliasScore, chineseAnchoredInput, chineseAnchorScore);
+        }
         if (!strictFullPinyinQuery && !chineseAnchoredInput && initialsOnlyQuery && !inputInitials.isEmpty() && candidateKey.initials().startsWith(inputInitials)) {
             int extraInitials = Math.max(0, candidateKey.initials().length() - inputInitials.length());
             float baseScore;
@@ -188,6 +193,72 @@ public final class PinyinSupport {
             return applyChineseAnchor(baseScore, chineseAnchoredInput, chineseAnchorScore);
         }
         return 0.0f;
+    }
+
+    private static float chineseDigitAliasMatchScore(String input, String candidate) {
+        if (!containsChinese(input) || input == null || candidate == null) {
+            return 0.0f;
+        }
+
+        String normalizedInput = TextNormalization.normalizeOwnerLookupName(input);
+        String normalizedCandidate = TextNormalization.normalizeOwnerLookupName(candidate);
+        if (normalizedInput.isBlank() || normalizedCandidate.isBlank()) {
+            return 0.0f;
+        }
+        if (normalizedInput.chars().noneMatch(Character::isDigit)) {
+            return 0.0f;
+        }
+
+        String leadingChinese = leadingChineseSegment(normalizedInput);
+        String trailingDigits = trailingDigitSegment(normalizedInput);
+        if (leadingChinese.isBlank() || trailingDigits.isBlank()) {
+            return 0.0f;
+        }
+        if (!normalizedCandidate.startsWith(leadingChinese)) {
+            return 0.0f;
+        }
+
+        int digitIndex = normalizedCandidate.indexOf(trailingDigits, leadingChinese.length());
+        if (digitIndex < 0) {
+            return 0.0f;
+        }
+
+        int gapLength = Math.max(0, digitIndex - leadingChinese.length());
+        return 0.92f - lengthPenalty(gapLength, 0.05f, 0.28f);
+    }
+
+    private static String leadingChineseSegment(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+
+        StringBuilder builder = new StringBuilder();
+        for (int index = 0; index < text.length(); ) {
+            int codePoint = text.codePointAt(index);
+            if (Character.UnicodeScript.of(codePoint) != Character.UnicodeScript.HAN) {
+                break;
+            }
+            builder.appendCodePoint(codePoint);
+            index += Character.charCount(codePoint);
+        }
+        return builder.toString();
+    }
+
+    private static String trailingDigitSegment(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+
+        StringBuilder builder = new StringBuilder();
+        for (int index = text.length(); index > 0; ) {
+            int codePoint = text.codePointBefore(index);
+            if (!Character.isDigit(codePoint)) {
+                break;
+            }
+            builder.insert(0, Character.toString(codePoint));
+            index -= Character.charCount(codePoint);
+        }
+        return builder.toString();
     }
 
     public static boolean isPinyinLikeQuery(String text) {

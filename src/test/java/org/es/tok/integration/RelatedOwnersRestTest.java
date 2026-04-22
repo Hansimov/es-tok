@@ -288,6 +288,35 @@ public class RelatedOwnersRestTest {
       }
 
     @Test
+    public void testRelatedOwnersUsesCompactChineseAliasVariantForExtendedAliasQuery() throws Exception {
+        long now = Instant.now().getEpochSecond();
+        indexTopicDocument("20", "红色警戒21-实战", List.of("红色警戒", "实战"), 4001L, "红色警戒21-", 5.9f, 420_000L, now - 1_800L);
+        indexTopicDocument("21", "红色警戒7任务", List.of("红色警戒", "任务"), 4002L, "红色警戒7", 5.6f, 360_000L, now - 3_600L);
+        indexTopicDocument("22", "红色警戒四复盘", List.of("红色警戒", "复盘"), 4003L, "红色警戒四", 5.3f, 300_000L, now - 5_400L);
+        client.performRequest(new Request("POST", "/" + TEST_INDEX + "/_refresh"));
+
+        String result = performRelatedOwners("""
+          {
+            "text": "红色警戒08",
+            "fields": ["title.words", "tags.words"],
+            "size": 6,
+            "scan_limit": 64,
+            "use_pinyin": true
+          }
+          """);
+
+        int owner1001 = result.indexOf("\"mid\":1001");
+        int owner1004 = result.indexOf("\"mid\":1004");
+        int owner1005 = result.indexOf("\"mid\":1005");
+
+        assertTrue(result, owner1001 >= 0);
+        assertTrue(result, owner1004 >= 0);
+        assertTrue(result, owner1005 >= 0);
+        assertTrue(result, owner1001 < owner1004);
+        assertTrue(result, owner1001 < owner1005);
+    }
+
+    @Test
     public void testRelatedOwnersUsesDescAndTokenExpansion() throws Exception {
         String result = performRelatedOwners("""
             {

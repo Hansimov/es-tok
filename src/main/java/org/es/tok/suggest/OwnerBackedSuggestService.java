@@ -85,16 +85,7 @@ public class OwnerBackedSuggestService {
             return List.of();
         }
 
-        Query query = buildAnalyzedOwnerQuery(fieldContexts, text);
-        if (query == null) {
-            return List.of();
-        }
-
         int hitLimit = Math.max(512, size * 96);
-        TopDocs topDocs = searcher.search(query, hitLimit);
-        if (topDocs.scoreDocs.length == 0) {
-            return List.of();
-        }
 
         SourceProvider sourceProvider = SourceProvider.fromLookup(
                 indexService.mapperService().mappingLookup(),
@@ -102,28 +93,53 @@ public class OwnerBackedSuggestService {
                 SourceFieldMetrics.NOOP);
         Map<Long, OwnerAccumulator> owners = new LinkedHashMap<>();
         long nowEpochSeconds = Instant.now().getEpochSecond();
+        List<String> queryVariants = ownerQueryVariants(text);
+        if (queryVariants.isEmpty()) {
+            return List.of();
+        }
 
-        boolean exactPrefixMatched = collectExactPrefixOwnerMatches(
-                searcher,
-                sourceProvider,
-                nowEpochSeconds,
-                text,
-                text,
-                Math.max(256, size * 64),
-                owners,
-                type,
-                6.0d);
+        List<Integer> exactPrefixMatchCounts = new ArrayList<>(queryVariants.size());
+        for (int index = 0; index < queryVariants.size(); index++) {
+            String queryVariant = queryVariants.get(index);
+            exactPrefixMatchCounts.add(collectExactPrefixOwnerMatches(
+                    searcher,
+                    sourceProvider,
+                    nowEpochSeconds,
+                    queryVariant,
+                    queryVariant,
+                    Math.max(256, size * 64),
+                    owners,
+                    type,
+                    index == 0 ? 6.0d : 4.4d));
+        }
 
-        if (!exactPrefixMatched || shouldUseAnalyzedFallback(text, owners.size(), size)) {
-            List<LeafReaderContext> leaves = searcher.getIndexReader().leaves();
-            double fallbackWeight = exactPrefixMatched ? 0.18d : 1.0d;
-            for (int rank = 0; rank < topDocs.scoreDocs.length; rank++) {
-                ScoreDoc scoreDoc = topDocs.scoreDocs[rank];
+        List<LeafReaderContext> leaves = searcher.getIndexReader().leaves();
+        for (int index = 0; index < queryVariants.size(); index++) {
+            String queryVariant = queryVariants.get(index);
+            int exactPrefixMatchCount = exactPrefixMatchCounts.get(index);
+            if (!shouldUseAnalyzedFallback(queryVariant, exactPrefixMatchCount, size)) {
+                continue;
+            }
+
+            Query variantQuery = buildAnalyzedOwnerQuery(fieldContexts, queryVariant);
+            if (variantQuery == null) {
+                continue;
+            }
+
+            TopDocs variantTopDocs = searcher.search(variantQuery, hitLimit);
+            if (variantTopDocs.scoreDocs.length == 0) {
+                continue;
+            }
+
+            double fallbackWeight = exactPrefixMatchCount > 0 ? 0.18d : 1.0d;
+            double branchWeight = index == 0 ? fallbackWeight : fallbackWeight * 0.72d;
+            for (int rank = 0; rank < variantTopDocs.scoreDocs.length; rank++) {
+                ScoreDoc scoreDoc = variantTopDocs.scoreDocs[rank];
                 int leafIndex = ReaderUtil.subIndex(scoreDoc.doc, leaves);
                 LeafReaderContext leaf = leaves.get(leafIndex);
                 int leafDocId = scoreDoc.doc - leaf.docBase;
                 Source source = sourceProvider.getSource(leaf, leafDocId);
-                collectOwnerHit(owners, scoreDoc.doc, source, text, nowEpochSeconds, scoreDoc.score, rank, true, type, fallbackWeight);
+                collectOwnerHit(owners, scoreDoc.doc, source, queryVariant, nowEpochSeconds, scoreDoc.score, rank, true, type, branchWeight);
             }
         }
 
@@ -171,7 +187,7 @@ public class OwnerBackedSuggestService {
                 .toList();
     }
 
-    private void collectOwnerHit(
+    private boolean collectOwnerHit(
             Map<Long, OwnerAccumulator> owners,
             int docId,
             Source source,
@@ -184,21 +200,25 @@ public class OwnerBackedSuggestService {
             double branchWeight) {
         Long mid = asLong(source.extractValue(OWNER_MID_SOURCE_PATH, null));
         if (mid == null) {
-            return;
+            return false;
         }
-        String ownerName = normalizeOwnerName(asString(source.extractValue(OWNER_NAME_SOURCE_PATH, null)));
+        String displayOwnerName = asString(source.extractValue(OWNER_NAME_SOURCE_PATH, null));
+        if (displayOwnerName == null || displayOwnerName.isBlank()) {
+            return false;
+        }
+        String ownerName = normalizeOwnerName(displayOwnerName);
         if (ownerName.isBlank()) {
-            return;
+            return false;
         }
 
         float matchScore = PinyinSupport.prefixMatchScore(queryText, ownerName);
         boolean strictFullPinyinQuery = PinyinSupport.isPinyinLikeQuery(queryText)
                 && PinyinSupport.isInitialsOnlyPinyinQuery(queryText) == false;
         if (strictFullPinyinQuery && PinyinSupport.fullPinyinPrefixMatch(queryText, ownerName) == false) {
-            return;
+            return false;
         }
         if (("prefix".equals(type) || "auto".equals(type)) && matchScore <= 0.0f) {
-            return;
+            return false;
         }
 
         double statScore = asDouble(source.extractValue(STAT_SCORE_SOURCE_PATH, null));
@@ -210,7 +230,7 @@ public class OwnerBackedSuggestService {
                 asString(source.extractValue(TITLE_SOURCE_PATH, null)),
                 source.extractValue(TAGS_SOURCE_PATH, null));
         if (shouldRejectStrictFullPinyinOwner(queryText, asciiLiteralPrefix, topicalAffinity)) {
-            return;
+            return false;
         }
         OwnerDocSignals docSignals = ownerDocSignals(
             queryText,
@@ -226,7 +246,8 @@ public class OwnerBackedSuggestService {
             useQueryRankSignal);
 
         owners.computeIfAbsent(mid, OwnerAccumulator::new)
-        .add(docId, ownerName, docSignals, branchWeight, type);
+        .add(docId, displayOwnerName, docSignals, branchWeight, type);
+        return true;
     }
 
     private static boolean shouldRejectStrictFullPinyinOwner(
@@ -267,7 +288,7 @@ public class OwnerBackedSuggestService {
         }
     }
 
-    private boolean collectExactPrefixOwnerMatches(
+    private int collectExactPrefixOwnerMatches(
             Engine.Searcher searcher,
             SourceProvider sourceProvider,
             long nowEpochSeconds,
@@ -279,27 +300,28 @@ public class OwnerBackedSuggestService {
             double branchWeight) throws IOException {
         List<String> variants = ownerNameVariants(text);
         if (variants.isEmpty()) {
-            return false;
+            return 0;
         }
 
-        boolean matched = false;
+        int matchedOwnerCount = 0;
         List<LeafReaderContext> leaves = searcher.getIndexReader().leaves();
         for (String variant : variants) {
             TopDocs topDocs = searcher.search(new PrefixQuery(new Term(OWNER_NAME_KEYWORD_FIELD, variant)), hitLimit);
             if (topDocs.scoreDocs.length == 0) {
                 continue;
             }
-            matched = true;
             for (int rank = 0; rank < topDocs.scoreDocs.length; rank++) {
                 ScoreDoc scoreDoc = topDocs.scoreDocs[rank];
                 int leafIndex = ReaderUtil.subIndex(scoreDoc.doc, leaves);
                 LeafReaderContext leaf = leaves.get(leafIndex);
                 int leafDocId = scoreDoc.doc - leaf.docBase;
                 Source source = sourceProvider.getSource(leaf, leafDocId);
-                collectOwnerHit(owners, scoreDoc.doc, source, queryText, nowEpochSeconds, scoreDoc.score + 1.0f, rank, false, type, branchWeight);
+                if (collectOwnerHit(owners, scoreDoc.doc, source, queryText, nowEpochSeconds, scoreDoc.score + 1.0f, rank, false, type, branchWeight)) {
+                    matchedOwnerCount++;
+                }
             }
         }
-        return matched;
+        return matchedOwnerCount;
     }
 
     private static Query ownerKeywordPrefixQuery(String candidateText) {
@@ -330,6 +352,86 @@ public class OwnerBackedSuggestService {
             return List.of(collapsed);
         }
         return List.of(collapsed, tightened);
+    }
+
+    private static List<String> ownerQueryVariants(String text) {
+        LinkedHashSet<String> variants = new LinkedHashSet<>();
+        String compactVariant = compactDigitBearingChineseAliasVariant(text);
+        if (compactVariant != null && !compactVariant.isBlank()) {
+            variants.addAll(ownerNameVariants(compactVariant));
+        }
+        variants.addAll(ownerNameVariants(text));
+        return List.copyOf(variants);
+    }
+
+    private static String compactDigitBearingChineseAliasVariant(String text) {
+        if (text == null || text.isBlank() || text.chars().anyMatch(Character::isWhitespace)) {
+            return null;
+        }
+
+        String normalized = TextNormalization.normalizeOwnerLookupName(text);
+        if (normalized.isBlank()) {
+            return null;
+        }
+
+        boolean hasDigits = normalized.chars().anyMatch(Character::isDigit);
+        if (!hasDigits) {
+            return null;
+        }
+
+        StringBuilder builder = new StringBuilder();
+        boolean changed = false;
+        for (int index = 0; index < normalized.length(); ) {
+            int codePoint = normalized.codePointAt(index);
+            if (Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN) {
+                int end = index + Character.charCount(codePoint);
+                while (end < normalized.length()) {
+                    int nextCodePoint = normalized.codePointAt(end);
+                    if (Character.UnicodeScript.of(nextCodePoint) != Character.UnicodeScript.HAN) {
+                        break;
+                    }
+                    end += Character.charCount(nextCodePoint);
+                }
+                String hanSegment = normalized.substring(index, end);
+                String compacted = compactEvenLengthChineseSegment(hanSegment);
+                if (!compacted.equals(hanSegment)) {
+                    changed = true;
+                }
+                builder.append(compacted);
+                index = end;
+                continue;
+            }
+            builder.appendCodePoint(codePoint);
+            index += Character.charCount(codePoint);
+        }
+
+        String variant = builder.toString();
+        if (!changed || variant.equals(normalized)) {
+            return null;
+        }
+        return variant;
+    }
+
+    private static String compactEvenLengthChineseSegment(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        int codePointLength = text.codePointCount(0, text.length());
+        if (codePointLength < 4 || codePointLength > 8 || (codePointLength % 2) != 0) {
+            return text;
+        }
+
+        StringBuilder builder = new StringBuilder();
+        int logicalIndex = 0;
+        for (int index = 0; index < text.length(); ) {
+            int codePoint = text.codePointAt(index);
+            if ((logicalIndex % 2) == 0) {
+                builder.appendCodePoint(codePoint);
+            }
+            logicalIndex++;
+            index += Character.charCount(codePoint);
+        }
+        return builder.toString();
     }
 
     private List<FieldContext> resolveFieldContexts(IndexService indexService, Collection<String> fields) {
@@ -664,6 +766,9 @@ public class OwnerBackedSuggestService {
             if (chineseQuery && PinyinSupport.isAsciiAlphaNumericQuery(term)) {
                 continue;
             }
+            if (chineseQuery && containsChineseAndDigits(term)) {
+                continue;
+            }
             boolean covered = false;
             for (String existing : selected) {
                 if (existing.contains(term)) {
@@ -679,6 +784,25 @@ public class OwnerBackedSuggestService {
             return List.of(TextNormalization.normalizeLower(text));
         }
         return selected;
+    }
+
+    private static boolean containsChineseAndDigits(String text) {
+        boolean hasChinese = false;
+        boolean hasDigits = false;
+        for (int index = 0; index < text.length(); ) {
+            int codePoint = text.codePointAt(index);
+            index += Character.charCount(codePoint);
+            if (Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN) {
+                hasChinese = true;
+            }
+            if (Character.isDigit(codePoint)) {
+                hasDigits = true;
+            }
+            if (hasChinese && hasDigits) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String normalizeOwnerName(String value) {
