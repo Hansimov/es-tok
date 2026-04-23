@@ -78,7 +78,7 @@ public class EsTokSuggestRequest extends BroadcastRequest<EsTokSuggestRequest> {
         }
         if (isSupportedMode(mode) == false) {
             validationException = ValidateActions.addValidationError(
-                "mode must be 'prefix', 'associate', 'correction' or 'auto'",
+                "mode must be 'prefix', 'associate', 'correction', 'auto' or 'semantic'",
                     validationException);
         }
         if (correctionMaxEdits < 1 || correctionMaxEdits > 2) {
@@ -251,7 +251,8 @@ public class EsTokSuggestRequest extends BroadcastRequest<EsTokSuggestRequest> {
             || "associate".equals(mode)
                 || "next_token".equals(mode)
                 || "correction".equals(mode)
-                || "auto".equals(mode);
+                || "auto".equals(mode)
+                || "semantic".equals(mode);
     }
 
     @Override

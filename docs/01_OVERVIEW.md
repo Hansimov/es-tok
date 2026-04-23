@@ -58,7 +58,7 @@ ES-TOK 统一处理以下分析配置：
 
 其中：
 
-- `related_tokens_by_tokens` 面向 prefix、associate、next token、correction、auto 五类 token 关系检索。
+- `related_tokens_by_tokens` 面向 prefix、associate、next token、correction、auto、semantic 六类 token 关系检索。
 - `related_owners_by_tokens` 面向输入文本到相关 UP 主的聚合和排序。
 
 旧兼容别名已经移除，文档和测试也以 canonical 路径为准。

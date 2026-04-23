@@ -156,6 +156,7 @@ public class SuggestRestTest {
         indexDocument("10", "战鹰");
         indexDocument("21", "红警 的 吧 吗 教学");
         indexDocument("22", "红警 教学 实战");
+        indexDocument("23", "袁启 采访 访谈 专访");
         indexOwnerDocument("11", 1L, "影视飓风", 88.0f, 5_000_000L, 1_710_000_000L);
         indexOwnerDocument("12", 1L, "影视飓风", 72.0f, 3_000_000L, 1_710_000_100L);
         indexOwnerDocument("13", 2L, "影视剧风", 12.0f, 200_000L, 1_710_000_000L);
@@ -571,6 +572,25 @@ public class SuggestRestTest {
         assertTrue(result.contains("\"text\":\"影视飓风\""));
         assertTrue(result.contains("\"type\":\"associate\""));
         assertFalse(result.contains("\"type\":\"correction\""));
+      }
+
+      @Test
+      public void testSemanticModeEmitsRuleBackedInterviewExpansion() throws Exception {
+        String query = """
+            {
+              "text": "袁启 专访",
+              "mode": "semantic",
+              "fields": ["content"],
+              "size": 6,
+              "scan_limit": 64,
+              "use_pinyin": true
+            }
+            """;
+
+        String result = performSuggest(query);
+
+        assertTrue(result, result.contains("\"text\":\"袁启 采访\""));
+        assertTrue(result, result.contains("\"type\":\"rewrite\"") || result.contains("\"type\":\"synonym\""));
       }
 
     private void indexDocument(String id, String content) throws Exception {

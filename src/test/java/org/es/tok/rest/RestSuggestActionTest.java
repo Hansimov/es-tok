@@ -95,6 +95,21 @@ public class RestSuggestActionTest {
     }
 
     @Test
+    public void testSemanticModeParametersAreParsed() {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("text", "袁启 专访");
+        payload.put("mode", "semantic");
+        payload.put("fields", List.of("content"));
+        payload.put("size", 6);
+
+        EsTokSuggestRequest request = RestSuggestAction.buildRequest(payload, new String[] { "idx" });
+
+        assertEquals("semantic", request.mode());
+        assertEquals(6, request.size());
+        assertEquals(List.of("content"), request.fields());
+    }
+
+    @Test
     public void testChinesePinyinRequestLowersImplicitCorrectionMinLength() {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("text", "俞利均");

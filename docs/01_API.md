@@ -174,7 +174,7 @@ GET|POST /{index}/_es_tok/related_tokens_by_tokens
 | 字段 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
 | `text` | string | 无 | 查询文本；仅 `prewarm_pinyin=true` 时可为空 |
-| `mode` | string | `prefix` | `prefix`、`associate`、`next_token`、`correction`、`auto` |
+| `mode` | string | `prefix` | `prefix`、`associate`、`next_token`、`correction`、`auto`、`semantic` |
 | `fields` | string[] 或逗号分隔 string | 无 | 必填，token 关系字段列表 |
 | `size` | integer | `5` | 返回候选数 |
 | `scan_limit` | integer | `64` | 扫描候选上限 |
@@ -194,6 +194,7 @@ GET|POST /{index}/_es_tok/related_tokens_by_tokens
 
 - `associate` 使用 source-backed topic association，从命中的 source 文本里回收主题相关 token。
 - `auto` 先聚合 `prefix` / `next_token` / `correction` 等 direct completion 分支，再只对主文本追加一次 `associate` 兜底，避免在 fallback 文本上重复做高成本关联扫描。
+- `semantic` 在 `auto` 基础上继续合入资源驱动的 rewrite / synonym / near-synonym 扩展，并强制补一条 co-occurrence 分支，适合别名、同义表述和同主题高频共现词的统一扩展。
 
 ### 响应字段
 

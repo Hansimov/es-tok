@@ -233,11 +233,13 @@ GET|POST /{index}/_es_tok/related_tokens_by_tokens
 - `next_token`
 - `correction`
 - `auto`
+- `semantic`
 
 语义约定：
 
 - `associate` 会从请求字段对应的 source 文本中回扫主题关联词，不再是 `next_token` 结果的重标记。
 - `auto` 会先合并 direct completion 分支；当主文本不是典型前缀输入时，还会追加一次 `associate` 兜底，因此更适合完整标题或较长文本。
+- `semantic` 会把 `auto`、人工 rewrite / synonym / near-synonym 资源，以及 source-backed co-occurrence 合并成一个统一扩展结果，更适合别名、近义表达和语义补召回。
 
 ### Prefix 示例
 
@@ -293,6 +295,20 @@ POST /bili_videos_dev6/_es_tok/related_tokens_by_tokens
   "size": 8,
   "use_pinyin": true,
   "cache": true
+}
+```
+
+### Semantic 示例
+
+```json
+POST /bili_videos_dev6/_es_tok/related_tokens_by_tokens
+{
+  "text": "袁启 专访",
+  "mode": "semantic",
+  "fields": ["title.suggest", "tags.suggest"],
+  "size": 8,
+  "scan_limit": 96,
+  "use_pinyin": true
 }
 ```
 
