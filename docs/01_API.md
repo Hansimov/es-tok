@@ -194,7 +194,9 @@ GET|POST /{index}/_es_tok/related_tokens_by_tokens
 
 - `associate` 使用 source-backed topic association，从命中的 source 文本里回收主题相关 token。
 - `auto` 先聚合 `prefix` / `next_token` / `correction` 等 direct completion 分支，再只对主文本追加一次 `associate` 兜底，避免在 fallback 文本上重复做高成本关联扫描。
-- `semantic` 在 `auto` 基础上继续合入资源驱动的 rewrite / synonym / near-synonym 扩展，并强制补一条 co-occurrence 分支，适合别名、同义表述和同主题高频共现词的统一扩展。
+- `semantic` 在 `auto` 基础上继续合入 compact semantic bundle 中的 `rewrite / synonym / near_synonym / doc_cooccurrence` 扩展，并强制补一条 source-backed co-occurrence 分支，适合别名、同义表述和同主题高频共现词的统一扩展。
+
+semantic bundle 的加载优先级为 JVM 参数 `es.tok.semantics.path`、环境变量 `ES_TOK_SEMANTICS_PATH`、插件目录 `semantics/v1/merged`、开发态相邻仓库、插件内置兜底资源。调用接口时响应结构保持不变，`options[].type` 会继续暴露主导关系类型。
 
 ### 响应字段
 

@@ -10,18 +10,18 @@ import java.util.List;
 import java.util.Map;
 
 public class SemanticQueryExpansionSuggester {
-    private final QueryExpansionTuning tuning;
+    private final SemanticExpansionStore store;
 
     public SemanticQueryExpansionSuggester() {
-        this(QueryExpansionTuning.instance());
+        this(SemanticArtifactStore.instance());
     }
 
-    SemanticQueryExpansionSuggester(QueryExpansionTuning tuning) {
-        this.tuning = tuning;
+    SemanticQueryExpansionSuggester(SemanticExpansionStore store) {
+        this.store = store;
     }
 
     public List<SuggestionOption> suggest(String text, int size) {
-        String normalizedSurface = QueryExpansionTuning.normalizeSurface(text);
+        String normalizedSurface = SemanticExpansionStore.normalizeSurface(text);
         if (normalizedSurface.isBlank() || size <= 0) {
             return List.of();
         }
@@ -34,7 +34,10 @@ public class SemanticQueryExpansionSuggester {
         if (parts.size() > 1) {
             for (int index = 0; index < parts.size(); index++) {
                 String part = parts.get(index);
-                for (QueryExpansionTuning.ExpansionRule rule : tuning.expansions(part)) {
+                for (SemanticExpansionStore.SemanticExpansionRule rule : store.expansions(part)) {
+                    if (!isComposableRelation(rule.type())) {
+                        continue;
+                    }
                     List<String> replaced = new ArrayList<>(parts);
                     replaced.set(index, rule.text());
                     addCandidate(candidates, String.join(" ", replaced), rule.type(), rule.weight() * 0.98f);
@@ -53,7 +56,7 @@ public class SemanticQueryExpansionSuggester {
         Map<String, ExpansionAccumulator> candidates,
         String normalizedSurface,
         float boost) {
-        for (QueryExpansionTuning.ExpansionRule rule : tuning.expansions(normalizedSurface)) {
+        for (SemanticExpansionStore.SemanticExpansionRule rule : store.expansions(normalizedSurface)) {
             addCandidate(candidates, rule.text(), rule.type(), rule.weight() * boost);
         }
     }
@@ -62,11 +65,14 @@ public class SemanticQueryExpansionSuggester {
         Map<String, ExpansionAccumulator> candidates,
         String normalizedSurface,
         float boost) {
-        for (String matchedTerm : tuning.matchingTerms(normalizedSurface)) {
+        for (String matchedTerm : store.matchingTerms(normalizedSurface)) {
             if (matchedTerm.equals(normalizedSurface)) {
                 continue;
             }
-            for (QueryExpansionTuning.ExpansionRule rule : tuning.expansions(matchedTerm)) {
+            for (SemanticExpansionStore.SemanticExpansionRule rule : store.expansions(matchedTerm)) {
+                if (!isComposableRelation(rule.type())) {
+                    continue;
+                }
                 String replaced = replaceSurface(normalizedSurface, matchedTerm, rule.text());
                 addCandidate(candidates, replaced, rule.type(), rule.weight() * boost);
             }
@@ -78,7 +84,7 @@ public class SemanticQueryExpansionSuggester {
         String candidateText,
         String type,
         float weight) {
-        String normalizedCandidate = QueryExpansionTuning.normalizeSurface(candidateText);
+        String normalizedCandidate = SemanticExpansionStore.normalizeSurface(candidateText);
         if (normalizedCandidate.isBlank() || weight <= 0.0f) {
             return;
         }
@@ -114,6 +120,10 @@ public class SemanticQueryExpansionSuggester {
             }
         }
         return surface.replace(source, target);
+    }
+
+    private static boolean isComposableRelation(String type) {
+        return "rewrite".equals(type) || "synonym".equals(type) || "near_synonym".equals(type);
     }
 
     private static final class ExpansionAccumulator {
