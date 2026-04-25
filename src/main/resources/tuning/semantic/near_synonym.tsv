@@ -1,9 +1,2 @@
-开箱	上手	0.82	体验	0.82
-上手	开箱	0.82	体验	0.82
-体验	开箱	0.82	上手	0.82
-解析	解读	0.78	盘点	0.78
-解读	解析	0.78	盘点	0.78
-盘点	解析	0.78	解读	0.78
-整活	搞笑	0.74	沙雕	0.74
-搞笑	整活	0.74	沙雕	0.74
-沙雕	整活	0.74	搞笑	0.74
+# Generated semantic data belongs in the external bili-search-algo bundle.
+# The bundled fallback is intentionally empty to avoid hand-picked case rules.

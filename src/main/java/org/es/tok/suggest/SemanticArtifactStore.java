@@ -30,6 +30,18 @@ public final class SemanticArtifactStore implements SemanticExpansionStore {
         return INSTANCE;
     }
 
+    public static boolean isEnabled() {
+        String propertyValue = System.getProperty("es.tok.semantics.enabled");
+        if (propertyValue != null && !propertyValue.isBlank()) {
+            return Boolean.parseBoolean(propertyValue);
+        }
+        String envValue = System.getenv("ES_TOK_SEMANTICS_ENABLED");
+        if (envValue != null && !envValue.isBlank()) {
+            return Boolean.parseBoolean(envValue);
+        }
+        return true;
+    }
+
     public SemanticArtifactStore(Map<String, List<SemanticExpansionRule>> expansionsBySurface, String sourceDescription) {
         this.expansionsBySurface = Map.copyOf(expansionsBySurface);
         this.orderedKeys = this.expansionsBySurface.keySet().stream()
@@ -72,6 +84,9 @@ public final class SemanticArtifactStore implements SemanticExpansionStore {
     }
 
     static SemanticArtifactStore loadDefault() {
+        if (!isEnabled()) {
+            return new SemanticArtifactStore(Map.of(), "disabled");
+        }
         for (Path path : candidateExternalPaths()) {
             if (isReadableBundle(path)) {
                 try {

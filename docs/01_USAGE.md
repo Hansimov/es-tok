@@ -249,7 +249,7 @@ python -m models.semantics --version v1 --num-groups 10 build --input-jsonl <doc
 python -m models.semantics --version v1 --num-groups 10 merge --min-df 2 --min-cooc 2
 ```
 
-重载插件时，`/home/asimov/repos/es-tok/load.sh -a` 会把 `data/semantics/v1/merged` 复制到 ES 插件目录。也可以用 `ES_TOK_SEMANTICS_PATH` 或 JVM 参数 `-Des.tok.semantics.path=...` 指向其他 bundle。
+重载插件时，`/home/asimov/repos/es-tok/load.sh -a` 会把 `data/semantics/v1/merged` 复制到 ES 插件目录。也可以用 `ES_TOK_SEMANTICS_PATH` 或 JVM 参数 `-Des.tok.semantics.path=...` 指向其他 bundle。需要 A/B 或回滚时，设置 `ES_TOK_SEMANTICS_ENABLED=false` 或 `-Des.tok.semantics.enabled=false`，`semantic` 模式会退回到 `auto`。
 
 ### Prefix 示例
 

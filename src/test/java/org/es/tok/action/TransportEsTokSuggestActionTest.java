@@ -66,4 +66,20 @@ public class TransportEsTokSuggestActionTest {
 
         assertEquals(List.of("元启专访", "采访"), filtered.stream().map(LuceneIndexSuggester.SuggestionOption::text).toList());
     }
+
+    @Test
+    public void testFilterSemanticAutoOptionsDropsPrefixNoiseWhenRewriteExists() {
+        List<LuceneIndexSuggester.SuggestionOption> filtered = TransportEsTokSuggestAction.filterSemanticAutoOptions(
+            "康夫 ui 教程",
+            List.of(
+                new LuceneIndexSuggester.SuggestionOption("comfyui 教程", 1, 128.0f, "rewrite"),
+                new LuceneIndexSuggester.SuggestionOption("康夫 ui 指南", 1, 120.0f, "synonym")),
+            List.of(
+                new LuceneIndexSuggester.SuggestionOption("康夫", 23, 120.0f, "prefix"),
+                new LuceneIndexSuggester.SuggestionOption("康夫吹风机", 20, 100.0f, "prefix"),
+                new LuceneIndexSuggester.SuggestionOption("康夫 ui 教程", 8, 80.0f, "prefix"),
+                new LuceneIndexSuggester.SuggestionOption("comfyui 教程", 8, 70.0f, "prefix")));
+
+        assertEquals(List.of("康夫 ui 教程", "comfyui 教程"), filtered.stream().map(LuceneIndexSuggester.SuggestionOption::text).toList());
+    }
 }

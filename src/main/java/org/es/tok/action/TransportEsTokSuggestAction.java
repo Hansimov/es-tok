@@ -30,6 +30,7 @@ import org.es.tok.suggest.OwnerBackedSuggestService;
 import org.es.tok.suggest.PinyinSupport;
 import org.es.tok.suggest.AutoSuggestTextVariants;
 import org.es.tok.suggest.SemanticQueryExpansionSuggester;
+import org.es.tok.suggest.SemanticArtifactStore;
 import org.es.tok.suggest.SourceBackedAssociateSuggester;
 import org.es.tok.text.TextNormalization;
 
@@ -280,6 +281,17 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
                 false);
         }
         if ("semantic".equals(mode)) {
+            if (!SemanticArtifactStore.isEnabled()) {
+                return executeAutoSuggest(
+                    searcher,
+                    reader,
+                    indexService,
+                    request,
+                    suggestFields,
+                    associateFields,
+                    completionConfig,
+                    correctionConfig);
+            }
             return executeSemanticSuggest(
                 searcher,
                 reader,
@@ -787,8 +799,14 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         if (anchors.isEmpty()) {
             return autoOptions;
         }
+        LinkedHashSet<String> fullAnchors = semanticFullAnchorTerms(text, ruleOptions);
         return autoOptions.stream()
-            .filter(option -> !"associate".equals(option.type()) || semanticCandidateMatchesAnchors(option.text(), anchors))
+            .filter(option -> {
+                if ("prefix".equals(option.type())) {
+                    return semanticCandidateMatchesFullAnchors(option.text(), fullAnchors);
+                }
+                return !"associate".equals(option.type()) || semanticCandidateMatchesAnchors(option.text(), anchors);
+            })
             .toList();
         }
 
@@ -821,6 +839,25 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         return anchors;
         }
 
+        private static LinkedHashSet<String> semanticFullAnchorTerms(
+            String text,
+            List<LuceneIndexSuggester.SuggestionOption> ruleOptions) {
+        LinkedHashSet<String> anchors = new LinkedHashSet<>();
+        String normalizedText = normalizeSemanticSurface(text);
+        if (!normalizedText.isBlank()) {
+            anchors.add(normalizedText);
+        }
+        if (ruleOptions != null) {
+            for (LuceneIndexSuggester.SuggestionOption option : ruleOptions) {
+                String normalizedOption = normalizeSemanticSurface(option.text());
+                if (!normalizedOption.isBlank()) {
+                    anchors.add(normalizedOption);
+                }
+            }
+        }
+        return anchors;
+        }
+
         private static void addSemanticAnchorTerms(Set<String> anchors, String surface) {
         String normalized = normalizeSemanticSurface(surface);
         if (normalized.isBlank()) {
@@ -843,6 +880,19 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             if (anchor.equals(normalizedCandidate)
                 || anchor.contains(normalizedCandidate)
                 || normalizedCandidate.contains(anchor)) {
+                return true;
+            }
+        }
+        return false;
+        }
+
+        private static boolean semanticCandidateMatchesFullAnchors(String candidate, Set<String> anchors) {
+        String normalizedCandidate = normalizeSemanticSurface(candidate);
+        if (normalizedCandidate.isBlank()) {
+            return false;
+        }
+        for (String anchor : anchors) {
+            if (anchor.equals(normalizedCandidate) || normalizedCandidate.contains(anchor)) {
                 return true;
             }
         }

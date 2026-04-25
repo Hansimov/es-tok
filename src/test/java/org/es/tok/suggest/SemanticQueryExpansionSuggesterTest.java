@@ -14,7 +14,12 @@ public class SemanticQueryExpansionSuggesterTest {
 
     @Test
     public void testWhitespaceQueryExpandsInterviewVariants() {
-        SemanticQueryExpansionSuggester suggester = new SemanticQueryExpansionSuggester();
+        SemanticExpansionStore store = new MapBackedSemanticExpansionStore(Map.of(
+            "专访", List.of(
+                new SemanticExpansionStore.SemanticExpansionRule("采访", "rewrite", 1.0f),
+                new SemanticExpansionStore.SemanticExpansionRule("访谈", "rewrite", 1.0f))
+        ));
+        SemanticQueryExpansionSuggester suggester = new SemanticQueryExpansionSuggester(store);
 
         List<SuggestionOption> options = suggester.suggest("袁启 专访", 8);
         List<String> texts = options.stream().map(SuggestionOption::text).toList();
@@ -25,7 +30,10 @@ public class SemanticQueryExpansionSuggesterTest {
 
     @Test
     public void testContinuousChineseQueryExpandsEmbeddedInterviewTerm() {
-        SemanticQueryExpansionSuggester suggester = new SemanticQueryExpansionSuggester();
+        SemanticExpansionStore store = new MapBackedSemanticExpansionStore(Map.of(
+            "专访", List.of(new SemanticExpansionStore.SemanticExpansionRule("采访", "rewrite", 1.0f))
+        ));
+        SemanticQueryExpansionSuggester suggester = new SemanticQueryExpansionSuggester(store);
 
         List<SuggestionOption> options = suggester.suggest("袁启专访", 6);
         List<String> texts = options.stream().map(SuggestionOption::text).toList();
@@ -35,7 +43,12 @@ public class SemanticQueryExpansionSuggesterTest {
 
     @Test
     public void testNearSynonymCandidatesExposeNearSynonymType() {
-        SemanticQueryExpansionSuggester suggester = new SemanticQueryExpansionSuggester();
+        SemanticExpansionStore store = new MapBackedSemanticExpansionStore(Map.of(
+            "开箱", List.of(
+                new SemanticExpansionStore.SemanticExpansionRule("上手", "near_synonym", 0.82f),
+                new SemanticExpansionStore.SemanticExpansionRule("体验", "near_synonym", 0.82f))
+        ));
+        SemanticQueryExpansionSuggester suggester = new SemanticQueryExpansionSuggester(store);
 
         List<SuggestionOption> options = suggester.suggest("开箱", 6);
 
