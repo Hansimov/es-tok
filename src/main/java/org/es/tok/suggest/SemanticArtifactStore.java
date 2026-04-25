@@ -224,12 +224,33 @@ public final class SemanticArtifactStore implements SemanticExpansionStore {
         }
         Map<String, SemanticExpansionRule> expansions = bySurface.computeIfAbsent(source, ignored -> new LinkedHashMap<>());
         SemanticExpansionRule existing = expansions.get(target);
-        if (existing == null || existing.weight() < weight) {
+        if (existing == null) {
+            expansions.put(target, new SemanticExpansionRule(target, type, weight));
+            return;
+        }
+        if (relationPriority(type) > relationPriority(existing.type())) {
+            expansions.put(target, new SemanticExpansionRule(target, type, weight));
+            return;
+        }
+        if (relationPriority(type) < relationPriority(existing.type())) {
+            return;
+        }
+        if (existing.weight() < weight) {
             expansions.put(target, new SemanticExpansionRule(target, type, weight));
             return;
         }
         if (existing.weight() == weight && existing.type().compareToIgnoreCase(type) > 0) {
             expansions.put(target, new SemanticExpansionRule(target, type, weight));
         }
+    }
+
+    private static int relationPriority(String type) {
+        return switch (type) {
+            case "rewrite" -> 4;
+            case "synonym" -> 3;
+            case "near_synonym" -> 2;
+            case "doc_cooccurrence" -> 1;
+            default -> 0;
+        };
     }
 }

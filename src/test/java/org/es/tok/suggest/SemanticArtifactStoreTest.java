@@ -28,4 +28,19 @@ public class SemanticArtifactStoreTest {
 
         assertEquals("comfyui", store.expansions("康夫UI").get(0).text());
     }
+
+    @Test
+    public void testComposableRelationKeepsPriorityOverDocCooccurrence() throws Exception {
+        Path directory = Files.createTempDirectory("semantic-artifacts-priority");
+        Files.writeString(directory.resolve("synonym.tsv"), "显卡\tgpu\t0.79\n");
+        Files.writeString(directory.resolve("doc_cooccurrence.tsv"), "显卡\tgpu\t0.96\n");
+
+        SemanticArtifactStore store = SemanticArtifactStore.loadFromDirectory(directory);
+
+        List<SemanticExpansionStore.SemanticExpansionRule> rules = store.expansions("显卡");
+        assertEquals(1, rules.size());
+        assertEquals("gpu", rules.get(0).text());
+        assertEquals("synonym", rules.get(0).type());
+        assertEquals(0.79f, rules.get(0).weight(), 0.0001f);
+    }
 }
