@@ -49,15 +49,7 @@ ES-TOK 统一处理以下分析配置：
 
 其中 `es_tok_query_string` 已经完成破坏性收口：它不再兼容 Lucene `query_string` 的语法族，而是只保留项目需要的最小文本表达能力。调用方如果还在传 `type`、`lenient`、wildcard/regexp/fuzziness 相关参数，或者在 query 文本里继续依赖 `field:term`、`foo*`、`[a TO b]` 之类写法，都需要迁移。
 
-`semantic` token 扩展模式只加载 `bili-search-algo` 生成的 compact semantic bundle，不再保留旧的语义 JSON 大文件兼容层。配置类 tuning 仍使用 JSON，批量数据类资源使用 TSV：`relation_tuning.json`、`related_owner_query_profile.json` 是小型配置；semantic bundle 按 `rewrite / synonym / near_synonym / doc_cooccurrence` 四个 TSV 文件拆分，每行格式为 `source target weight ...`。默认加载顺序是：
-
-1. JVM 参数 `-Des.tok.semantics.path=...`
-2. 环境变量 `ES_TOK_SEMANTICS_PATH`
-3. 插件目录 `/usr/share/elasticsearch/plugins/es_tok/semantics/v1/merged`
-4. 开发态相邻仓库 `../bili-search-algo/data/semantics/v1/merged`
-5. 插件内置的 `src/main/resources/tuning/semantic/*.tsv` 兜底资源
-
-如果需要做 A/B 或回滚，可用 JVM 参数 `-Des.tok.semantics.enabled=false` 或环境变量 `ES_TOK_SEMANTICS_ENABLED=false` 关闭 semantic bundle；此时 `mode=semantic` 会回退到 `auto` 路径。插件内置 semantic TSV 默认保持空兜底，避免手工 case rule 污染真实数据生成结果。
+`semantic` token 扩展模式已下线。REST 请求仍接受 `mode=semantic` 作为兼容输入，但执行层会直接映射到 `auto`，不加载 `bili-search-algo` 生成的 compact semantic bundle，也不读取任何 semantic TSV 资产。配置类 tuning 仍使用 JSON；当前保留的资源只有 `relation_tuning.json` 和 `related_owner_query_profile.json` 这类小型配置。
 
 ### 文本相关接口
 
@@ -68,7 +60,7 @@ ES-TOK 统一处理以下分析配置：
 
 其中：
 
-- `related_tokens_by_tokens` 面向 prefix、associate、next token、correction、auto、semantic 六类 token 关系检索。
+- `related_tokens_by_tokens` 面向 prefix、associate、next token、correction、auto 五类 token 关系检索；`semantic` 仅作为兼容别名映射到 `auto`。
 - `related_owners_by_tokens` 面向输入文本到相关 UP 主的聚合和排序。
 
 旧兼容别名已经移除，文档和测试也以 canonical 路径为准。
@@ -94,9 +86,9 @@ ES-TOK 统一处理以下分析配置：
 - 查询侧逻辑
 - 关系排序逻辑
 - 共享文本清洗、停用片段、query-time 规则
-- 纯资源调参文件，包括 semantic bundle
+- 纯资源调参文件
 
-这类改动通常只需要重新构建并通过 `./load.sh -a` 让节点加载新插件，再做真实请求验证。`load.sh` 会在复制插件时尝试把 `$HOME/repos/bili-search-algo/data/semantics/v1/merged` 复制到插件目录；如果不存在，则使用插件包内置的兜底 TSV。
+这类改动通常只需要重新构建并通过 `./load.sh -a` 让节点加载新插件，再做真实请求验证。
 
 ### 什么时候需要重建索引
 

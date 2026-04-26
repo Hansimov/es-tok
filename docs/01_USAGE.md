@@ -233,23 +233,13 @@ GET|POST /{index}/_es_tok/related_tokens_by_tokens
 - `next_token`
 - `correction`
 - `auto`
-- `semantic`
+- `semantic`（兼容输入，执行时映射到 `auto`）
 
 语义约定：
 
 - `associate` 会从请求字段对应的 source 文本中回扫主题关联词，不再是 `next_token` 结果的重标记。
 - `auto` 会先合并 direct completion 分支；当主文本不是典型前缀输入时，还会追加一次 `associate` 兜底，因此更适合完整标题或较长文本。
-- `semantic` 会把 `auto`、compact semantic bundle 中的 rewrite / synonym / near_synonym / doc_cooccurrence，以及 source-backed co-occurrence 合并成一个统一扩展结果，更适合别名、近义表达和语义补召回。
-
-semantic bundle 由 `bili-search-algo/models/semantics` 生成，默认开发路径是：
-
-```bash
-cd /home/asimov/repos/bili-search-algo
-python -m models.semantics --version v1 --num-groups 10 build --input-jsonl <docs.jsonl>
-python -m models.semantics --version v1 --num-groups 10 merge --min-df 2 --min-cooc 2
-```
-
-重载插件时，`/home/asimov/repos/es-tok/load.sh -a` 会把 `data/semantics/v1/merged` 复制到 ES 插件目录。也可以用 `ES_TOK_SEMANTICS_PATH` 或 JVM 参数 `-Des.tok.semantics.path=...` 指向其他 bundle。需要 A/B 或回滚时，设置 `ES_TOK_SEMANTICS_ENABLED=false` 或 `-Des.tok.semantics.enabled=false`，`semantic` 模式会退回到 `auto`。
+- `semantic` 已下线。请求仍可传入 `mode=semantic` 以兼容旧调用方，但返回和执行逻辑等价于 `auto`；插件不再加载 compact semantic bundle，也不再打包 `src/main/resources/tuning/semantic/*.tsv`。
 
 ### Prefix 示例
 
@@ -308,7 +298,7 @@ POST /bili_videos_dev6/_es_tok/related_tokens_by_tokens
 }
 ```
 
-### Semantic 示例
+### Semantic 兼容示例
 
 ```json
 POST /bili_videos_dev6/_es_tok/related_tokens_by_tokens
@@ -321,6 +311,8 @@ POST /bili_videos_dev6/_es_tok/related_tokens_by_tokens
   "use_pinyin": true
 }
 ```
+
+该请求会按 `auto` 执行，响应中的 `mode` 也是 `auto`。
 
 常用参数：
 

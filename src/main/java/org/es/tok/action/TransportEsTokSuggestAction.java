@@ -29,10 +29,7 @@ import org.es.tok.suggest.LuceneIndexSuggester;
 import org.es.tok.suggest.OwnerBackedSuggestService;
 import org.es.tok.suggest.PinyinSupport;
 import org.es.tok.suggest.AutoSuggestTextVariants;
-import org.es.tok.suggest.SemanticQueryExpansionSuggester;
-import org.es.tok.suggest.SemanticArtifactStore;
 import org.es.tok.suggest.SourceBackedAssociateSuggester;
-import org.es.tok.text.TextNormalization;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -55,7 +52,6 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
     private final CachedShardSuggestService suggestService;
     private final OwnerBackedSuggestService ownerSuggestService;
     private final SourceBackedAssociateSuggester associateSuggester;
-    private final SemanticQueryExpansionSuggester semanticExpansionSuggester;
 
     @Inject
     public TransportEsTokSuggestAction(
@@ -74,8 +70,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
                 indicesService,
                 new CachedShardSuggestService(),
                 new OwnerBackedSuggestService(),
-                new SourceBackedAssociateSuggester(),
-                new SemanticQueryExpansionSuggester());
+                new SourceBackedAssociateSuggester());
     }
 
     TransportEsTokSuggestAction(
@@ -87,8 +82,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             IndicesService indicesService,
             CachedShardSuggestService suggestService,
             OwnerBackedSuggestService ownerSuggestService,
-            SourceBackedAssociateSuggester associateSuggester,
-            SemanticQueryExpansionSuggester semanticExpansionSuggester) {
+            SourceBackedAssociateSuggester associateSuggester) {
         super(
                 EsTokSuggestAction.NAME,
                 clusterService,
@@ -103,7 +97,6 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         this.suggestService = suggestService;
         this.ownerSuggestService = ownerSuggestService;
         this.associateSuggester = associateSuggester;
-        this.semanticExpansionSuggester = semanticExpansionSuggester;
     }
 
     @Override
@@ -158,7 +151,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
 
         return new EsTokSuggestResponse(
                 request.text(),
-                request.mode(),
+                responseMode(request.mode()),
                 request.limitedFields(),
                 merged,
                 cacheHitCount,
@@ -166,6 +159,10 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
                 successfulShards,
                 failedShards,
                 shardFailures);
+    }
+
+    private static String responseMode(String mode) {
+        return normalizeMode(mode);
     }
 
     @Override
@@ -280,28 +277,6 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
                     completionConfig),
                 false);
         }
-        if ("semantic".equals(mode)) {
-            if (!SemanticArtifactStore.isEnabled()) {
-                return executeAutoSuggest(
-                    searcher,
-                    reader,
-                    indexService,
-                    request,
-                    suggestFields,
-                    associateFields,
-                    completionConfig,
-                    correctionConfig);
-            }
-            return executeSemanticSuggest(
-                searcher,
-                reader,
-                indexService,
-                request,
-                suggestFields,
-                associateFields,
-                completionConfig,
-                correctionConfig);
-        }
         if ("auto".equals(mode)) {
             return executeAutoSuggest(
                 searcher,
@@ -323,63 +298,6 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             correctionConfig,
             request.useCache());
         return new ShardSuggestExecution(result.options(), result.cacheHit());
-        }
-
-        private ShardSuggestExecution executeSemanticSuggest(
-            Engine.Searcher searcher,
-            IndexReader reader,
-            IndexService indexService,
-            ShardEsTokSuggestRequest request,
-            List<String> suggestFields,
-            List<String> associateFields,
-            LuceneIndexSuggester.CompletionConfig completionConfig,
-            LuceneIndexSuggester.CorrectionConfig correctionConfig) throws IOException {
-        ShardSuggestExecution autoExecution = executeAutoSuggest(
-            searcher,
-            reader,
-            indexService,
-            request,
-            suggestFields,
-            associateFields,
-            completionConfig,
-            correctionConfig);
-        LuceneIndexSuggester.CompletionConfig cooccurrenceConfig = new LuceneIndexSuggester.CompletionConfig(
-            completionConfig.size(),
-            Math.min(completionConfig.scanLimit(), 48),
-            completionConfig.minPrefixLength(),
-            completionConfig.minCandidateLength(),
-            completionConfig.allowCompactBigrams(),
-            completionConfig.usePinyin());
-        List<LuceneIndexSuggester.SuggestionOption> cooccurrenceOptions = associateFields == null || associateFields.isEmpty()
-            ? List.of()
-            : retypeOptions(
-                associateSuggester.suggestAssociate(
-                    searcher,
-                    indexService,
-                    associateFields,
-                    request.text(),
-                    cooccurrenceConfig),
-                "cooccurrence");
-        List<LuceneIndexSuggester.SuggestionOption> ruleOptions = semanticExpansionSuggester.suggest(
-            request.text(),
-            Math.max(request.size(), request.size() * 2));
-        List<LuceneIndexSuggester.SuggestionOption> autoOptions = filterSemanticAutoOptions(
-            request.text(),
-            ruleOptions,
-            autoExecution.options());
-        cooccurrenceOptions = filterSemanticCooccurrenceOptions(
-            request.text(),
-            ruleOptions,
-            cooccurrenceOptions);
-        return new ShardSuggestExecution(
-            mergeSemantic(
-                autoOptions,
-                cooccurrenceOptions,
-                ruleOptions,
-                request.size(),
-                request.text(),
-                request.usePinyin()),
-            autoExecution.cacheHit());
         }
 
         private ShardSuggestExecution executeAutoSuggest(
@@ -587,6 +505,9 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         }
 
         private static String normalizeMode(String mode) {
+        if ("semantic".equals(mode)) {
+            return "auto";
+        }
         return mode;
         }
 
@@ -641,28 +562,6 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             .toList();
         }
 
-        private static List<LuceneIndexSuggester.SuggestionOption> mergeSemantic(
-            List<LuceneIndexSuggester.SuggestionOption> autoOptions,
-            List<LuceneIndexSuggester.SuggestionOption> cooccurrenceOptions,
-            List<LuceneIndexSuggester.SuggestionOption> ruleOptions,
-            int size,
-            String text,
-            boolean usePinyin) {
-        Map<String, AutoAccumulator> merged = new HashMap<>();
-        mergeSemanticOptions(merged, autoOptions, text, usePinyin);
-        mergeSemanticBranch(
-            merged,
-            cooccurrenceOptions,
-            semanticBranchWeight("cooccurrence", text, usePinyin),
-            "cooccurrence");
-        mergeSemanticOptions(merged, ruleOptions, text, usePinyin);
-        return merged.values().stream()
-            .sorted(AutoAccumulator.ORDER)
-            .limit(size)
-            .map(AutoAccumulator::toOption)
-            .toList();
-        }
-
         private static void mergeAutoOptions(
             Map<String, AutoAccumulator> merged,
             List<LuceneIndexSuggester.SuggestionOption> options,
@@ -676,27 +575,6 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
         }
         for (Map.Entry<String, List<LuceneIndexSuggester.SuggestionOption>> entry : byType.entrySet()) {
             mergeAutoBranch(merged, entry.getValue(), variantWeight, entry.getKey());
-        }
-        }
-
-        private static void mergeSemanticOptions(
-            Map<String, AutoAccumulator> merged,
-            List<LuceneIndexSuggester.SuggestionOption> options,
-            String text,
-            boolean usePinyin) {
-        if (options.isEmpty()) {
-            return;
-        }
-        Map<String, List<LuceneIndexSuggester.SuggestionOption>> byType = new HashMap<>();
-        for (LuceneIndexSuggester.SuggestionOption option : options) {
-            byType.computeIfAbsent(option.type(), ignored -> new ArrayList<>()).add(option);
-        }
-        for (Map.Entry<String, List<LuceneIndexSuggester.SuggestionOption>> entry : byType.entrySet()) {
-            mergeSemanticBranch(
-                merged,
-                entry.getValue(),
-                semanticBranchWeight(entry.getKey(), text, usePinyin),
-                entry.getKey());
         }
         }
 
@@ -765,163 +643,6 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             return 0.0f;
         }
         return 0.9f;
-        }
-
-        private static float semanticBranchWeight(String type, String text, boolean usePinyin) {
-        return switch (type) {
-            case "rewrite" -> 1.28f;
-            case "synonym" -> 1.15f;
-            case "near_synonym" -> 0.98f;
-            case "cooccurrence" -> usePinyin && PinyinSupport.isPinyinLikeQuery(text) ? 0.0f : 0.94f;
-            case "correction" -> usePinyin && PinyinSupport.isPinyinLikeQuery(text) ? 1.16f : 0.96f;
-            case "associate" -> usePinyin && PinyinSupport.isPinyinLikeQuery(text) ? 0.0f : 0.88f;
-            case "prefix" -> usePinyin && PinyinSupport.isPinyinLikeQuery(text) ? 1.22f : 1.0f;
-            default -> 1.0f;
-        };
-        }
-
-        private static void mergeSemanticBranch(
-            Map<String, AutoAccumulator> merged,
-            List<LuceneIndexSuggester.SuggestionOption> options,
-            float weight,
-            String sourceType) {
-        mergeAutoBranch(merged, options, weight, sourceType);
-        }
-
-        static List<LuceneIndexSuggester.SuggestionOption> filterSemanticAutoOptions(
-            String text,
-            List<LuceneIndexSuggester.SuggestionOption> ruleOptions,
-            List<LuceneIndexSuggester.SuggestionOption> autoOptions) {
-        if (autoOptions == null || autoOptions.isEmpty()) {
-            return List.of();
-        }
-        LinkedHashSet<String> anchors = semanticAnchorTerms(text, ruleOptions);
-        if (anchors.isEmpty()) {
-            return autoOptions;
-        }
-        LinkedHashSet<String> fullAnchors = semanticFullAnchorTerms(text, ruleOptions);
-        return autoOptions.stream()
-            .filter(option -> {
-                if ("prefix".equals(option.type())) {
-                    return semanticCandidateMatchesFullAnchors(option.text(), fullAnchors);
-                }
-                return !"associate".equals(option.type()) || semanticCandidateMatchesAnchors(option.text(), anchors);
-            })
-            .toList();
-        }
-
-        static List<LuceneIndexSuggester.SuggestionOption> filterSemanticCooccurrenceOptions(
-            String text,
-            List<LuceneIndexSuggester.SuggestionOption> ruleOptions,
-            List<LuceneIndexSuggester.SuggestionOption> cooccurrenceOptions) {
-        if (cooccurrenceOptions == null || cooccurrenceOptions.isEmpty()) {
-            return List.of();
-        }
-        LinkedHashSet<String> anchors = semanticAnchorTerms(text, ruleOptions);
-        if (anchors.isEmpty()) {
-            return cooccurrenceOptions;
-        }
-        return cooccurrenceOptions.stream()
-            .filter(option -> semanticCandidateMatchesAnchors(option.text(), anchors))
-            .toList();
-        }
-
-        private static LinkedHashSet<String> semanticAnchorTerms(
-            String text,
-            List<LuceneIndexSuggester.SuggestionOption> ruleOptions) {
-        LinkedHashSet<String> anchors = new LinkedHashSet<>();
-        addSemanticAnchorTerms(anchors, text);
-        if (ruleOptions != null) {
-            for (LuceneIndexSuggester.SuggestionOption option : ruleOptions) {
-                addSemanticAnchorTerms(anchors, option.text());
-            }
-        }
-        return anchors;
-        }
-
-        private static LinkedHashSet<String> semanticFullAnchorTerms(
-            String text,
-            List<LuceneIndexSuggester.SuggestionOption> ruleOptions) {
-        LinkedHashSet<String> anchors = new LinkedHashSet<>();
-        String normalizedText = normalizeSemanticSurface(text);
-        if (!normalizedText.isBlank()) {
-            anchors.add(normalizedText);
-        }
-        if (ruleOptions != null) {
-            for (LuceneIndexSuggester.SuggestionOption option : ruleOptions) {
-                String normalizedOption = normalizeSemanticSurface(option.text());
-                if (!normalizedOption.isBlank()) {
-                    anchors.add(normalizedOption);
-                }
-            }
-        }
-        return anchors;
-        }
-
-        private static void addSemanticAnchorTerms(Set<String> anchors, String surface) {
-        String normalized = normalizeSemanticSurface(surface);
-        if (normalized.isBlank()) {
-            return;
-        }
-        anchors.add(normalized);
-        for (String part : normalized.split(" ")) {
-            if (!part.isBlank()) {
-                anchors.add(part);
-            }
-        }
-        }
-
-        private static boolean semanticCandidateMatchesAnchors(String candidate, Set<String> anchors) {
-        String normalizedCandidate = normalizeSemanticSurface(candidate);
-        if (normalizedCandidate.isBlank()) {
-            return false;
-        }
-        for (String anchor : anchors) {
-            if (anchor.equals(normalizedCandidate)
-                || anchor.contains(normalizedCandidate)
-                || normalizedCandidate.contains(anchor)) {
-                return true;
-            }
-        }
-        return false;
-        }
-
-        private static boolean semanticCandidateMatchesFullAnchors(String candidate, Set<String> anchors) {
-        String normalizedCandidate = normalizeSemanticSurface(candidate);
-        if (normalizedCandidate.isBlank()) {
-            return false;
-        }
-        for (String anchor : anchors) {
-            if (anchor.equals(normalizedCandidate) || normalizedCandidate.contains(anchor)) {
-                return true;
-            }
-        }
-        return false;
-        }
-
-        private static String normalizeSemanticSurface(String surface) {
-        if (surface == null || surface.isBlank()) {
-            return "";
-        }
-        List<String> normalizedParts = new ArrayList<>();
-        for (String rawPart : surface.trim().split("\\s+")) {
-            String normalized = TextNormalization.normalizeAnalyzedToken(rawPart);
-            if (!normalized.isBlank()) {
-                normalizedParts.add(normalized);
-            }
-        }
-        return String.join(" ", normalizedParts);
-        }
-
-        private static List<LuceneIndexSuggester.SuggestionOption> retypeOptions(
-            List<LuceneIndexSuggester.SuggestionOption> options,
-            String type) {
-        if (options.isEmpty()) {
-            return List.of();
-        }
-        return options.stream()
-            .map(option -> new LuceneIndexSuggester.SuggestionOption(option.text(), option.docFreq(), option.score(), type))
-            .toList();
         }
 
         private static void mergeAutoBranch(

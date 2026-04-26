@@ -78,7 +78,7 @@ public class EsTokSuggestRequest extends BroadcastRequest<EsTokSuggestRequest> {
         }
         if (isSupportedMode(mode) == false) {
             validationException = ValidateActions.addValidationError(
-                "mode must be 'prefix', 'associate', 'correction', 'auto' or 'semantic'",
+                "mode must be 'prefix', 'associate', 'correction', 'auto'; 'semantic' is accepted as an auto alias",
                     validationException);
         }
         if (correctionMaxEdits < 1 || correctionMaxEdits > 2) {

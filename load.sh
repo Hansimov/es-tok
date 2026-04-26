@@ -4,7 +4,6 @@ export PLUGIN_VERSION=1.0.0
 export ES_VERSION=9.2.4
 export ES_NODE="es01"
 export BUILT_ZIP_PATH="$HOME/repos/es-tok/build/distributions/$PLUGIN_NAME-$PLUGIN_VERSION.zip"
-export SEMANTICS_BUNDLE_PATH="${SEMANTICS_BUNDLE_PATH:-$HOME/repos/bili-search-algo/data/semantics/v1/merged}"
 # export VOCAB_TXT="$HOME/repos/bili-search-algo/models/sentencepiece/vocabs.txt"
 
 # parse cli args
@@ -77,19 +76,6 @@ if [ "$IS_COPY" = true ]; then
     fi
     unzip $BUILT_ZIP_PATH -d $ES_PLUGIN_PATH
     echo "+ Unzip success!"
-
-    if [ -d "$SEMANTICS_BUNDLE_PATH" ]; then
-        echo "> Copy semantic bundle to elasticsearch plugin"
-        echo "  * from: $SEMANTICS_BUNDLE_PATH"
-        echo "  *   to: $ES_PLUGIN_PATH/semantics/v1/merged"
-        mkdir -p "$ES_PLUGIN_PATH/semantics/v1"
-        rm -rf "$ES_PLUGIN_PATH/semantics/v1/merged"
-        cp -r "$SEMANTICS_BUNDLE_PATH" "$ES_PLUGIN_PATH/semantics/v1/merged"
-        rm -f "$ES_PLUGIN_PATH/semantics/v1/merged/edges.tsv" "$ES_PLUGIN_PATH/semantics/v1/merged/.merge.sqlite"
-        echo "+ Semantic bundle copy success!"
-    else
-        echo "> Semantic bundle not found, using bundled fallback resources: $SEMANTICS_BUNDLE_PATH"
-    fi
 
     # echo "cp $VOCAB_TXT $ES_PLUGIN_PATH/vocabs.txt"
     # cp $VOCAB_TXT $ES_PLUGIN_PATH/vocabs.txt

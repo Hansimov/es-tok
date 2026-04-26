@@ -575,7 +575,7 @@ public class SuggestRestTest {
       }
 
       @Test
-      public void testSemanticModeEmitsRuleBackedInterviewExpansion() throws Exception {
+      public void testSemanticModeFallsBackToAuto() throws Exception {
         String query = """
             {
               "text": "袁启 专访",
@@ -589,8 +589,9 @@ public class SuggestRestTest {
 
         String result = performSuggest(query);
 
-        assertTrue(result, result.contains("\"text\":\"袁启 采访\""));
-        assertTrue(result, result.contains("\"type\":\"rewrite\"") || result.contains("\"type\":\"synonym\""));
+        assertTrue(result, result.contains("\"mode\":\"auto\""));
+        assertFalse(result, result.contains("\"type\":\"rewrite\""));
+        assertFalse(result, result.contains("\"type\":\"synonym\""));
       }
 
     private void indexDocument(String id, String content) throws Exception {

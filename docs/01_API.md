@@ -174,7 +174,7 @@ GET|POST /{index}/_es_tok/related_tokens_by_tokens
 | 字段 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
 | `text` | string | 无 | 查询文本；仅 `prewarm_pinyin=true` 时可为空 |
-| `mode` | string | `prefix` | `prefix`、`associate`、`next_token`、`correction`、`auto`、`semantic` |
+| `mode` | string | `prefix` | `prefix`、`associate`、`next_token`、`correction`、`auto`；`semantic` 兼容输入会映射到 `auto` |
 | `fields` | string[] 或逗号分隔 string | 无 | 必填，token 关系字段列表 |
 | `size` | integer | `5` | 返回候选数 |
 | `scan_limit` | integer | `64` | 扫描候选上限 |
@@ -194,9 +194,7 @@ GET|POST /{index}/_es_tok/related_tokens_by_tokens
 
 - `associate` 使用 source-backed topic association，从命中的 source 文本里回收主题相关 token。
 - `auto` 先聚合 `prefix` / `next_token` / `correction` 等 direct completion 分支，再只对主文本追加一次 `associate` 兜底，避免在 fallback 文本上重复做高成本关联扫描。
-- `semantic` 在 `auto` 基础上继续合入 compact semantic bundle 中的 `rewrite / synonym / near_synonym / doc_cooccurrence` 扩展，并强制补一条 source-backed co-occurrence 分支，适合别名、同义表述和同主题高频共现词的统一扩展。
-
-semantic bundle 的加载优先级为 JVM 参数 `es.tok.semantics.path`、环境变量 `ES_TOK_SEMANTICS_PATH`、插件目录 `semantics/v1/merged`、开发态相邻仓库、插件内置兜底资源。调用接口时响应结构保持不变，`options[].type` 会继续暴露主导关系类型。需要 A/B 或回滚时，可设置 `-Des.tok.semantics.enabled=false` 或 `ES_TOK_SEMANTICS_ENABLED=false`，此时 `mode=semantic` 会回退到 `auto`。
+- `semantic` 已下线；请求仍可传入该值以兼容旧调用方，但响应 `mode` 会是 `auto`，执行层不会加载 semantic bundle 或合入 semantic 资产。
 
 ### 响应字段
 
