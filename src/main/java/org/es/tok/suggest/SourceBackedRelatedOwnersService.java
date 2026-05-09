@@ -81,44 +81,11 @@ public class SourceBackedRelatedOwnersService {
             return List.of();
         }
 
-        LinkedHashSet<String> seedTerms = analyzeSeedTerms(fieldContexts, sanitizedText);
-        if (seedTerms.isEmpty()) {
-            String normalized = TextNormalization.normalizeLower(sanitizedText);
-            if (RelatedOwnerQueryTuning.isUsefulSeedTerm(normalized)) {
-                seedTerms.add(normalized);
-            }
-        }
-        List<String> selectedTerms = selectQueryTerms(seedTerms, sanitizedText);
-        if (selectedTerms.isEmpty()) {
-            return List.of();
-        }
-        List<SeedTermProfile> seedTermProfiles = buildSeedTermProfiles(searcher, fieldContexts, selectedTerms);
-        List<String> expansionTerms = RelatedOwnerQueryTuning.shouldExpandTopicTerms(sanitizedText, selectedTerms.size())
-            ? expandTopicTerms(searcher, indexService, fields, sanitizedText, seedTerms, scanLimit)
-            : List.of();
         List<OwnerBackedSuggestService.OwnerIntentAnchor> ownerIntentAnchors = searchOwnerIntentAnchors(
             searcher,
             indexService,
             sanitizedText,
             size);
-
-        TopDocs topDocs = null;
-        for (RelatedOwnerQueryTuning.QueryPlan plan : RelatedOwnerQueryTuning.buildQueryPlans(sanitizedText, selectedTerms.size())) {
-            Query query = buildTopicQuery(fieldContexts, seedTermProfiles, expansionTerms, plan.minimumSeedMatches());
-            if (query == null) {
-                continue;
-            }
-            TopDocs candidateTopDocs = searcher.search(
-                    query,
-                    RelatedOwnerQueryTuning.candidateDocLimit(size, scanLimit, selectedTerms.size(), plan.minimumSeedMatches()));
-            if (candidateTopDocs.scoreDocs.length > 0) {
-                topDocs = candidateTopDocs;
-                break;
-            }
-        }
-        if (topDocs == null || topDocs.scoreDocs.length == 0) {
-            return mergeOwnerIntentAnchors(List.of(), ownerIntentAnchors, sanitizedText, size);
-        }
 
         SourceProvider sourceProvider = SourceProvider.fromLookup(
                 indexService.mapperService().mappingLookup(),
@@ -127,13 +94,53 @@ public class SourceBackedRelatedOwnersService {
         Map<Long, RelatedOwnerAccumulator> owners = new LinkedHashMap<>();
         List<LeafReaderContext> leaves = searcher.getIndexReader().leaves();
         long nowEpochSeconds = RelatedOwnerQueryTuning.nowEpochSeconds();
-        for (int rank = 0; rank < topDocs.scoreDocs.length; rank++) {
-            ScoreDoc scoreDoc = topDocs.scoreDocs[rank];
-            int leafIndex = ReaderUtil.subIndex(scoreDoc.doc, leaves);
-            LeafReaderContext leaf = leaves.get(leafIndex);
-            int leafDocId = scoreDoc.doc - leaf.docBase;
-            Source source = sourceProvider.getSource(leaf, leafDocId);
-            collectOwnerHit(owners, scoreDoc.doc, source, fieldContexts, seedTermProfiles, nowEpochSeconds, scoreDoc.score, rank);
+        for (QueryVariant queryVariant : relatedOwnerTopicVariants(sanitizedText)) {
+            LinkedHashSet<String> seedTerms = analyzeSeedTerms(fieldContexts, queryVariant.text());
+            if (seedTerms.isEmpty()) {
+                String normalized = TextNormalization.normalizeLower(queryVariant.text());
+                if (RelatedOwnerQueryTuning.isUsefulSeedTerm(normalized)) {
+                    seedTerms.add(normalized);
+                }
+            }
+            List<String> selectedTerms = selectQueryTerms(seedTerms, queryVariant.text());
+            if (selectedTerms.isEmpty()) {
+                continue;
+            }
+            List<SeedTermProfile> seedTermProfiles = buildSeedTermProfiles(searcher, fieldContexts, selectedTerms);
+            if (seedTermProfiles.isEmpty()) {
+                continue;
+            }
+            List<String> expansionTerms = RelatedOwnerQueryTuning.shouldExpandTopicTerms(queryVariant.text(), selectedTerms.size())
+                ? expandTopicTerms(searcher, indexService, fields, queryVariant.text(), seedTerms, scanLimit)
+                : List.of();
+            TopDocs topDocs = null;
+            for (RelatedOwnerQueryTuning.QueryPlan plan : RelatedOwnerQueryTuning.buildQueryPlans(queryVariant.text(), selectedTerms.size())) {
+                Query query = buildTopicQuery(fieldContexts, seedTermProfiles, expansionTerms, plan.minimumSeedMatches());
+                if (query == null) {
+                    continue;
+                }
+                TopDocs candidateTopDocs = searcher.search(
+                        query,
+                        RelatedOwnerQueryTuning.candidateDocLimit(size, scanLimit, selectedTerms.size(), plan.minimumSeedMatches()));
+                if (candidateTopDocs.scoreDocs.length > 0) {
+                    topDocs = candidateTopDocs;
+                    break;
+                }
+            }
+            if (topDocs == null || topDocs.scoreDocs.length == 0) {
+                continue;
+            }
+            for (int rank = 0; rank < topDocs.scoreDocs.length; rank++) {
+                ScoreDoc scoreDoc = topDocs.scoreDocs[rank];
+                int leafIndex = ReaderUtil.subIndex(scoreDoc.doc, leaves);
+                LeafReaderContext leaf = leaves.get(leafIndex);
+                int leafDocId = scoreDoc.doc - leaf.docBase;
+                Source source = sourceProvider.getSource(leaf, leafDocId);
+                collectOwnerHit(owners, scoreDoc.doc, source, fieldContexts, seedTermProfiles, nowEpochSeconds, scoreDoc.score, rank);
+            }
+        }
+        if (owners.isEmpty()) {
+            return mergeOwnerIntentAnchors(List.of(), ownerIntentAnchors, sanitizedText, size);
         }
 
         List<RelatedOwnerResult> rankedOwners = owners.values().stream()
@@ -141,6 +148,19 @@ public class SourceBackedRelatedOwnersService {
                 .map(RelatedOwnerAccumulator::toResult)
                 .toList();
         return mergeOwnerIntentAnchors(rankedOwners, ownerIntentAnchors, sanitizedText, size);
+    }
+
+    private static List<QueryVariant> relatedOwnerTopicVariants(String text) {
+        if (text == null || text.isBlank()) {
+            return List.of();
+        }
+        LinkedHashSet<String> variants = new LinkedHashSet<>();
+        variants.add(text);
+        variants.addAll(RelatedOwnerTopicVariantRules.variantsFor(text));
+        return variants.stream()
+                .filter(variant -> variant != null && !variant.isBlank())
+                .map(QueryVariant::new)
+                .toList();
     }
 
     private List<OwnerBackedSuggestService.OwnerIntentAnchor> searchOwnerIntentAnchors(
@@ -656,6 +676,9 @@ public class SourceBackedRelatedOwnersService {
     }
 
     private record FieldContext(String indexField, String sourcePath, Analyzer analyzer) {
+    }
+
+    private record QueryVariant(String text) {
     }
 
     record RelatedOwnerDocSignals(

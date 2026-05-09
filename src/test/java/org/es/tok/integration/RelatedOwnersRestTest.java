@@ -264,6 +264,22 @@ public class RelatedOwnersRestTest {
         assertTrue(result, coverageOwner < singleExplosiveOwner);
     }
 
+    @Test
+    public void testRelatedOwnersExpandsCommonRedAlertTopicAlias() throws Exception {
+        String result = performRelatedOwners("""
+            {
+              "text": "红色警戒",
+              "fields": ["title.words", "tags.words"],
+              "size": 6,
+              "scan_limit": 64,
+              "use_pinyin": true
+            }
+            """);
+
+        assertTrue(result, result.contains("\"mid\":1001"));
+        assertTrue(result, result.contains("\"mid\":1005"));
+    }
+
       @Test
       public void testRelatedOwnersUsesOwnerIntentAnchorForAliasLikeQuery() throws Exception {
         String result = performRelatedOwners("""

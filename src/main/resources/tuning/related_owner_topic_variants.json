@@ -1,0 +1,13 @@
+{
+    "schema": "es_tok.related_owner_topic_variants",
+    "schema_version": 1,
+    "prefix_aliases": [
+        {
+            "source_prefix": "红色警戒",
+            "target_prefix": "红警",
+            "allow_empty_suffix": true,
+            "allowed_han_suffixes": ["二", "三"],
+            "reason": "Bilibili Red Alert content commonly uses the compact topic form 红警, while users may type the full game title 红色警戒."
+        }
+    ]
+}
