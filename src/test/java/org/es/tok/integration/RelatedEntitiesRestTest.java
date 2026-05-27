@@ -96,7 +96,7 @@ public class RelatedEntitiesRestTest {
 
           List<Map<String, Object>> videos = parseItems(result, "videos");
 
-          assertEquals(result, "AV1", videos.get(0).get("bvid"));
+          assertFalse(result, result.contains("\"bvid\":\"AV1\""));
           assertTrue(result, result.contains("\"bvid\":\"AV2\""));
           assertTrue(result, result.contains("\"bvid\":\"BV1\""));
         assertFalse(result, result.contains("\"bvid\":\"av2\""));
@@ -166,7 +166,7 @@ public class RelatedEntitiesRestTest {
 
           List<Map<String, Object>> owners = parseItems(result, "owners");
 
-          assertEquals(result, 3001, ((Number) owners.get(0).get("mid")).intValue());
+          assertFalse(result, result.contains("\"mid\":3001"));
         assertTrue(result, result.contains("\"mid\":3002"));
         assertFalse(result, result.contains("\"mid\":4001"));
     }
@@ -187,7 +187,7 @@ public class RelatedEntitiesRestTest {
               .map(video -> String.valueOf(video.get("bvid")))
               .toList();
 
-          assertTrue(result, topBvids.contains("AV1"));
+          assertFalse(result, topBvids.contains("AV1"));
           assertTrue(result, topBvids.contains("AV2") || topBvids.contains("AV4"));
         }
 

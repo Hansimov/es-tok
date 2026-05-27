@@ -258,12 +258,12 @@ GET|POST /{index}/_es_tok/related_owners_by_tokens
     "successful": 1,
     "failed": 0
   },
-  "text": "红色警戒月亮3高清对战",
+  "text": "甲乙丙丁3高清对战",
   "fields": ["title.words", "tags.words", "desc.words"],
   "owners": [
     {
       "mid": 546195,
-      "name": "月亮3",
+      "name": "示例作者3",
       "doc_freq": 18,
       "score": 71.3,
       "shard_count": 1
@@ -323,9 +323,9 @@ GET|POST /{index}/_es_tok/...
 
 当前 graph relation 的结果约定额外包括：
 
-- `related_videos_by_videos` 会把 seed 视频自身作为首个 anchor 返回，同时尽量把同作者视频纳入候选。
+- `related_videos_by_videos` 会排除 seed 视频自身，同时尽量把同作者且 token overlap 更强的视频纳入候选。
 - `related_owners_by_videos` 会把 seed 视频的作者作为首个 anchor 返回。
-- `related_owners_by_owners` 会把 seed owner 自身作为首个 anchor 返回，再补充其他相关 owner。
+- `related_owners_by_owners` 会排除 seed owner 自身，再返回其他相关 owner。
 
 视频候选项字段：
 
@@ -506,7 +506,7 @@ bridge 至少需要 `text` 字段；其余字段会继续传给 ES-TOK 配置加
 请求：
 ```json
 {
-    "text": "红警HBK08",
+    "text": "甲丙AB12",
     "use_vocab": false,
     "use_categ": true,
     "categ_config": {

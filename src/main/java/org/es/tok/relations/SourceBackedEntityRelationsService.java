@@ -40,7 +40,6 @@ import java.util.Map;
 import java.util.Set;
 
 public class SourceBackedEntityRelationsService {
-    private static final float SEED_VIDEO_ANCHOR_SCORE = 10_000.0f;
     private static final float SEED_OWNER_ANCHOR_SCORE = 10_000.0f;
     private static final String BVID_SOURCE_PATH = "bvid";
     private static final String TITLE_SOURCE_PATH = "title";
@@ -577,20 +576,11 @@ public class SourceBackedEntityRelationsService {
         Map<Long, Integer> ownerCounts = new HashMap<>();
         List<VideoAccumulator> remaining = new ArrayList<>(ordered);
         if (EsTokEntityRelationRequest.RELATED_VIDEOS_BY_VIDEOS.equals(relation)) {
-            int anchorIndex = 0;
-            for (SeedVideo seedVideo : seedContext.seedVideos()) {
-                if (selected.size() >= size) {
-                    break;
-                }
-                selected.add(seedVideo.toResult(SEED_VIDEO_ANCHOR_SCORE - anchorIndex));
-                ownerCounts.merge(seedVideo.ownerMid(), 1, Integer::sum);
-                anchorIndex++;
-            }
             int reservedSameOwnerSlots = Math.min(
-                    size - selected.size(),
+                    size,
                     Math.min(
                             (int) remaining.stream().filter(candidate -> seedContext.containsOwnerMid(candidate.ownerMid())).count(),
-                            Math.max(1, Math.min(seedContext.seedOwnerMids().size() * 2, Math.max(1, (size - selected.size()) / 2)))));
+                            Math.max(1, Math.min(seedContext.seedOwnerMids().size() * 2, Math.max(1, size / 2)))));
             selectBestVideos(
                     relationProfile,
                     remaining,
@@ -667,14 +657,16 @@ public class SourceBackedEntityRelationsService {
 
         List<RelatedOwnerResult> results = new ArrayList<>();
         Set<Long> seenOwnerMids = new LinkedHashSet<>();
-        int anchorIndex = 0;
-        for (SeedOwner seedOwner : seedContext.seedOwners()) {
-            if (results.size() >= size) {
-                break;
+        if (EsTokEntityRelationRequest.RELATED_OWNERS_BY_VIDEOS.equals(relation)) {
+            int anchorIndex = 0;
+            for (SeedOwner seedOwner : seedContext.seedOwners()) {
+                if (results.size() >= size) {
+                    break;
+                }
+                results.add(seedOwner.toResult(SEED_OWNER_ANCHOR_SCORE - anchorIndex));
+                seenOwnerMids.add(seedOwner.mid());
+                anchorIndex++;
             }
-            results.add(seedOwner.toResult(SEED_OWNER_ANCHOR_SCORE - anchorIndex));
-            seenOwnerMids.add(seedOwner.mid());
-            anchorIndex++;
         }
         for (OwnerAccumulator accumulator : ordered) {
             if (seenOwnerMids.contains(accumulator.mid())) {

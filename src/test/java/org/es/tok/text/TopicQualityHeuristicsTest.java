@@ -29,6 +29,17 @@ public class TopicQualityHeuristicsTest {
     }
 
     @Test
+    public void testSanitizeQueryTextRemovesUserIntentFragments() {
+        String sanitized = TopicQualityHeuristics.sanitizeQueryText("我想看宅舞有哪些，最近几期怎么玩");
+
+        assertFalse(sanitized.contains("我想看"));
+        assertFalse(sanitized.contains("有哪些"));
+        assertFalse(sanitized.contains("最近几期"));
+        assertFalse(sanitized.contains("怎么玩"));
+        assertTrue(sanitized.contains("宅舞"));
+    }
+
+    @Test
     public void testSanitizeQueryTextStripsFormatCharacters() {
         String sanitized = TopicQualityHeuristics.sanitizeQueryText("\u2063 https://t.me/anemoya_chan");
 
@@ -39,6 +50,8 @@ public class TopicQualityHeuristicsTest {
     public void testOwnerSeedTermRejectsBoilerplateCjkTerm() {
         assertFalse(TopicQualityHeuristics.isUsefulOwnerQuerySeedTerm("最新视频"));
         assertFalse(TopicQualityHeuristics.isUsefulOwnerQuerySeedTerm("视频"));
+        assertFalse(TopicQualityHeuristics.isUsefulOwnerQuerySeedTerm("哪些"));
+        assertFalse(TopicQualityHeuristics.isUsefulOwnerQuerySeedTerm("最近"));
         assertTrue(TopicQualityHeuristics.isUsefulOwnerQuerySeedTerm("黑神话"));
     }
 

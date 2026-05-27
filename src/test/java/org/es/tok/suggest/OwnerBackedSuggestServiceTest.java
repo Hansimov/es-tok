@@ -33,14 +33,14 @@ public class OwnerBackedSuggestServiceTest {
 
     @SuppressWarnings("unchecked")
     @Test
-    public void testOwnerQueryVariantsPrioritizesCompactAliasVariant() throws Exception {
+    public void testOwnerQueryVariantsPrioritizesCompactStructuralVariant() throws Exception {
         Method method = OwnerBackedSuggestService.class.getDeclaredMethod(
                 "ownerQueryVariants",
                 String.class);
         method.setAccessible(true);
 
-        List<String> variants = (List<String>) method.invoke(null, "红色警戒08");
+        List<String> variants = (List<String>) method.invoke(null, "甲乙丙丁08");
 
-        assertEquals(List.of("红警08", "红色警戒08"), variants);
+        assertEquals(List.of("甲丙08", "甲乙丙丁08"), variants);
     }
 }

@@ -4,6 +4,7 @@ import argparse
 import base64
 import json
 import ssl
+import sys
 import time
 import urllib.parse
 import urllib.request
@@ -158,11 +159,46 @@ def build_text_variants(doc: dict) -> list[dict]:
     return deduped
 
 
-def build_auth_header(user: str, password: str) -> str | None:
+def build_auth_header(user: str, password: str, api_key: str = "") -> str | None:
+    if api_key:
+        return f"ApiKey {api_key}"
     if not user:
         return None
     token = base64.b64encode(f"{user}:{password}".encode("utf-8")).decode("ascii")
     return f"Basic {token}"
+
+
+def apply_bili_search_env(args) -> None:
+    env_name = str(args.bili_search_env or "").strip()
+    if not env_name:
+        return
+    repo_path = Path(args.bili_search_repo).expanduser().resolve()
+    if str(repo_path) not in sys.path:
+        sys.path.insert(0, str(repo_path))
+    try:
+        from configs.envs import SECRETS
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to import bili-search configs from {repo_path}: {exc}"
+        ) from exc
+    envs = SECRETS.secrets.get(env_name) if hasattr(SECRETS, "secrets") else None
+    if not isinstance(envs, dict):
+        raise RuntimeError(f"Missing bili-search elastic env: {env_name}")
+    endpoint = str(envs.get("endpoint") or "").strip()
+    if endpoint:
+        parsed = urllib.parse.urlparse(endpoint)
+        if parsed.scheme:
+            args.scheme = parsed.scheme
+        if parsed.hostname:
+            args.host = parsed.hostname
+        if parsed.port:
+            args.port = str(parsed.port)
+    args.user = str(envs.get("username") or envs.get("user") or args.user or "")
+    args.password = str(envs.get("password") or args.password or "")
+    args.api_key = str(envs.get("api_key") or args.api_key or "")
+    ca_certs = str(envs.get("ca_certs") or "").strip()
+    if ca_certs:
+        args.ca_cert = str((repo_path / ca_certs).resolve())
 
 
 def request_json(
@@ -433,7 +469,10 @@ def summarize_token_response(case: dict, response: dict, latency_ms: float):
     ]
     notes = []
     anomalies = []
-    if not options:
+    if is_expected_empty_text_case(case):
+        if not options:
+            notes.append("empty_query")
+    elif not options:
         anomalies.append("no_results")
     elif not overlap:
         notes.append("weak_topic_overlap")
@@ -454,7 +493,10 @@ def summarize_owner_response(case: dict, response: dict, latency_ms: float):
     mids = [owner.get("mid") for owner in owners]
     notes = []
     anomalies = []
-    if not owners:
+    if is_expected_empty_text_case(case):
+        if not owners:
+            notes.append("empty_query")
+    elif not owners:
         anomalies.append("no_results")
     elif seed_mid and seed_mid not in mids[:5]:
         notes.append("seed_owner_missing")
@@ -467,6 +509,10 @@ def summarize_owner_response(case: dict, response: dict, latency_ms: float):
         "notes": notes,
         "top_mids": mids[:5],
     }
+
+
+def is_expected_empty_text_case(case: dict) -> bool:
+    return case.get("variant") == "curated_url"
 
 
 def evaluate_cases(
@@ -720,6 +766,17 @@ def main():
     parser.add_argument("--scheme", default="https")
     parser.add_argument("--user", default="elastic")
     parser.add_argument("--password", default="")
+    parser.add_argument("--api-key", default="")
+    parser.add_argument(
+        "--bili-search-env",
+        default="",
+        help="Read elastic connection settings from bili-search configs, e.g. elastic_dev.",
+    )
+    parser.add_argument(
+        "--bili-search-repo",
+        default="/home/asimov/repos/bili-search",
+        help="Local bili-search repo path used with --bili-search-env.",
+    )
     parser.add_argument("--index", default="bili_videos_dev6")
     parser.add_argument("--fetch-size", type=int, default=1200)
     parser.add_argument("--sample-size", type=int, default=216)
@@ -733,9 +790,10 @@ def main():
         "--ca-cert", default="/media/ssd/elasticsearch-docker-9.2.4-dev/certs/ca/ca.crt"
     )
     args = parser.parse_args()
+    apply_bili_search_env(args)
 
     base_url = f"{args.scheme}://{args.host}:{args.port}"
-    auth_header = build_auth_header(args.user, args.password)
+    auth_header = build_auth_header(args.user, args.password, args.api_key)
     ssl_context = (
         ssl.create_default_context(cafile=args.ca_cert)
         if args.ca_cert

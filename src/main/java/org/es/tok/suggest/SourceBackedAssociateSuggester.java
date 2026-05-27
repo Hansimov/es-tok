@@ -36,6 +36,7 @@ import java.util.Map;
 import java.util.Set;
 
 public class SourceBackedAssociateSuggester {
+    private static final int MAX_ASSOCIATE_SEED_TERMS = 8;
 
     public List<SuggestionOption> suggestAssociate(
             Engine.Searcher searcher,
@@ -43,7 +44,8 @@ public class SourceBackedAssociateSuggester {
             Collection<String> fields,
             String text,
             CompletionConfig config) throws IOException {
-        if (text == null || text.isBlank()) {
+        String sanitizedText = TopicQualityHeuristics.sanitizeQueryText(text);
+        if (sanitizedText.isBlank()) {
             return List.of();
         }
 
@@ -52,9 +54,9 @@ public class SourceBackedAssociateSuggester {
             return List.of();
         }
 
-        LinkedHashSet<String> seedTerms = analyzeSeedTerms(fieldContexts, text);
+        LinkedHashSet<String> seedTerms = analyzeSeedTerms(fieldContexts, sanitizedText);
         if (seedTerms.isEmpty()) {
-            seedTerms.add(TextNormalization.normalizeAnalyzedToken(text));
+            seedTerms.add(TextNormalization.normalizeAnalyzedToken(sanitizedText));
         }
         AssociateQueryProfile queryProfile = AssociateQueryProfile.from(seedTerms);
 
@@ -109,7 +111,50 @@ public class SourceBackedAssociateSuggester {
         }
         pruneAsciiSeedTerms(seedTerms, text);
         seedTerms.remove("");
-        return TopicQualityHeuristics.filterAssociateSeedTerms(seedTerms);
+        return limitAssociateSeedTerms(TopicQualityHeuristics.filterAssociateSeedTerms(seedTerms));
+    }
+
+    private static LinkedHashSet<String> limitAssociateSeedTerms(LinkedHashSet<String> seedTerms) {
+        if (seedTerms.size() <= MAX_ASSOCIATE_SEED_TERMS) {
+            return seedTerms;
+        }
+        List<String> ordered = new ArrayList<>(seedTerms);
+        ordered.sort(Comparator
+                .comparingInt(SourceBackedAssociateSuggester::associateSeedPriority).reversed()
+                .thenComparing(Comparator.comparingInt(String::length).reversed())
+                .thenComparing(String::compareTo));
+        LinkedHashSet<String> selected = new LinkedHashSet<>();
+        for (String seedTerm : ordered) {
+            boolean covered = false;
+            for (String existing : selected) {
+                if (existing.contains(seedTerm)) {
+                    covered = true;
+                    break;
+                }
+            }
+            if (!covered) {
+                selected.add(seedTerm);
+            }
+            if (selected.size() >= MAX_ASSOCIATE_SEED_TERMS) {
+                break;
+            }
+        }
+        return selected;
+    }
+
+    private static int associateSeedPriority(String seedTerm) {
+        if (seedTerm == null || seedTerm.isBlank()) {
+            return Integer.MIN_VALUE;
+        }
+        int codePointLength = seedTerm.codePointCount(0, seedTerm.length());
+        int priority = codePointLength;
+        if (TopicQualityHeuristics.isStrongRelationToken(seedTerm)) {
+            priority += 8;
+        }
+        if (TopicQualityHeuristics.hasLeadingOrTrailingFunctionWord(seedTerm)) {
+            priority -= 6;
+        }
+        return priority;
     }
 
     private static void pruneAsciiSeedTerms(LinkedHashSet<String> seedTerms, String originalText) {

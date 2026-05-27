@@ -145,17 +145,19 @@ python debugs/evaluate_related_cases.py \
 ```sh
 cd /home/asimov/repos/es-tok
 python debugs/evaluate_text_related_cases.py \
-  --password "$ELASTIC_PASSWORD" \
+  --bili-search-env elastic_dev \
   --fetch-size 64 \
   --sample-size 24 \
   --output build/reports/text_related_real_case_report.json
 ```
 
+`--bili-search-env` 会从本机 `bili-search/configs.envs` 读取 Elasticsearch 连接配置和 API key，不在命令行或报告里输出密钥。如果不用 bili-search 的环境配置，也可以显式传 `--api-key`，或退回 `--user/--password`。
+
 如果要把 curated hard cases 一起纳入：
 
 ```sh
 python debugs/evaluate_text_related_cases.py \
-  --password "$ELASTIC_PASSWORD" \
+  --bili-search-env elastic_dev \
   --fetch-size 64 \
   --sample-size 24 \
   --curated-case-file testing/text_related_curated_cases.json \

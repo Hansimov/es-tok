@@ -594,6 +594,24 @@ public class SuggestRestTest {
         assertFalse(result, result.contains("\"type\":\"synonym\""));
       }
 
+      @Test
+      public void testTokenAutoSuggestReturnsEmptyForUrlOnlyText() throws Exception {
+        String query = """
+            {
+              "text": "\\u2063 https://t.me/anemoya_chan",
+              "mode": "auto",
+              "fields": ["content"],
+              "size": 6,
+              "scan_limit": 64,
+              "use_pinyin": true
+            }
+            """;
+
+        String result = performSuggest(query);
+
+        assertTrue(result, result.contains("\"options\":[]"));
+      }
+
     private void indexDocument(String id, String content) throws Exception {
         Request request = new Request("PUT", "/" + TEST_INDEX + "/_doc/" + id);
         request.setJsonEntity("{\"content\":\"" + content + "\"}");

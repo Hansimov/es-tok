@@ -357,7 +357,7 @@ GET|POST /{index}/_es_tok/related_owners_by_tokens
 ```json
 POST /bili_videos_dev6/_es_tok/related_owners_by_tokens
 {
-  "text": "红色警戒月亮3高清对战",
+  "text": "甲乙丙丁3高清对战",
   "fields": ["title.words", "tags.words", "desc.words"],
   "size": 10,
   "scan_limit": 128,
@@ -426,9 +426,9 @@ POST /bili_videos_dev6/_es_tok/related_owners_by_owners
 
 当前 graph relation 的使用约定：
 
-- `related_videos_by_videos` 会先回显 seed 视频自身，然后再补充同作者和 token overlap 更强的候选。
+- `related_videos_by_videos` 会排除 seed 视频自身，再补充同作者和 token overlap 更强的候选。
 - `related_owners_by_videos` 会把 seed 视频作者锚在结果顶部，避免被纯 topic overlap 的其他作者盖住。
-- `related_owners_by_owners` 会先返回 seed owner 自身，再扩展其他相关 owner。
+- `related_owners_by_owners` 会排除 seed owner 自身，再扩展其他相关 owner。
 
 其中视频候选项包含：
 

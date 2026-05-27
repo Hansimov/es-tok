@@ -30,6 +30,7 @@ import org.es.tok.suggest.OwnerBackedSuggestService;
 import org.es.tok.suggest.PinyinSupport;
 import org.es.tok.suggest.AutoSuggestTextVariants;
 import org.es.tok.suggest.SourceBackedAssociateSuggester;
+import org.es.tok.text.TopicQualityHeuristics;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -267,13 +268,17 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
                     mode),
                 false);
         }
+        String tokenText = TopicQualityHeuristics.sanitizeQueryText(request.text());
+        if (tokenText.isBlank()) {
+            return new ShardSuggestExecution(List.of(), false);
+        }
         if ("associate".equals(mode)) {
             return new ShardSuggestExecution(
                 associateSuggester.suggestAssociate(
                     searcher,
                     indexService,
                     associateFields,
-                    request.text(),
+                    tokenText,
                     completionConfig),
                 false);
         }
@@ -283,6 +288,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
                 reader,
                 indexService,
                 request,
+                tokenText,
                 suggestFields,
                 associateFields,
                 completionConfig,
@@ -293,7 +299,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             reader,
             mode,
             suggestFields,
-            request.text(),
+            tokenText,
             completionConfig,
             correctionConfig,
             request.useCache());
@@ -305,6 +311,7 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             IndexReader reader,
             IndexService indexService,
             ShardEsTokSuggestRequest request,
+            String text,
             List<String> suggestFields,
             List<String> associateFields,
             LuceneIndexSuggester.CompletionConfig completionConfig,
@@ -314,20 +321,20 @@ public class TransportEsTokSuggestAction extends TransportBroadcastAction<
             indexService,
             reader,
             request,
-            request.text(),
+            text,
             suggestFields,
             associateFields,
             completionConfig,
             correctionConfig,
             true);
-        if (!AutoSuggestTextVariants.shouldRunLongTextFallback(request.text(), primary.options(), request.size())) {
+        if (!AutoSuggestTextVariants.shouldRunLongTextFallback(text, primary.options(), request.size())) {
             return primary;
         }
 
         Map<String, AutoAccumulator> merged = new HashMap<>();
         mergeAutoOptions(merged, primary.options(), 1.0f);
         boolean cacheHit = primary.cacheHit();
-        List<String> fallbackTexts = AutoSuggestTextVariants.buildFallbackTexts(indexService, suggestFields, request.text());
+        List<String> fallbackTexts = AutoSuggestTextVariants.buildFallbackTexts(indexService, suggestFields, text);
         for (int index = 0; index < fallbackTexts.size(); index++) {
             String fallbackText = fallbackTexts.get(index);
             ShardSuggestExecution fallback = executeAutoSuggestForText(

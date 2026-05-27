@@ -1,13 +1,29 @@
 {
     "schema": "es_tok.related_owner_topic_variants",
     "schema_version": 1,
-    "prefix_aliases": [
+    "compound_abbreviation_rules": [
         {
-            "source_prefix": "红色警戒",
-            "target_prefix": "红警",
+            "source_han_codepoints": 4,
+            "pick_codepoint_indexes": [0, 2],
             "allow_empty_suffix": true,
-            "allowed_han_suffixes": ["二", "三"],
-            "reason": "Bilibili Red Alert content commonly uses the compact topic form 红警, while users may type the full game title 红色警戒."
+            "max_suffix_codepoints": 2,
+            "allow_ascii_digit_suffix": true,
+            "allowed_han_suffixes": ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"],
+            "reason": "Some Chinese topic names are commonly shortened by retaining salient characters; this rule is structural and does not encode a concrete title."
+        }
+    ],
+    "suffix_aliases": [
+        {
+            "source_suffix": "切片员",
+            "target_suffix": "切片",
+            "min_prefix_codepoints": 2,
+            "reason": "Creator discovery queries often use the role word 切片员, while video/topic fields usually carry the content topic 切片."
+        },
+        {
+            "source_suffix": "剪辑号",
+            "target_suffix": "剪辑",
+            "min_prefix_codepoints": 2,
+            "reason": "Strip account-role suffixes from topic relation queries."
         }
     ]
 }
